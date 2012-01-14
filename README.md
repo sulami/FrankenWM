@@ -9,7 +9,7 @@ For more detailed README refer to [monsterwm][]
 Installation
 ------------
 
-You need libxcb, xcb-proto, xcb-util, xcb-util-keysyms and xcb-util-wm then,
+You need xcb and xcb-utils then,
 copy `config.def.h` as `config.h`
 and edit to suit your needs.
 Build and install.
