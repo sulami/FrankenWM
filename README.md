@@ -5,8 +5,7 @@ monsterwm-xcb
 ----------------------
 This is xcb port of monsterwm tiling window manager.
 
-For more detailed README refer to vanilla monsterwm
-[upstream]: https://github.com/c00kiemon5ter/monsterwm
+For more detailed README refer to [monsterwm][]
 
 Installation
 ------------
@@ -25,12 +24,14 @@ Build and install.
 Bugs
 ----
 
-!IMPORTANT!
-   Fill bug only on monsterwm-xcb when you are sure the bug doesn't occur on vanilla monsterwm by [c00kiemonster][].
-   Otherwise fill the bug to monsterwm's upstream.
+Fill bugs only on monsterwm-xcb when you are sure the bug doesn't occur on [monsterwm][monsterwm-bug].
+If the bug occurs on vanilla release as well, report the bug to upstream.
 
-  [upstream]: https://github.com/c00kiemon5ter/monsterwm/issues
-  [xcb]: https://github.com/Cloudef/monsterwm-xcb/issues
+   [monsterwm-xcb issues][monsterwm-xcb-bug]
+   [monsterwm issues][monsterwm-bug]
+
+   [monsterwm-bug]: https://github.com/c00kiemon5ter/monsterwm/issues
+   [monsterwm-xcb-bug]: https://github.com/Cloudef/monsterwm-xcb/issues
 
 
 License
@@ -38,7 +39,7 @@ License
 
 Licensed under MIT/X Consortium License, see [LICENSE][law] file for more copyright and license information.
 
-  [law]: https://raw.github.com/Cloudef/monsterwm-xcb/master/LICENSE
+   [law]: https://raw.github.com/Cloudef/monsterwm-xcb/master/LICENSE
 
 Thanks
 ------
@@ -46,8 +47,8 @@ Thanks
 [the suckless team][skls] for [dwm][],
 [moetunes][] for [dminiwm][],
 [pyknite][] for [catwm][],
-[c00kiemonster][] for [monsterwm][]
-[xcb documentation][] for [unhelpful and helpful documetnation][]
+[c00kiemonster][cookiemonster] for [monsterwm][]
+[xcb documentation][xcb] for [unhelpful and helpful documetnation][xcb]
 
   [skls]: http://suckless.org/
   [dwm]:  http://dwm.suckless.org/
@@ -56,3 +57,5 @@ Thanks
   [pyknite]: https://github.com/pyknite
   [catwm]:   https://github.com/pyknite/catwm
   [monsterwm]: https://github.com/c00kiemon5ter/monsterwm
+  [cookiemonster]: https://github.com/c00kiemon5ter
+  [xcb]: http://xcb.freedesktop.org/
