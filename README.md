@@ -5,8 +5,8 @@ monsterwm
 ----------------------
 
 **monsterwm** is a minimal, lightweight, tiny but monsterous dynamic tiling window manager.
-It will try to stay as small as possible. Currently under 700 lines with the config file included.
-It provides a set of different layout modes (see below), but has no floating mode support yet.
+It will try to stay as small as possible. Currently under 750 lines with the config file included.
+It provides a set of different layout modes (see below), and has partial floating mode support.
 Each virtual desktop has its own properties, unaffected by other desktops' settings.
 For screenshots and ramblings/updates check the [topic on ArchLinux forums][monsterwm].
 
@@ -67,7 +67,26 @@ opening the window at the bottom of the stack (attach\_aside)
 
 ---
 
-All accessible with keyboard shortcuts defined in the config.h file.
+ *floating mode*
+
+    -------------
+    |  |        |
+    |--'  .---. |
+    |     |   | |
+    |     |   | |
+    ------`---'--
+
+ In floating mode one can freely move and resize windows in the screen space.
+ Changing desktops, adding or removing floating windows, does not affect the
+ floating status of the windows. Windows will revert to their tiling mode
+ position once the user selects a tiling mode.
+ Note, that one cannot "select" the floating mode, but it will be enabled if
+ one tries to move or resize a window with the mouse. Once one does that, then
+ the window is marked as being in floating mode.
+
+---
+
+All accessible with keyboard and mouse shortcuts are defined in the config.h file.
 
  * The window W at the top of the stack can be resized on a per desktop basis.
  * Changing a tiling mode or window size on one desktop doesn't affect the other desktops.

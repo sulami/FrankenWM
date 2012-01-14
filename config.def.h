@@ -3,8 +3,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define CLEANMASK(mask) (mask & ~(numlockmask | LockMask))
-
 /** buttons **/
 #define MOD1            Mod1Mask    /* ALT key */
 #define MOD4            Mod4Mask    /* Super/Windows key */
@@ -78,4 +76,9 @@ static key keys[] = {
        DESKTOPCHANGE(    XK_F4,                             3)
 };
 
+static Button buttons[] = {
+    {  MOD1,    Button1,     mousemotion,   {.i = MOVE}},
+    {  MOD1,    Button3,     mousemotion,   {.i = RESIZE}},
+    {  MOD4,    Button3,     spawn,         {.com = dmenucmd}},
+};
 #endif
