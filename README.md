@@ -4,7 +4,6 @@ monsterwm-xcb
 → tiny(!) and monsterous!
 ----------------------
 This is xcb port of monsterwm tiling window manager.
-
 For more detailed README refer to [monsterwm][]
 
 Installation
@@ -20,15 +19,14 @@ Build and install.
     $ make
     # make clean install
 
-
 Bugs
 ----
 
-Fill bugs only on monsterwm-xcb when you are sure the bug doesn't occur on [monsterwm][monsterwm-bug].
-If the bug occurs on vanilla release as well, report the bug to upstream.
+Fill bugs only on monsterwm-xcb, when you are sure the bug doesn't occur on [monsterwm][].
+If the bug occurs on [monsterwm][] release as well, report the bug to [upstream][monsterwm-bug].
 
-   [monsterwm-xcb issues][monsterwm-xcb-bug]
-   [monsterwm issues][monsterwm-bug]
+[monsterwm-xcb issues][monsterwm-xcb-bug]
+[monsterwm issues][monsterwm-bug]
 
    [monsterwm-bug]: https://github.com/c00kiemon5ter/monsterwm/issues
    [monsterwm-xcb-bug]: https://github.com/Cloudef/monsterwm-xcb/issues
@@ -48,7 +46,6 @@ Thanks
 [moetunes][] for [dminiwm][],
 [pyknite][] for [catwm][],
 [c00kiemonster][cookiemonster] for [monsterwm][]
-[xcb documentation][xcb] for [unhelpful and helpful documetnation][xcb]
 
   [skls]: http://suckless.org/
   [dwm]:  http://dwm.suckless.org/
@@ -58,4 +55,3 @@ Thanks
   [catwm]:   https://github.com/pyknite/catwm
   [monsterwm]: https://github.com/c00kiemon5ter/monsterwm
   [cookiemonster]: https://github.com/c00kiemon5ter
-  [xcb]: http://xcb.freedesktop.org/
