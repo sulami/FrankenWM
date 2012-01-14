@@ -8,16 +8,25 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <X11/keysym.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_atom.h>
 #include <xcb/xcb_icccm.h>
+#include <xcb/xcb_keysyms.h>
 
+/* upstream compatility */
+#define True  true
+#define False false
+#define Mod1Mask     XCB_MOD_MASK_1
+#define Mod4Mask     XCB_MOD_MASK_4
+#define ShiftMask    XCB_MOD_MASK_SHIFT
+#define ControlMask  XCB_MOD_MASK_CONTROL
 #define XCB_MOVE_RESIZE XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT
-#define NUMLOCK_KEYCODE 77
 
 #define LENGTH(x) (sizeof(x)/sizeof(*x))
+#define CLEANMASK(mask) (mask & ~(numlockmask))
 
-static const unsigned char XCB_ATOM_NULL = 0;
+static const xcb_atom_t XCB_ATOM_NULL = 0;
 static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW" };
 static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED", "_NET_WM_STATE_FULLSCREEN", "_NET_WM_STATE", "_NET_ACTIVE_WINDOW" };
 
@@ -154,8 +163,30 @@ static inline void xcb_raise_window(xcb_connection_t *con, xcb_window_t win) {
 }
 
 static inline void xcb_border_width(xcb_connection_t *con, xcb_window_t win, int w) {
-   unsigned int arg[1] = { w };
-   xcb_configure_window(con, win, XCB_CONFIG_WINDOW_BORDER_WIDTH, arg);
+    unsigned int arg[1] = { w };
+    xcb_configure_window(con, win, XCB_CONFIG_WINDOW_BORDER_WIDTH, arg);
+}
+
+static inline xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode) {
+    xcb_key_symbols_t *keysyms;
+    xcb_keysym_t       keysym;
+
+    if (!(keysyms = xcb_key_symbols_alloc(dis))) return 0;
+    keysym = xcb_key_symbols_get_keysym(keysyms, keycode, 0);
+    xcb_key_symbols_free(keysyms);
+
+    return keysym;
+}
+
+static inline xcb_keycode_t* xcb_get_keycodes(xcb_keysym_t keysym) {
+    xcb_key_symbols_t *keysyms;
+    xcb_keycode_t     *keycode;
+
+    if (!(keysyms = xcb_key_symbols_alloc(dis))) return NULL;
+    keycode = xcb_key_symbols_get_keycode(keysyms, keysym);
+    xcb_key_symbols_free(keysyms);
+
+    return keycode;
 }
 
 static unsigned int xcb_get_colorpixel(char *hex) {
@@ -339,9 +370,9 @@ void configurerequest(xcb_generic_event_t *e) {
         if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING)        v[i++] = ev->sibling;
         if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE)     v[i++] = ev->stack_mode;
         xcb_configure_window(dis, ev->window, ev->value_mask, v);
+        xcb_flush(dis);
     }
     tile();
-    xcb_flush(dis);
 }
 
 void desktopinfo(void) {
@@ -393,7 +424,7 @@ unsigned int getcolor(char* color) {
 
     rgb = xcb_get_colorpixel(color);
     r = rgb >> 16; g = rgb >> 8 & 0xFF; b = rgb & 0xFF;
-    c = xcb_alloc_color_reply(dis, xcb_alloc_color(dis, map, r, g, b), NULL);
+    c = xcb_alloc_color_reply(dis, xcb_alloc_color(dis, map, r * 257, g * 257, b * 257), NULL);
     if (!c)
         die("error: cannot allocate color '%s'\n", c);
 
@@ -402,27 +433,25 @@ unsigned int getcolor(char* color) {
 }
 
 void grabkeys(void) {
-    unsigned int code;
+    xcb_keycode_t *keycode;
+    unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask, numlockmask|XCB_MOD_MASK_LOCK };
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
-    for (unsigned int i=0; i<LENGTH(keys); i++) {
-        code = keys[i].keysym;
-        xcb_grab_key(dis, 1, screen->root, keys[i].mod,               code, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
-        xcb_grab_key(dis, 1, screen->root, keys[i].mod | numlockmask, code, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
+    for (unsigned int i=0; i<LENGTH(keys); ++i) {
+        keycode = xcb_get_keycodes(keys[i].keysym);
+        for (unsigned int k=0; keycode[k] != XCB_NO_SYMBOL; ++k)
+            for (unsigned int m=0; m<LENGTH(modifiers); m++)
+                xcb_grab_key(dis, 1, screen->root, keys[i].mod | modifiers[m], keycode[k], XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
     }
-#if 0
-    xcb_grab_key(dis, 1, screen->root, XCB_MOD_MASK_ANY, XCB_GRAB_ANY, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
-#endif
     xcb_flush(dis);
 }
 
 void keypress(xcb_generic_event_t *e) {
-    //KeySym keysym;
-    //keysym = XKeycodeToKeysym(dis, (KeyCode)e->xkey.keycode, 0);
-    xcb_key_press_event_t *ev = (xcb_key_press_event_t *)e;
+    xcb_key_press_event_t *ev       = (xcb_key_press_event_t *)e;
+    xcb_keysym_t           keysym   = xcb_get_keysym(ev->detail);
 
     printf("keypress: code: %d mod: %d\n", ev->detail, ev->state);
     for (unsigned int i=0; i<LENGTH(keys); i++)
-        if (ev->detail == keys[i].keysym && keys[i].mod == ev->state && keys[i].function)
+        if (keysym == keys[i].keysym && CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].function)
                 keys[i].function(&keys[i].arg);
     xcb_flush(dis);
 }
@@ -689,8 +718,9 @@ void select_desktop(int i) {
 void sendevent(xcb_window_t w, int atom) {
     if (atom >= WM_COUNT) return;
     xcb_client_message_event_t ev;
-    ev.type = XCB_CLIENT_MESSAGE;
+    ev.response_type = XCB_CLIENT_MESSAGE;
     ev.window = w;
+    ev.format = 32;
     ev.type = wmatoms[WM_PROTOCOLS];
     ev.data.data32[0] = wmatoms[atom];
     ev.data.data32[1] = XCB_CURRENT_TIME;
@@ -702,7 +732,7 @@ void sendevent(xcb_window_t w, int atom) {
 void setfullscreen(client *c, bool fullscreen) {
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM, 32, sizeof(xcb_atom_t),
                        ((c->isfullscreen = fullscreen) ? &netatoms[NET_FULLSCREEN] : &XCB_ATOM_NULL));
-    if (c->isfullscreen) xcb_move_resize(dis, c->win, 0, 0, ww + BORDER_WIDTH, wh + BORDER_WIDTH + PANEL_HEIGHT);
+    if (c->isfullscreen) { xcb_move_resize(dis, c->win, 0, 0, ww + BORDER_WIDTH, wh + BORDER_WIDTH + PANEL_HEIGHT); xcb_raise_window(dis, c->win); }
 }
 
 int setup_keyboard(void)
@@ -710,6 +740,7 @@ int setup_keyboard(void)
     xcb_get_modifier_mapping_cookie_t cookie;
     xcb_get_modifier_mapping_reply_t *reply;
     xcb_keycode_t                    *modmap;
+    xcb_keycode_t                    *numlock;
 
     cookie  = xcb_get_modifier_mapping_unchecked(dis);
     reply   = xcb_get_modifier_mapping_reply(dis, cookie, NULL);
@@ -726,15 +757,19 @@ int setup_keyboard(void)
         return -1;
     }
 
-    for (int i=0; i<8; i++)
-       for (int j=0; j<reply->keycodes_per_modifier; j++)
+    numlock = xcb_get_keycodes(XK_Num_Lock);
+    for (unsigned int i=0; i<8; ++i)
+       for (unsigned int j=0; j<reply->keycodes_per_modifier; ++j)
        {
            xcb_keycode_t keycode = modmap[i * reply->keycodes_per_modifier + j];
            if (keycode == XCB_NO_SYMBOL) continue;
-           if (NUMLOCK_KEYCODE == keycode) {
-               printf("found num-lock %d\n", 1 << i);
-               numlockmask = 1 << i;
-               break;
+           for (unsigned int n=0; numlock[n] != XCB_NO_SYMBOL; ++n)
+           {
+               if (numlock[n] == keycode) {
+                   printf("found num-lock %d\n", 1 << i);
+                   numlockmask = 1 << i;
+                   break;
+               }
            }
        }
 
