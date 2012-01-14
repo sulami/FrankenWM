@@ -1,17 +1,14 @@
 # Makefile for monsterwm - see LICENSE for license and copyright information
 
-VERSION = cookies-git
+VERSION = xcb-cloudef-git
 WMNAME  = monsterwm
 
 PREFIX ?= /usr/local
 BINDIR ?= ${PREFIX}/bin
 MANPREFIX = ${PREFIX}/share/man
 
-X11INC = /usr/include/X11
-X11LIB = /usr/lib/X11
-
-INCS = -I. -I/usr/include -I${X11INC}
-LIBS = -L/usr/lib -lc -L${X11LIB} -lX11
+INCS = -I. -I/usr/include
+LIBS = -L/usr/lib -lc `pkg-config --libs xcb-icccm`
 
 CPPFLAGS = -DVERSION=\"${VERSION}\" -DWMNAME=\"${WMNAME}\"
 CFLAGS   = -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS}
