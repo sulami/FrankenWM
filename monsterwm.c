@@ -351,6 +351,7 @@ void buttonpress(xcb_generic_event_t *e) {
             update_current(c);
             buttons[i].func(&(buttons[i].arg));
         }
+    xcb_flush(dis);
 }
 
 /* focus another desktop
@@ -527,6 +528,7 @@ void enternotify(xcb_generic_event_t *e) {
     if (!FOLLOW_MOUSE) return;
     client *c = wintoclient(ev->event);
     if (!c) return;
+    puts("MOUSE");
     if (ev->mode == XCB_NOTIFY_MODE_NORMAL && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) update_current(c);
 }
 
@@ -560,8 +562,9 @@ void grabbuttons(client *c) {
     unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask, numlockmask|XCB_MOD_MASK_LOCK };
     for (unsigned int b=0; b<LENGTH(buttons); b++)
         for (unsigned int m=0; m<LENGTH(modifiers); m++)
-            xcb_grab_button(dis, 1, c->win, BUTTONMASK, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
-                    XCB_NONE, XCB_NONE, buttons[b].button, buttons[b].mask|modifiers[m]);
+            xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
+                    screen->root, XCB_NONE, buttons[b].button, buttons[b].mask|modifiers[m]);
+    xcb_flush(dis);
 }
 
 /* the wm should listen to key presses */
@@ -689,9 +692,7 @@ void mousemotion(const Arg *arg) {
     xcb_get_geometry_cookie_t          geom_cookie;
     xcb_get_geometry_reply_t           *geometry;
     xcb_query_pointer_reply_t          *pointer;
-    unsigned int mx, my, winx, winy, winw, winh, xw, yh;
-
-    puts("grab pointer");
+    int mx, my, winx, winy, winw, winh, xw, yh;
 
     geom_cookie = xcb_get_geometry(dis, current->win);
     geometry = xcb_get_geometry_reply(dis, geom_cookie, NULL); /* TODO: error handling */
@@ -701,20 +702,18 @@ void mousemotion(const Arg *arg) {
         free(geometry);
     } else return;
 
-    xcb_grab_pointer(dis, 0, screen->root, BUTTONMASK|XCB_EVENT_MASK_BUTTON_MOTION|XCB_EVENT_MASK_POINTER_MOTION_HINT,
+    xcb_grab_pointer(dis, 0, current->win, BUTTONMASK|XCB_EVENT_MASK_BUTTON_MOTION|XCB_EVENT_MASK_POINTER_MOTION,
             XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, screen->root, XCB_NONE, XCB_CURRENT_TIME);
 
     pointer = xcb_query_pointer_reply(dis, xcb_query_pointer(dis, screen->root), 0);
     if (!pointer) return;
-
     mx = pointer->root_x; my = pointer->root_y;
     xcb_flush(dis);
 
     xcb_generic_event_t *e;
     xcb_motion_notify_event_t *ev = NULL;
-
     do {
-        e = xcb_wait_for_event(dis);
+        while(!(e = xcb_wait_for_event(dis)));
         switch (e->response_type & ~0x80) {
             case XCB_CONFIGURE_REQUEST:
             case XCB_MAP_REQUEST:
@@ -724,12 +723,14 @@ void mousemotion(const Arg *arg) {
                 ev = (xcb_motion_notify_event_t*)e;
                 xw = (arg->i == MOVE ? winx : winw) + ev->root_x - mx;
                 yh = (arg->i == MOVE ? winy : winh) + ev->root_y - my;
-                if (arg->i == RESIZE) xcb_resize(dis, current->win, xw>MINWSZ?xw:winw, yh>MINWSZ?yh:winh);
+                if (arg->i == RESIZE) xcb_resize(dis, current->win, xw>MINWSZ?xw:MINWSZ, yh>MINWSZ?yh:MINWSZ);
                 else if (arg->i == MOVE) xcb_move(dis, current->win, xw, yh);
+                xcb_flush(dis);
                 break;
         }
-        current->isfloating = True;
-    } while((ev->response_type & ~0x80) != XCB_BUTTON_RELEASE);
+        current->isfloating = true;
+    } while((e->response_type & ~0x80) != XCB_BUTTON_RELEASE);
+    puts("ungrab");
     xcb_ungrab_pointer(dis, XCB_CURRENT_TIME);
     tile();
 }
@@ -1031,8 +1032,6 @@ int setup(int default_screen) {
     if (checkotherwm())
         die("error: other wm is running");
 
-    //xcb_grab_button(dis, 1, screen->root, BUTTONMASK, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, screen->root, XCB_NONE, XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
-
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root, netatoms[NET_SUPPORTED], XCB_ATOM, 32, sizeof(xcb_atom_t) * NET_COUNT, netatoms);
     grabkeys();
 
@@ -1086,8 +1085,8 @@ void swap_master() {
 
 /* switch the tiling mode and reset all floating windows */
 void switch_mode(const Arg *arg) {
-    if (mode == arg->i) return;
     if (mode == MONOCLE) for (client *c=head; c; c=c->next) xcb_map_window(dis, c->win);
+    for (client *c=head; c; c=c->next) c->isfloating = False;
     mode = arg->i;
     master_size = (mode == BSTACK ? wh : ww) * MASTER_SIZE;
     tile();
@@ -1171,7 +1170,7 @@ void update_current(client *c) {
     if (!current && !c) {
         xcb_delete_property(dis, screen->root, netatoms[NET_ACTIVE]);
         return;
-    }
+    } else if(c) current = c;
 
     int border_width = (!head->next || (head->next->istransient &&
                         !head->next->next) || mode == MONOCLE) ? 0 : BORDER_WIDTH;
@@ -1180,14 +1179,17 @@ void update_current(client *c) {
         xcb_border_width(dis, c->win, (c->isfullscreen ? 0 : border_width));
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL, (current == c ? &win_focus : &win_unfocus));
         if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
-           XCB_NONE, XCB_NONE, XCB_BUTTON_INDEX_1, XCB_NONE);
+           screen->root, XCB_NONE, XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
     }
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root, netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, sizeof(xcb_window_t), &current->win);
-    xcb_set_input_focus(dis, screen->root, current->win, XCB_CURRENT_TIME);
+    xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win, XCB_CURRENT_TIME);
     xcb_raise_window(dis, current->win);
 
-    if (CLICK_TO_FOCUS) xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, current->win, XCB_NONE);
+    if (CLICK_TO_FOCUS) {
+        xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, current->win, XCB_BUTTON_MASK_ANY);
+        grabbuttons(current);
+    }
     xcb_flush(dis);
 }
 
@@ -1212,7 +1214,8 @@ int main(int argc, char *argv[]) {
         fprintf(stdout, "%s-%s\n", WMNAME, VERSION);
         return EXIT_SUCCESS;
     } else if (argc != 1) die("usage: %s [-v]\n", WMNAME);
-    if (!(dis = xcb_connect(NULL, &default_screen))) die("error: cannot open display\n");
+    if (xcb_connection_has_error((dis = xcb_connect(NULL, &default_screen))))
+        die("error: cannot open display\n");
     if (setup(default_screen) != -1)
     {
       desktopinfo(); /* zero out every desktop on (re)start */
