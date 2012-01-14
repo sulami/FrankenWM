@@ -23,10 +23,8 @@ Bugs
 ----
 
 Fill bugs only on monsterwm-xcb, when you are sure the bug doesn't occur on [monsterwm][].
-If the bug occurs on [monsterwm][] release as well, report the bug to [upstream][monsterwm-bug].
 
-[monsterwm-xcb issues][monsterwm-xcb-bug]
-[monsterwm issues][monsterwm-bug]
+[monsterwm-xcb issues][monsterwm-xcb-bug] | [monsterwm issues][monsterwm-bug]
 
    [monsterwm-bug]: https://github.com/c00kiemon5ter/monsterwm/issues
    [monsterwm-xcb-bug]: https://github.com/Cloudef/monsterwm-xcb/issues
