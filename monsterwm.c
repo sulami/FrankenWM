@@ -21,9 +21,9 @@
 #define Mod4Mask     XCB_MOD_MASK_4
 #define ShiftMask    XCB_MOD_MASK_SHIFT
 #define ControlMask  XCB_MOD_MASK_CONTROL
-#define Button1      1
-#define Button2      2
-#define Button3      3
+#define Button1      XCB_BUTTON_INDEX_1
+#define Button2      XCB_BUTTON_INDEX_2
+#define Button3      XCB_BUTTON_INDEX_3
 #define XCB_MOVE_RESIZE XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT
 #define XCB_MOVE        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
 #define XCB_RESIZE      XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT
@@ -331,7 +331,7 @@ void addwindow(xcb_window_t w) {
     }
     prevfocus = current;
     unsigned int mask = XCB_CW_EVENT_MASK;
-    unsigned int values[1] = { XCB_EVENT_MASK_PROPERTY_CHANGE|FOLLOW_MOUSE?XCB_EVENT_MASK_ENTER_WINDOW:0) };
+    unsigned int values[1] = { XCB_EVENT_MASK_PROPERTY_CHANGE|(FOLLOW_MOUSE?XCB_EVENT_MASK_ENTER_WINDOW:0) };
     xcb_change_window_attributes_checked(dis, (current=c)->win = w, mask, values);
 }
 
@@ -689,7 +689,7 @@ void mousemotion(const Arg *arg) {
     xcb_get_geometry_cookie_t          geom_cookie;
     xcb_get_geometry_reply_t           *geometry;
     xcb_query_pointer_reply_t          *pointer;
-    unsigned int mx, my, winx, winy, winw, winh;
+    unsigned int mx, my, winx, winy, winw, winh, xw, yh;
 
     puts("grab pointer");
 
@@ -705,11 +705,14 @@ void mousemotion(const Arg *arg) {
             XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, screen->root, XCB_NONE, XCB_CURRENT_TIME);
 
     pointer = xcb_query_pointer_reply(dis, xcb_query_pointer(dis, screen->root), 0);
+    if (!pointer) return;
+
     mx = pointer->root_x; my = pointer->root_y;
     xcb_flush(dis);
 
     xcb_generic_event_t *e;
     xcb_motion_notify_event_t *ev = NULL;
+
     do {
         e = xcb_wait_for_event(dis);
         switch (e->response_type & ~0x80) {
@@ -719,8 +722,10 @@ void mousemotion(const Arg *arg) {
                 break;
             case XCB_MOTION_NOTIFY:
                 ev = (xcb_motion_notify_event_t*)e;
-                if (arg->i == MOVE) xcb_move(dis, current->win, winx + ev->event_x - mx, winy + ev->event_y - my);
-                else xcb_resize(dis, current->win, winw + ev->event_x - mx, winh + ev->event_y - my);
+                xw = (arg->i == MOVE ? winx : winw) + ev->root_x - mx;
+                yh = (arg->i == MOVE ? winy : winh) + ev->root_y - my;
+                if (arg->i == RESIZE) xcb_resize(dis, current->win, xw>MINWSZ?xw:winw, yh>MINWSZ?yh:winh);
+                else if (arg->i == MOVE) xcb_move(dis, current->win, xw, yh);
                 break;
         }
         current->isfloating = True;
@@ -1174,15 +1179,15 @@ void update_current(client *c) {
     for (client *c=head; c; c=c->next) {
         xcb_border_width(dis, c->win, (c->isfullscreen ? 0 : border_width));
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL, (current == c ? &win_focus : &win_unfocus));
-        if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win, BUTTONMASK, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
-           XCB_NONE, XCB_NONE, XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
+        if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
+           XCB_NONE, XCB_NONE, XCB_BUTTON_INDEX_1, XCB_NONE);
     }
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root, netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, sizeof(xcb_window_t), &current->win);
     xcb_set_input_focus(dis, screen->root, current->win, XCB_CURRENT_TIME);
     xcb_raise_window(dis, current->win);
 
-    if (CLICK_TO_FOCUS) xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, current->win, XCB_BUTTON_MASK_ANY);
+    if (CLICK_TO_FOCUS) xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, current->win, XCB_NONE);
     xcb_flush(dis);
 }
 
