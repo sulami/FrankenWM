@@ -19,6 +19,9 @@ Build and install.
     $ make
     # make clean install
 
+The packages in Arch Linux needed for example would be
+`libxcb` `xcb-util` `xcb-util-wm` `xcb-util-keysym`
+
 Bugs
 ----
 
