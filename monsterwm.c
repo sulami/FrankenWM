@@ -15,6 +15,13 @@
 #include <xcb/xcb_keysyms.h>
 
 /* TODO: Reduce SLOC */
+#if 0
+#  define DEBUG(x)      puts(x);
+#  define DEBUGP(x,...) printf(x, ##__VA_ARGS__);
+#else
+#  define DEBUG(x)      ;
+#  define DEBUGP(x,...) ;
+#endif
 
 /* upstream compatility */
 #define True  true
@@ -296,7 +303,7 @@ static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count) {
     for (unsigned int i = 0; i < count; ++i) {
         reply = xcb_intern_atom_reply(dis, cookies[i], NULL); /* TODO: Handle error */
         if (reply) {
-            printf("%s : %d\n", names[i], reply->atom);
+            DEBUGP("%s : %d\n", names[i], reply->atom);
             atoms[i] = reply->atom;
             free(reply);
         }
@@ -354,12 +361,11 @@ void addwindow(xcb_window_t w) {
 /* on the press of a button check to see if there's a binded function to call */
 void buttonpress(xcb_generic_event_t *e) {
     xcb_button_press_event_t *ev = (xcb_button_press_event_t*)e;
-    printf("button press: %d state: %d\n", ev->detail, ev->state);
+    DEBUGP("button press: %d state: %d\n", ev->detail, ev->state);
+
     client *c = wintoclient(ev->event);
     if (!c) return;
     if (CLICK_TO_FOCUS && current != c && ev->detail == XCB_BUTTON_INDEX_1) update_current(c);
-
-    printf("BUTTON1: %d\n", XCB_BUTTON_INDEX_1);
 
     for (unsigned int i=0; i<LENGTH(buttons); i++)
         if (buttons[i].func && buttons[i].button == ev->detail &&
@@ -450,7 +456,7 @@ void clientmessage(xcb_generic_event_t *e) {
     xcb_client_message_event_t *ev = (xcb_client_message_event_t*)e;
     client *c = wintoclient(ev->window);
 
-    printf("client message: %d\n", ev->data.data32[1]);
+    DEBUGP("client message: %d\n", ev->data.data32[1]);
 
     if (ev->format != 32) return;
     if (c && ev->type == netatoms[NET_WM_STATE] && ((unsigned)ev->data.data32[1]
@@ -517,7 +523,7 @@ void desktopinfo(void) {
  * on receival, remove the appropriate client that held that window
  */
 void destroynotify(xcb_generic_event_t *e) {
-    puts("destoroy notify");
+    DEBUG("destoroy notify");
     xcb_destroy_notify_event_t *ev = (xcb_destroy_notify_event_t*)e;
     client *c = wintoclient(ev->window);
     if (c) removeclient(c);
@@ -544,7 +550,6 @@ void enternotify(xcb_generic_event_t *e) {
     if (!FOLLOW_MOUSE) return;
     client *c = wintoclient(ev->event);
     if (!c) return;
-    puts("MOUSE");
     if (ev->mode == XCB_NOTIFY_MODE_NORMAL && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) update_current(c);
 }
 
@@ -602,7 +607,7 @@ void keypress(xcb_generic_event_t *e) {
     xcb_key_press_event_t *ev       = (xcb_key_press_event_t *)e;
     xcb_keysym_t           keysym   = xcb_get_keysym(ev->detail);
 
-    printf("keypress: code: %d mod: %d\n", ev->detail, ev->state);
+    DEBUGP("keypress: code: %d mod: %d\n", ev->detail, ev->state);
     for (unsigned int i=0; i<LENGTH(keys); i++)
         if (keysym == keys[i].keysym && CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].function)
                 keys[i].function(&keys[i].arg);
@@ -649,7 +654,7 @@ void maprequest(xcb_generic_event_t *e) {
     geom_cookie = xcb_get_geometry(dis, ev->window);
 
     xcb_icccm_get_wm_class_reply(dis, prop_cookie, &ch, NULL); /* TODO: error handling */
-    printf("class: %s instance: %s\n", ch.class_name, ch.instance_name);
+    DEBUGP("class: %s instance: %s\n", ch.class_name, ch.instance_name);
     for (unsigned int i=0; i<LENGTH(rules); i++)
         if (!strcmp(ch.class_name, rules[i].class) || !strcmp(ch.instance_name, rules[i].class)) {
             follow = rules[i].follow;
@@ -660,7 +665,7 @@ void maprequest(xcb_generic_event_t *e) {
 
     geometry = xcb_get_geometry_reply(dis, geom_cookie, NULL); /* TODO: error handling */
     if (geometry) {
-        printf("geom: %ux%u+%d+%d\n", geometry->width, geometry->height,
+        DEBUGP("geom: %ux%u+%d+%d\n", geometry->width, geometry->height,
                                       geometry->x,     geometry->y);
         free(geometry);
     }
@@ -746,7 +751,7 @@ void mousemotion(const Arg *arg) {
         }
         current->isfloating = true;
     } while((e->response_type & ~0x80) != XCB_BUTTON_RELEASE);
-    puts("ungrab");
+    DEBUG("ungrab");
     xcb_ungrab_pointer(dis, XCB_CURRENT_TIME);
     tile();
 }
@@ -865,10 +870,10 @@ void propertynotify(xcb_generic_event_t *e) {
     xcb_icccm_wm_hints_t wmh;
 
     client *c;
-    puts("xcb: property notify");
+    DEBUG("xcb: property notify");
     if ((c = wintoclient(ev->window)))
         if (ev->atom == XCB_ICCCM_WM_ALL_HINTS) {
-            puts("xcb: got hint!");
+            DEBUG("xcb: got hint!");
             cookie = xcb_icccm_get_wm_hints(dis, ev->window);
             if (xcb_icccm_get_wm_hints_reply(dis, cookie, &wmh, NULL)) /* TODO: error handling */
                c->isurgent = (wmh.flags & XCB_ICCCM_WM_HINT_X_URGENCY);
@@ -928,12 +933,9 @@ void rotate_desktop(const Arg *arg) {
 void run(void) {
     xcb_generic_event_t *ev;
     while(running)
-        if ((ev = xcb_poll_for_event(dis)))
-        {
-            if (events[ev->response_type & ~0x80])
-               events[ev->response_type & ~0x80](ev);
-            else
-               printf("unimplented event: %d\n", ev->response_type & ~0x80);
+        if ((ev = xcb_poll_for_event(dis))) {
+            if (events[ev->response_type & ~0x80]) events[ev->response_type & ~0x80](ev);
+            else DEBUGP("unimplented event: %d\n", ev->response_type & ~0x80);
             free(ev);
         }
 }
@@ -1000,18 +1002,15 @@ int setup_keyboard(void)
 
     numlock = xcb_get_keycodes(XK_Num_Lock);
     for (unsigned int i=0; i<8; ++i)
-       for (unsigned int j=0; j<reply->keycodes_per_modifier; ++j)
-       {
+       for (unsigned int j=0; j<reply->keycodes_per_modifier; ++j) {
            xcb_keycode_t keycode = modmap[i * reply->keycodes_per_modifier + j];
            if (keycode == XCB_NO_SYMBOL) continue;
            for (unsigned int n=0; numlock[n] != XCB_NO_SYMBOL; ++n)
-           {
                if (numlock[n] == keycode) {
-                   printf("found num-lock %d\n", 1 << i);
+                   DEBUGP("found num-lock %d\n", 1 << i);
                    numlockmask = 1 << i;
                    break;
                }
-           }
        }
 
     return 0;
