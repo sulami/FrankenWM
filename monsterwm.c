@@ -42,7 +42,7 @@ static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW" };
 static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED", "_NET_WM_STATE_FULLSCREEN", "_NET_WM_STATE", "_NET_ACTIVE_WINDOW" };
 
 #define LENGTH(x) (sizeof(x)/sizeof(*x))
-#define CLEANMASK(mask) (mask & ~(numlockmask))
+#define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
 
 /* mouse motion actions */
@@ -935,7 +935,7 @@ void run(void) {
     while(running)
         if ((ev = xcb_poll_for_event(dis))) {
             if (events[ev->response_type & ~0x80]) events[ev->response_type & ~0x80](ev);
-            else DEBUGP("unimplented event: %d\n", ev->response_type & ~0x80);
+            else { DEBUGP("unimplented event: %d\n", ev->response_type & ~0x80); }
             free(ev);
         }
 }
