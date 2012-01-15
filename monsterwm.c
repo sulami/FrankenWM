@@ -14,6 +14,8 @@
 #include <xcb/xcb_icccm.h>
 #include <xcb/xcb_keysyms.h>
 
+/* TODO: Reduce SLOC */
+
 /* upstream compatility */
 #define True  true
 #define False false
@@ -205,42 +207,48 @@ static desktop desktops[DESKTOPS];
  */
 static void (*events[XCB_NO_OPERATION])(xcb_generic_event_t *e);
 
+/* get screen of display */
 static xcb_screen_t *screen_of_display(xcb_connection_t *con, int screen) {
     xcb_screen_iterator_t iter;
 
     iter = xcb_setup_roots_iterator(xcb_get_setup(con));
     for (; iter.rem; --screen, xcb_screen_next(&iter))
-        if (screen == 0)
-            return iter.data;
+        if (screen == 0) return iter.data;
 
     return NULL;
 }
 
+/* wrapper to move and resize window */
 static inline void xcb_move_resize(xcb_connection_t *con, xcb_window_t win, int x, int y, int w, int h) {
     unsigned int pos[4] = { x, y, w, h };
     xcb_configure_window(con, win, XCB_MOVE_RESIZE, pos);
 }
 
+/* wrapper to move window */
 static inline void xcb_move(xcb_connection_t *con, xcb_window_t win, int x, int y) {
     unsigned int pos[2] = { x, y };
     xcb_configure_window(con, win, XCB_MOVE, pos);
 }
 
+/* wrapper to resize window */
 static inline void xcb_resize(xcb_connection_t *con, xcb_window_t win, int w, int h) {
     unsigned int pos[2] = { w, h };
     xcb_configure_window(con, win, XCB_RESIZE, pos);
 }
 
+/* wrapper to raise window */
 static inline void xcb_raise_window(xcb_connection_t *con, xcb_window_t win) {
     unsigned int arg[1] = { XCB_STACK_MODE_ABOVE };
     xcb_configure_window(con, win, XCB_CONFIG_WINDOW_STACK_MODE, arg);
 }
 
+/* wrapper to set xcb border width */
 static inline void xcb_border_width(xcb_connection_t *con, xcb_window_t win, int w) {
     unsigned int arg[1] = { w };
     xcb_configure_window(con, win, XCB_CONFIG_WINDOW_BORDER_WIDTH, arg);
 }
 
+/* wrapper to get xcb keysymbol from keycode */
 static inline xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode) {
     xcb_key_symbols_t *keysyms;
     xcb_keysym_t       keysym;
@@ -252,6 +260,7 @@ static inline xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode) {
     return keysym;
 }
 
+/* wrapper to get xcb keycodes from keysymbol */
 static inline xcb_keycode_t* xcb_get_keycodes(xcb_keysym_t keysym) {
     xcb_key_symbols_t *keysyms;
     xcb_keycode_t     *keycode;
@@ -263,6 +272,7 @@ static inline xcb_keycode_t* xcb_get_keycodes(xcb_keysym_t keysym) {
     return keycode;
 }
 
+/* retieve RGB color from hex (think of html) */
 static unsigned int xcb_get_colorpixel(char *hex) {
     char strgroups[3][3]  = {{hex[1], hex[2], '\0'},
                              {hex[3], hex[4], '\0'},
@@ -274,6 +284,7 @@ static unsigned int xcb_get_colorpixel(char *hex) {
     return (rgb16[0] << 16) + (rgb16[1] << 8) + rgb16[2];
 }
 
+/* wrapper to get atoms using xcb */
 static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count) {
     xcb_intern_atom_cookie_t cookies[count];
     xcb_intern_atom_reply_t  *reply;
@@ -292,6 +303,7 @@ static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count) {
     }
 }
 
+/* wrapper to window get attributes using xcb */
 static void xcb_get_attributes(xcb_window_t *windows, xcb_get_window_attributes_reply_t **reply, unsigned int count) {
     xcb_get_window_attributes_cookie_t cookies[count];
 
@@ -302,6 +314,7 @@ static void xcb_get_attributes(xcb_window_t *windows, xcb_get_window_attributes_
        reply[i] = xcb_get_window_attributes_reply(dis, cookies[i], NULL); /* TODO: Handle error */
 }
 
+/* check if other wm exists */
 static int checkotherwm(void) {
     xcb_void_cookie_t cookie;
     xcb_generic_error_t *error;
@@ -316,6 +329,9 @@ static int checkotherwm(void) {
     return 0;
 }
 
+/* create a new client and add the new window
+ * window should notify of property change events
+ */
 void addwindow(xcb_window_t w) {
     client *c, *t;
     if (!(c = (client *)calloc(1, sizeof(client))))
