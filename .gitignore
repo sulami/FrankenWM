@@ -1,0 +1,6 @@
+monsterwm
+*.o
+*.swp
+*~
+*.diff
+config.h
