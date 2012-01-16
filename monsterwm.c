@@ -15,6 +15,8 @@
 #include <xcb/xcb_keysyms.h>
 
 /* TODO: Reduce SLOC */
+
+/* set this to 1 to enable debug prints */
 #if 0
 #  define DEBUG(x)      puts(x);
 #  define DEBUGP(x,...) printf(x, ##__VA_ARGS__);
@@ -323,13 +325,11 @@ static void xcb_get_attributes(xcb_window_t *windows, xcb_get_window_attributes_
 
 /* check if other wm exists */
 static int checkotherwm(void) {
-    xcb_void_cookie_t cookie;
     xcb_generic_error_t *error;
     unsigned int mask = XCB_CW_EVENT_MASK;
     unsigned int values[1] = {XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT|XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY|XCB_EVENT_MASK_PROPERTY_CHANGE|XCB_EVENT_MASK_BUTTON_PRESS};
 
-    cookie = xcb_change_window_attributes_checked(dis, screen->root, mask, values);
-    error = xcb_request_check(dis, cookie);
+    error = xcb_request_check(dis, xcb_change_window_attributes_checked(dis, screen->root, mask, values));
     xcb_flush(dis);
 
     if (error) return 1;
@@ -400,15 +400,13 @@ void change_desktop(const Arg *arg) {
  * get the all windows and send a delete message
  */
 void cleanup(void) {
-    xcb_query_tree_cookie_t cookie;
     xcb_query_tree_reply_t  *reply;
     unsigned int nchildren;
 
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
     xcb_set_input_focus(dis, XCB_NONE, XCB_INPUT_FOCUS_POINTER_ROOT, XCB_CURRENT_TIME);
 
-    cookie = xcb_query_tree(dis, screen->root);
-    reply  = xcb_query_tree_reply(dis, cookie, NULL); /* TODO: error handling */
+    reply  = xcb_query_tree_reply(dis, xcb_query_tree(dis, screen->root), NULL); /* TODO: error handling */
     if (reply) {
         nchildren = reply[0].children_len;
         for (unsigned int i = 0; i<nchildren; ++i) sendevent(reply[i].parent, WM_DELETE_WINDOW);
@@ -643,8 +641,6 @@ void maprequest(xcb_generic_event_t *e) {
     xcb_map_request_event_t            *ev = (xcb_map_request_event_t*)e;
     xcb_window_t                       windows[] = { ev->window }, transient;
     xcb_get_window_attributes_reply_t  *attr[1];
-    xcb_get_property_cookie_t          prop_cookie;
-    xcb_get_geometry_cookie_t          geom_cookie;
     xcb_icccm_get_wm_class_reply_t     ch;
     xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
@@ -652,10 +648,7 @@ void maprequest(xcb_generic_event_t *e) {
     DEBUG("map request");
     bool follow = false;
     int cd = current_desktop, newdsk = current_desktop;
-    prop_cookie = xcb_icccm_get_wm_class(dis, ev->window);
-    geom_cookie = xcb_get_geometry(dis, ev->window);
-
-    if (xcb_icccm_get_wm_class_reply(dis, prop_cookie, &ch, NULL)) { /* TODO: error handling */
+    if (xcb_icccm_get_wm_class_reply(dis, xcb_icccm_get_wm_class(dis, ev->window), &ch, NULL)) { /* TODO: error handling */
         DEBUGP("class: %s instance: %s\n", ch.class_name, ch.instance_name);
         for (unsigned int i=0; i<LENGTH(rules); i++)
             if (!strcmp(ch.class_name, rules[i].class) || !strcmp(ch.instance_name, rules[i].class)) {
@@ -666,7 +659,7 @@ void maprequest(xcb_generic_event_t *e) {
         xcb_icccm_get_wm_class_reply_wipe(&ch);
     }
 
-    geometry = xcb_get_geometry_reply(dis, geom_cookie, NULL); /* TODO: error handling */
+    geometry = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, ev->window), NULL); /* TODO: error handling */
     if (geometry) {
         DEBUGP("geom: %ux%u+%d+%d\n", geometry->width, geometry->height,
                                       geometry->x,     geometry->y);
@@ -680,12 +673,10 @@ void maprequest(xcb_generic_event_t *e) {
     select_desktop(newdsk);
     addwindow(ev->window);
 
-    prop_cookie = xcb_icccm_get_wm_transient_for(dis, ev->window);
-    xcb_icccm_get_wm_transient_for_reply(dis, prop_cookie, &transient, NULL); /* TODO: error handling */
+    xcb_icccm_get_wm_transient_for_reply(dis, xcb_icccm_get_wm_transient_for(dis, ev->window), &transient, NULL); /* TODO: error handling */
     if (transient) current->istransient = 1;
 
-    prop_cookie = xcb_get_property(dis, 0, screen->root, netatoms[NET_WM_STATE], XCB_ATOM, 0L, sizeof(xcb_atom_t));
-    prop_reply  = xcb_get_property_reply(dis, prop_cookie, NULL);
+    prop_reply  = xcb_get_property_reply(dis, xcb_get_property(dis, 0, screen->root, netatoms[NET_WM_STATE], XCB_ATOM, 0L, sizeof(xcb_atom_t)), NULL);
     if (prop_reply) {
         setfullscreen(current, (prop_reply->type == netatoms[NET_FULLSCREEN]));
         free(prop_reply);
@@ -713,13 +704,11 @@ void maprequest(xcb_generic_event_t *e) {
  */
 void mousemotion(const Arg *arg) {
     if (!current) return;
-    xcb_get_geometry_cookie_t          geom_cookie;
     xcb_get_geometry_reply_t           *geometry;
     xcb_query_pointer_reply_t          *pointer;
     int mx, my, winx, winy, winw, winh, xw, yh;
 
-    geom_cookie = xcb_get_geometry(dis, current->win);
-    geometry = xcb_get_geometry_reply(dis, geom_cookie, NULL); /* TODO: error handling */
+    geometry = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL); /* TODO: error handling */
     if (geometry) {
         winx = geometry->x;     winy = geometry->y;
         winw = geometry->width; winh = geometry->height;
@@ -869,7 +858,6 @@ void prev_win() {
  */
 void propertynotify(xcb_generic_event_t *e) {
     xcb_property_notify_event_t *ev = (xcb_property_notify_event_t*)e;
-    xcb_get_property_cookie_t cookie;
     xcb_icccm_wm_hints_t wmh;
 
     client *c;
@@ -877,8 +865,7 @@ void propertynotify(xcb_generic_event_t *e) {
     if ((c = wintoclient(ev->window)))
         if (ev->atom == XCB_ICCCM_WM_ALL_HINTS) {
             DEBUG("xcb: got hint!");
-            cookie = xcb_icccm_get_wm_hints(dis, ev->window);
-            if (xcb_icccm_get_wm_hints_reply(dis, cookie, &wmh, NULL)) /* TODO: error handling */
+            if (xcb_icccm_get_wm_hints_reply(dis, xcb_icccm_get_wm_hints(dis, ev->window), &wmh, NULL)) /* TODO: error handling */
                c->isurgent = (wmh.flags & XCB_ICCCM_WM_HINT_X_URGENCY);
             desktopinfo();
         }
@@ -983,21 +970,28 @@ void sendevent(xcb_window_t w, int atom) {
 }
 
 void setfullscreen(client *c, bool fullscreen) {
-    xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM, 32, sizeof(xcb_atom_t),
+    xcb_generic_error_t *error;
+    xcb_void_cookie_t cookie;
+
+    DEBUGP("set fullscreen: %d\n", fullscreen);
+    cookie = xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM, 32, sizeof(xcb_atom_t),
                        ((c->isfullscreen = fullscreen) ? &netatoms[NET_FULLSCREEN] : &XCB_ATOM_NULL));
     if (c->isfullscreen) xcb_move_resize(dis, c->win, 0, 0, ww + BORDER_WIDTH, wh + BORDER_WIDTH + PANEL_HEIGHT);
+
+    /* check error here */
+    error = xcb_request_check(dis, cookie);
+    xcb_flush(dis);
+    if (error) { DEBUG("_NET_FULLSCREEN failed"); }
 }
 
 /* get numlock modifier using xcb */
 int setup_keyboard(void)
 {
-    xcb_get_modifier_mapping_cookie_t cookie;
     xcb_get_modifier_mapping_reply_t *reply;
     xcb_keycode_t                    *modmap;
     xcb_keycode_t                    *numlock;
 
-    cookie  = xcb_get_modifier_mapping_unchecked(dis);
-    reply   = xcb_get_modifier_mapping_reply(dis, cookie, NULL);
+    reply   = xcb_get_modifier_mapping_reply(dis, xcb_get_modifier_mapping_unchecked(dis), NULL); /* TODO: error checking */
     if (!reply) return -1;
 
     modmap = xcb_get_modifier_mapping_keycodes(reply);
@@ -1027,7 +1021,7 @@ int setup_keyboard(void)
 int setup(int default_screen) {
     sigchld();
     screen = screen_of_display(dis, default_screen);
-    if (!screen) die("error: cannot aquire screen");
+    if (!screen) die("error: cannot aquire screen\n");
 
     ww = screen->width_in_pixels  - BORDER_WIDTH;
     wh = screen->height_in_pixels - (SHOW_PANEL ? PANEL_HEIGHT : 0) - BORDER_WIDTH;
@@ -1040,7 +1034,7 @@ int setup(int default_screen) {
 
     /* setup keyboard */
     if (setup_keyboard() == -1)
-        die("error: failed to setup keyboard");
+        die("error: failed to setup keyboard\n");
 
     /* set up atoms for dialog/notification windows */
     xcb_get_atoms(WM_ATOM_NAME, wmatoms, WM_COUNT);
@@ -1048,7 +1042,7 @@ int setup(int default_screen) {
 
     /* check if another wm is running */
     if (checkotherwm())
-        die("error: other wm is running");
+        die("error: other wm is running\n");
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root, netatoms[NET_SUPPORTED], XCB_ATOM, 32, sizeof(xcb_atom_t) * NET_COUNT, netatoms);
     grabkeys();
@@ -1234,8 +1228,7 @@ int main(int argc, char *argv[]) {
     } else if (argc != 1) die("usage: %s [-v]\n", WMNAME);
     if (xcb_connection_has_error((dis = xcb_connect(NULL, &default_screen))))
         die("error: cannot open display\n");
-    if (setup(default_screen) != -1)
-    {
+    if (setup(default_screen) != -1) {
       desktopinfo(); /* zero out every desktop on (re)start */
       run();
     }
