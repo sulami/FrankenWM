@@ -548,6 +548,7 @@ void die(const char *errstr, ...) {
 void enternotify(xcb_generic_event_t *e) {
     xcb_enter_notify_event_t *ev = (xcb_enter_notify_event_t*)e;
     if (!FOLLOW_MOUSE) return;
+    DEBUG("enter notify");
     client *c = wintoclient(ev->event);
     if (!c) return;
     if (ev->mode == XCB_NOTIFY_MODE_NORMAL && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) update_current(c);
@@ -648,20 +649,22 @@ void maprequest(xcb_generic_event_t *e) {
     xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
 
+    DEBUG("map request");
     bool follow = false;
     int cd = current_desktop, newdsk = current_desktop;
     prop_cookie = xcb_icccm_get_wm_class(dis, ev->window);
     geom_cookie = xcb_get_geometry(dis, ev->window);
 
-    xcb_icccm_get_wm_class_reply(dis, prop_cookie, &ch, NULL); /* TODO: error handling */
-    DEBUGP("class: %s instance: %s\n", ch.class_name, ch.instance_name);
-    for (unsigned int i=0; i<LENGTH(rules); i++)
-        if (!strcmp(ch.class_name, rules[i].class) || !strcmp(ch.instance_name, rules[i].class)) {
-            follow = rules[i].follow;
-            newdsk = rules[i].desktop;
-            break;
-        }
-    xcb_icccm_get_wm_class_reply_wipe(&ch);
+    if (xcb_icccm_get_wm_class_reply(dis, prop_cookie, &ch, NULL)) { /* TODO: error handling */
+        DEBUGP("class: %s instance: %s\n", ch.class_name, ch.instance_name);
+        for (unsigned int i=0; i<LENGTH(rules); i++)
+            if (!strcmp(ch.class_name, rules[i].class) || !strcmp(ch.instance_name, rules[i].class)) {
+                follow = rules[i].follow;
+                newdsk = rules[i].desktop;
+                break;
+            }
+        xcb_icccm_get_wm_class_reply_wipe(&ch);
+    }
 
     geometry = xcb_get_geometry_reply(dis, geom_cookie, NULL); /* TODO: error handling */
     if (geometry) {
