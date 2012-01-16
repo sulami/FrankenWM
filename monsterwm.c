@@ -256,7 +256,7 @@ static inline void xcb_border_width(xcb_connection_t *con, xcb_window_t win, int
 }
 
 /* wrapper to get xcb keysymbol from keycode */
-static inline xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode) {
+static xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode) {
     xcb_key_symbols_t *keysyms;
     xcb_keysym_t       keysym;
 
@@ -268,7 +268,7 @@ static inline xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode) {
 }
 
 /* wrapper to get xcb keycodes from keysymbol */
-static inline xcb_keycode_t* xcb_get_keycodes(xcb_keysym_t keysym) {
+static xcb_keycode_t* xcb_get_keycodes(xcb_keysym_t keysym) {
     xcb_key_symbols_t *keysyms;
     xcb_keycode_t     *keycode;
 
