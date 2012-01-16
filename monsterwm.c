@@ -933,11 +933,11 @@ void rotate_desktop(const Arg *arg) {
 void run(void) {
     xcb_generic_event_t *ev;
     while(running)
-        if ((ev = xcb_poll_for_event(dis))) {
+        if ((ev = xcb_poll_for_event(dis))) { /* xcb_wait_for_event breaks monsterwm here somehow :/ */
             if (events[ev->response_type & ~0x80]) events[ev->response_type & ~0x80](ev);
             else { DEBUGP("unimplented event: %d\n", ev->response_type & ~0x80); }
             free(ev);
-        }
+        } else usleep(1000); /* we are going to workaround cpu hogging by usleeping then */
 }
 
 /* save specified desktop's properties */
