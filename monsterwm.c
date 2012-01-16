@@ -639,11 +639,12 @@ void last_desktop() {
  */
 void maprequest(xcb_generic_event_t *e) {
     xcb_map_request_event_t            *ev = (xcb_map_request_event_t*)e;
-    xcb_window_t                       windows[] = { ev->window }, transient;
+    xcb_window_t                       windows[] = { ev->window }, transient = 0;
     xcb_get_window_attributes_reply_t  *attr[1];
     xcb_icccm_get_wm_class_reply_t     ch;
     xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
+    xcb_atom_t                         *fullscreen_atom;
 
     DEBUG("map request");
     bool follow = false;
@@ -673,12 +674,14 @@ void maprequest(xcb_generic_event_t *e) {
     select_desktop(newdsk);
     addwindow(ev->window);
 
-    xcb_icccm_get_wm_transient_for_reply(dis, xcb_icccm_get_wm_transient_for(dis, ev->window), &transient, NULL); /* TODO: error handling */
-    if (transient) current->istransient = 1;
+    xcb_icccm_get_wm_transient_for_reply(dis, xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window), &transient, NULL); /* TODO: error handling */
+    if (transient) current->istransient = true;
+    DEBUGP("transient: %d\n", current->istransient);
 
-    prop_reply  = xcb_get_property_reply(dis, xcb_get_property(dis, 0, screen->root, netatoms[NET_WM_STATE], XCB_ATOM, 0L, sizeof(xcb_atom_t)), NULL);
+    prop_reply  = xcb_get_property_reply(dis, xcb_get_property(dis, 0, screen->root, netatoms[NET_WM_STATE], XCB_ATOM, 0L, 1), NULL); /* TODO: error handling */
     if (prop_reply) {
-        setfullscreen(current, (prop_reply->type == netatoms[NET_FULLSCREEN]));
+        fullscreen_atom = xcb_get_property_value(prop_reply);
+        setfullscreen(current, (fullscreen_atom[0] == netatoms[NET_FULLSCREEN]));
         free(prop_reply);
     }
 
