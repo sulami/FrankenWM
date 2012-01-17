@@ -1,5 +1,7 @@
 /* see license for copyright and license */
 
+#define _XOPEN_SOURCE 500
+#define _XOPEN_SOURCE_EXTENDED /* for usleep inside std99 */
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -298,17 +300,17 @@ static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count) {
     xcb_intern_atom_cookie_t cookies[count];
     xcb_intern_atom_reply_t  *reply;
 
-    for (unsigned int i = 0; i < count; ++i)
+    for (unsigned int i = 0; i < count; i++)
         cookies[i] = xcb_intern_atom(dis, 0, strlen(names[i]), names[i]);
 
     /* get responses */
-    for (unsigned int i = 0; i < count; ++i) {
+    for (unsigned int i = 0; i < count; i++) {
         reply = xcb_intern_atom_reply(dis, cookies[i], NULL); /* TODO: Handle error */
         if (reply) {
             DEBUGP("%s : %d\n", names[i], reply->atom);
             atoms[i] = reply->atom;
             free(reply);
-        }
+        } else puts("WARN: monsterwm failed to register %s atom.\nThings might not work right.");
     }
 }
 
@@ -316,10 +318,10 @@ static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count) {
 static void xcb_get_attributes(xcb_window_t *windows, xcb_get_window_attributes_reply_t **reply, unsigned int count) {
     xcb_get_window_attributes_cookie_t cookies[count];
 
-    for (unsigned int i = 0; i < count; ++i)
+    for (unsigned int i = 0; i < count; i++)
        cookies[i] = xcb_get_window_attributes(dis, windows[i]);
 
-    for (unsigned int i = 0; i < count; ++i)
+    for (unsigned int i = 0; i < count; i++)
        reply[i] = xcb_get_window_attributes_reply(dis, cookies[i], NULL); /* TODO: Handle error */
 }
 
@@ -409,7 +411,7 @@ void cleanup(void) {
     reply  = xcb_query_tree_reply(dis, xcb_query_tree(dis, screen->root), NULL); /* TODO: error handling */
     if (reply) {
         nchildren = reply[0].children_len;
-        for (unsigned int i = 0; i<nchildren; ++i) sendevent(reply[i].parent, WM_DELETE_WINDOW);
+        for (unsigned int i = 0; i<nchildren; i++) sendevent(reply[i].parent, WM_DELETE_WINDOW);
         free(reply);
     }
     xcb_flush(dis);
@@ -454,11 +456,10 @@ void clientmessage(xcb_generic_event_t *e) {
     xcb_client_message_event_t *ev = (xcb_client_message_event_t*)e;
     client *c = wintoclient(ev->window);
 
-    DEBUGP("client message: %d\n", ev->data.data32[1]);
-
     if (ev->format != 32) return;
-    if (c && ev->type == netatoms[NET_WM_STATE] && ((unsigned)ev->data.data32[1]
-        == netatoms[NET_FULLSCREEN] || (unsigned)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
+    DEBUGP("client message: %d, %d, %d\n", ev->data.data32[0], ev->data.data32[1], ev->data.data32[2]);
+    if (c && ev->type == netatoms[NET_WM_STATE] && ((xcb_atom_t)ev->data.data32[1]
+        == netatoms[NET_FULLSCREEN] || (xcb_atom_t)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
         setfullscreen(c, (ev->data.data32[0] == 1 || (ev->data.data32[0] == 2 && !c->isfullscreen)));
     else if (c && ev->type == netatoms[NET_ACTIVE]) current = c;
     tile();
@@ -479,7 +480,6 @@ void configurerequest(xcb_generic_event_t *e) {
     else {
         unsigned int v[7];
         unsigned int i = 0;
-
         if (ev->value_mask & XCB_CONFIG_WINDOW_X)              v[i++] = ev->x;
         if (ev->value_mask & XCB_CONFIG_WINDOW_Y)              v[i++] = ev->y + (showpanel && TOP_PANEL) ? PANEL_HEIGHT : 0;
         if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)          v[i++] = (ev->width  < ww - BORDER_WIDTH) ? ev->width  : ww + BORDER_WIDTH;
@@ -510,7 +510,7 @@ void desktopinfo(void) {
     bool urgent = false;
     int cd = current_desktop, n=0, d=0;
     for (client *c; d<DESKTOPS; d++) {
-        for (select_desktop(d), c=head, n=0, urgent=false; c; c=c->next, ++n) if (c->isurgent) urgent = true;
+        for (select_desktop(d), c=head, n=0, urgent=false; c; c=c->next, n++) if (c->isurgent) urgent = true;
         fprintf(stdout, "%d:%d:%d:%d:%d%c", d, n, mode, current_desktop == cd, urgent, d+1==DESKTOPS?'\n':' ');
     }
     fflush(stdout);
@@ -592,9 +592,9 @@ void grabkeys(void) {
     xcb_keycode_t *keycode;
     unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask, numlockmask|XCB_MOD_MASK_LOCK };
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
-    for (unsigned int i=0; i<LENGTH(keys); ++i) {
+    for (unsigned int i=0; i<LENGTH(keys); i++) {
         keycode = xcb_get_keycodes(keys[i].keysym);
-        for (unsigned int k=0; keycode[k] != XCB_NO_SYMBOL; ++k)
+        for (unsigned int k=0; keycode[k] != XCB_NO_SYMBOL; k++)
             for (unsigned int m=0; m<LENGTH(modifiers); m++)
                 xcb_grab_key(dis, 1, screen->root, keys[i].mod | modifiers[m], keycode[k], XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
     }
@@ -963,9 +963,10 @@ void select_desktop(int i) {
 void sendevent(xcb_window_t w, int atom) {
     if (atom >= WM_COUNT) return;
     xcb_client_message_event_t ev;
-    ev.response_type = XCB_CLIENT_MESSAGE;
+    ev.response_type = XCB_CLIENT_MESSAGE | 0x80;
     ev.window = w;
     ev.format = 32;
+    ev.sequence = 0;
     ev.type = wmatoms[WM_PROTOCOLS];
     ev.data.data32[0] = wmatoms[atom];
     ev.data.data32[1] = XCB_CURRENT_TIME;
@@ -1001,11 +1002,11 @@ int setup_keyboard(void)
     if (!modmap) return -1;
 
     numlock = xcb_get_keycodes(XK_Num_Lock);
-    for (unsigned int i=0; i<8; ++i)
-       for (unsigned int j=0; j<reply->keycodes_per_modifier; ++j) {
+    for (unsigned int i=0; i<8; i++)
+       for (unsigned int j=0; j<reply->keycodes_per_modifier; j++) {
            xcb_keycode_t keycode = modmap[i * reply->keycodes_per_modifier + j];
            if (keycode == XCB_NO_SYMBOL) continue;
-           for (unsigned int n=0; numlock[n] != XCB_NO_SYMBOL; ++n)
+           for (unsigned int n=0; numlock[n] != XCB_NO_SYMBOL; n++)
                if (numlock[n] == keycode) {
                    DEBUGP("found num-lock %d\n", 1 << i);
                    numlockmask = 1 << i;
@@ -1051,7 +1052,7 @@ int setup(int default_screen) {
     grabkeys();
 
     /* set events */
-    for (unsigned int i=0; i<XCB_NO_OPERATION; ++i) events[i] = NULL;
+    for (unsigned int i=0; i<XCB_NO_OPERATION; i++) events[i] = NULL;
     events[XCB_BUTTON_PRESS]        = buttonpress;
     events[XCB_CLIENT_MESSAGE]      = clientmessage;
     events[XCB_CONFIGURE_REQUEST]   = configurerequest;
@@ -1212,7 +1213,7 @@ void update_current(client *c) {
 client* wintoclient(xcb_window_t w) {
     client *c = NULL;
     int d = 0, cd = current_desktop;
-    for (bool found = false; d<DESKTOPS && !found; ++d)
+    for (bool found = false; d<DESKTOPS && !found; d++)
         for (select_desktop(d), c=head; c && !(found = (w == c->win)); c=c->next);
     select_desktop(cd);
     return c;
