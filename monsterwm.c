@@ -406,14 +406,13 @@ void cleanup(void) {
     unsigned int nchildren;
 
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
-    xcb_set_input_focus(dis, XCB_NONE, XCB_INPUT_FOCUS_POINTER_ROOT, XCB_CURRENT_TIME);
-
     reply  = xcb_query_tree_reply(dis, xcb_query_tree(dis, screen->root), NULL); /* TODO: error handling */
     if (reply) {
         nchildren = reply[0].children_len;
         for (unsigned int i = 0; i<nchildren; i++) sendevent(reply[i].parent, WM_DELETE_WINDOW);
         free(reply);
     }
+    xcb_set_input_focus(dis, XCB_NONE, XCB_INPUT_FOCUS_POINTER_ROOT, XCB_CURRENT_TIME);
     xcb_flush(dis);
 }
 
@@ -510,7 +509,7 @@ void desktopinfo(void) {
     bool urgent = false;
     int cd = current_desktop, n=0, d=0;
     for (client *c; d<DESKTOPS; d++) {
-        for (select_desktop(d), c=head, n=0, urgent=false; c; c=c->next, n++) if (c->isurgent) urgent = true;
+        for (select_desktop(d), c=head, n=0, urgent=false; c; c=c->next, ++n) if (c->isurgent) urgent = true;
         fprintf(stdout, "%d:%d:%d:%d:%d%c", d, n, mode, current_desktop == cd, urgent, d+1==DESKTOPS?'\n':' ');
     }
     fflush(stdout);
@@ -646,7 +645,11 @@ void maprequest(xcb_generic_event_t *e) {
     xcb_get_property_reply_t           *prop_reply;
     xcb_atom_t                         *fullscreen_atom;
 
+    xcb_get_attributes(windows, attr, 1);
+    if (attr[0]->override_redirect) return;
+    if (wintoclient(ev->window))    return;
     DEBUG("map request");
+
     bool follow = false;
     int cd = current_desktop, newdsk = current_desktop;
     if (xcb_icccm_get_wm_class_reply(dis, xcb_icccm_get_wm_class(dis, ev->window), &ch, NULL)) { /* TODO: error handling */
@@ -666,10 +669,6 @@ void maprequest(xcb_generic_event_t *e) {
                                       geometry->x,     geometry->y);
         free(geometry);
     }
-
-    xcb_get_attributes(windows, attr, 1);
-    if (attr[0]->override_redirect) return;
-    if (wintoclient(ev->window))    return;
 
     select_desktop(newdsk);
     addwindow(ev->window);
@@ -869,7 +868,7 @@ void propertynotify(xcb_generic_event_t *e) {
         if (ev->atom == XCB_ICCCM_WM_ALL_HINTS) {
             DEBUG("xcb: got hint!");
             if (xcb_icccm_get_wm_hints_reply(dis, xcb_icccm_get_wm_hints(dis, ev->window), &wmh, NULL)) /* TODO: error handling */
-               c->isurgent = (wmh.flags & XCB_ICCCM_WM_HINT_X_URGENCY);
+                c->isurgent = (wmh.flags & XCB_ICCCM_WM_HINT_X_URGENCY);
             desktopinfo();
         }
 }
@@ -1213,7 +1212,7 @@ void update_current(client *c) {
 client* wintoclient(xcb_window_t w) {
     client *c = NULL;
     int d = 0, cd = current_desktop;
-    for (bool found = false; d<DESKTOPS && !found; d++)
+    for (bool found = false; d<DESKTOPS && !found; ++d)
         for (select_desktop(d), c=head; c && !(found = (w == c->win)); c=c->next);
     select_desktop(cd);
     return c;
