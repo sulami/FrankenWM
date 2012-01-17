@@ -1,7 +1,5 @@
 /* see license for copyright and license */
 
-#define _XOPEN_SOURCE 500
-#define _XOPEN_SOURCE_EXTENDED /* for usleep inside std99 */
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -924,12 +922,14 @@ void rotate_desktop(const Arg *arg) {
 /* main event loop - on receival of an event call the appropriate event handler */
 void run(void) {
     xcb_generic_event_t *ev;
-    while(running)
-        if ((ev = xcb_poll_for_event(dis))) { /* xcb_wait_for_event breaks monsterwm here somehow :/ */
+    while(running) {
+        xcb_flush(dis);
+        if ((ev = xcb_wait_for_event(dis))) {
             if (events[ev->response_type & ~0x80]) events[ev->response_type & ~0x80](ev);
             else { DEBUGP("unimplented event: %d\n", ev->response_type & ~0x80); }
             free(ev);
-        } else usleep(1000); /* we are going to workaround cpu hogging by usleeping then */
+        }
+    }
 }
 
 /* save specified desktop's properties */
@@ -962,14 +962,14 @@ void select_desktop(int i) {
 void sendevent(xcb_window_t w, int atom) {
     if (atom >= WM_COUNT) return;
     xcb_client_message_event_t ev;
-    ev.response_type = XCB_CLIENT_MESSAGE | 0x80;
+    ev.response_type = XCB_CLIENT_MESSAGE;
     ev.window = w;
     ev.format = 32;
     ev.sequence = 0;
     ev.type = wmatoms[WM_PROTOCOLS];
     ev.data.data32[0] = wmatoms[atom];
     ev.data.data32[1] = XCB_CURRENT_TIME;
-    xcb_send_event(dis, 1, XCB_SEND_EVENT_DEST_POINTER_WINDOW, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
+    xcb_send_event(dis, 0, w, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
 }
 
 void setfullscreen(client *c, bool fullscreen) {
