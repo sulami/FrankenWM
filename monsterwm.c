@@ -924,6 +924,7 @@ void run(void) {
     xcb_generic_event_t *ev;
     while(running) {
         xcb_flush(dis);
+        if (xcb_connection_has_error(dis)) die("error: X11 connection got interrupted\n");
         if ((ev = xcb_wait_for_event(dis))) {
             if (events[ev->response_type & ~0x80]) events[ev->response_type & ~0x80](ev);
             else { DEBUGP("unimplented event: %d\n", ev->response_type & ~0x80); }
