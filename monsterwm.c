@@ -73,7 +73,7 @@ typedef union {
 typedef struct {
     unsigned int mod;
     xcb_keysym_t keysym;
-    void (*function)(const Arg *);
+    void (*func)(const Arg *);
     const Arg arg;
 } key;
 
@@ -119,12 +119,8 @@ typedef struct client {
  * showpanel    - the visibility status of the panel
  */
 typedef struct {
-    int master_size;
-    int mode;
-    int growth;
-    client *head;
-    client *current;
-    client *prevfocus;
+    int master_size, mode, growth;
+    client *head, *current, *prevfocus;
     bool showpanel;
 } desktop;
 
@@ -200,9 +196,7 @@ static int mode = DEFAULT_MODE;
 static int master_size;
 static int wh; /* window area height - screen height minus the border size and panel height */
 static int ww; /* window area width - screen width minus the border size */
-
-static unsigned int win_focus;
-static unsigned int win_unfocus;
+static unsigned int win_unfocus, win_focus;
 static unsigned int numlockmask = 0; /* dynamic key lock mask */
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
@@ -361,7 +355,7 @@ void addwindow(xcb_window_t w) {
 /* on the press of a button check to see if there's a binded function to call */
 void buttonpress(xcb_generic_event_t *e) {
     xcb_button_press_event_t *ev = (xcb_button_press_event_t*)e;
-    DEBUGP("button press: %d state: %d\n", ev->detail, ev->state);
+    DEBUGP("xcb: button press: %d state: %d\n", ev->detail, ev->state);
 
     client *c = wintoclient(ev->event);
     if (!c) return;
@@ -396,9 +390,7 @@ void change_desktop(const Arg *arg) {
     desktopinfo();
 }
 
-/* remove all windows in all desktops
- * get the all windows and send a delete message
- */
+/* remove all windows in all desktops by sending a delete message */
 void cleanup(void) {
     xcb_query_tree_reply_t  *reply;
     unsigned int nchildren;
@@ -454,7 +446,7 @@ void clientmessage(xcb_generic_event_t *e) {
     client *c = wintoclient(ev->window);
 
     if (ev->format != 32) return;
-    DEBUGP("client message: %d, %d, %d\n", ev->data.data32[0], ev->data.data32[1], ev->data.data32[2]);
+    DEBUGP("xcb: client message: %d, %d, %d\n", ev->data.data32[0], ev->data.data32[1], ev->data.data32[2]);
     if (c && ev->type == netatoms[NET_WM_STATE] && ((xcb_atom_t)ev->data.data32[1]
         == netatoms[NET_FULLSCREEN] || (xcb_atom_t)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
         setfullscreen(c, (ev->data.data32[0] == 1 || (ev->data.data32[0] == 2 && !c->isfullscreen)));
@@ -518,7 +510,7 @@ void desktopinfo(void) {
  * on receival, remove the appropriate client that held that window
  */
 void destroynotify(xcb_generic_event_t *e) {
-    DEBUG("destoroy notify");
+    DEBUG("xcb: destoroy notify");
     xcb_destroy_notify_event_t *ev = (xcb_destroy_notify_event_t*)e;
     client *c = wintoclient(ev->window);
     if (c) removeclient(c);
@@ -543,10 +535,9 @@ void die(const char *errstr, ...) {
 void enternotify(xcb_generic_event_t *e) {
     xcb_enter_notify_event_t *ev = (xcb_enter_notify_event_t*)e;
     if (!FOLLOW_MOUSE) return;
-    DEBUG("enter notify");
+    DEBUG("xcb: enter notify");
     client *c = wintoclient(ev->event);
-    if (!c) return;
-    if (ev->mode == XCB_NOTIFY_MODE_NORMAL && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) update_current(c);
+    if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) update_current(c);
 }
 
 /* find and focus the client which received
@@ -603,10 +594,10 @@ void keypress(xcb_generic_event_t *e) {
     xcb_key_press_event_t *ev       = (xcb_key_press_event_t *)e;
     xcb_keysym_t           keysym   = xcb_get_keysym(ev->detail);
 
-    DEBUGP("keypress: code: %d mod: %d\n", ev->detail, ev->state);
+    DEBUGP("xcb: keypress: code: %d mod: %d\n", ev->detail, ev->state);
     for (unsigned int i=0; i<LENGTH(keys); i++)
-        if (keysym == keys[i].keysym && CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].function)
-                keys[i].function(&keys[i].arg);
+        if (keysym == keys[i].keysym && CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].func)
+                keys[i].func(&keys[i].arg);
     xcb_flush(dis);
 }
 
@@ -646,7 +637,7 @@ void maprequest(xcb_generic_event_t *e) {
     xcb_get_attributes(windows, attr, 1);
     if (attr[0]->override_redirect) return;
     if (wintoclient(ev->window))    return;
-    DEBUG("map request");
+    DEBUG("xcb: map request");
 
     bool follow = false;
     int cd = current_desktop, newdsk = current_desktop;
@@ -859,16 +850,15 @@ void prev_win() {
 void propertynotify(xcb_generic_event_t *e) {
     xcb_property_notify_event_t *ev = (xcb_property_notify_event_t*)e;
     xcb_icccm_wm_hints_t wmh;
-
     client *c;
+
     DEBUG("xcb: property notify");
-    if ((c = wintoclient(ev->window)))
-        if (ev->atom == XCB_ICCCM_WM_ALL_HINTS) {
-            DEBUG("xcb: got hint!");
-            if (xcb_icccm_get_wm_hints_reply(dis, xcb_icccm_get_wm_hints(dis, ev->window), &wmh, NULL)) /* TODO: error handling */
-                c->isurgent = (wmh.flags & XCB_ICCCM_WM_HINT_X_URGENCY);
-            desktopinfo();
-        }
+    c = wintoclient(ev->window);
+    if (!c || ev->atom != XCB_ICCCM_WM_ALL_HINTS) return;
+    DEBUG("xcb: got hint!");
+    if (xcb_icccm_get_wm_hints_reply(dis, xcb_icccm_get_wm_hints(dis, ev->window), &wmh, NULL)) /* TODO: error handling */
+        c->isurgent = (wmh.flags & XCB_ICCCM_WM_HINT_X_URGENCY);
+    desktopinfo();
 }
 
 /* to quit just stop receiving events
@@ -890,7 +880,7 @@ void removeclient(client *c) {
     for (bool found = false; nd<DESKTOPS && !found; nd++)
         for (select_desktop(nd), p = &head; *p && !(found = *p == c); p = &(*p)->next);
     *p = c->next;
-    current = (prevfocus && prevfocus != current) ? prevfocus : (*p) ? (prevfocus = *p) : (prevfocus = head);
+    current = (prevfocus && prevfocus != c) ? prevfocus : (*p) ? (prevfocus = *p) : (prevfocus = head);
     select_desktop(cd);
     tile();
     if (mode == MONOCLE && cd == --nd && current) xcb_map_window(dis, current->win);
@@ -927,7 +917,7 @@ void run(void) {
         if (xcb_connection_has_error(dis)) die("error: X11 connection got interrupted\n");
         if ((ev = xcb_wait_for_event(dis))) {
             if (events[ev->response_type & ~0x80]) events[ev->response_type & ~0x80](ev);
-            else { DEBUGP("unimplented event: %d\n", ev->response_type & ~0x80); }
+            else { DEBUGP("xcb: unimplented event: %d\n", ev->response_type & ~0x80); }
             free(ev);
         }
     }
@@ -947,7 +937,7 @@ void save_desktop(int i) {
 
 /* set the specified desktop's properties */
 void select_desktop(int i) {
-    if (i >= DESKTOPS || i == current_desktop) return;
+    if (i >= DESKTOPS) return;
     save_desktop(current_desktop);
     master_size = desktops[i].master_size;
     mode = desktops[i].mode;
@@ -977,7 +967,7 @@ void setfullscreen(client *c, bool fullscreen) {
     xcb_generic_error_t *error;
     xcb_void_cookie_t cookie;
 
-    DEBUGP("set fullscreen: %d\n", fullscreen);
+    DEBUGP("xcb: set fullscreen: %d\n", fullscreen);
     cookie = xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM, 32, sizeof(xcb_atom_t),
                        ((c->isfullscreen = fullscreen) ? &netatoms[NET_FULLSCREEN] : &XCB_ATOM_NULL));
     if (c->isfullscreen) xcb_move_resize(dis, c->win, 0, 0, ww + BORDER_WIDTH, wh + BORDER_WIDTH + PANEL_HEIGHT);
@@ -985,7 +975,7 @@ void setfullscreen(client *c, bool fullscreen) {
     /* check error here */
     error = xcb_request_check(dis, cookie);
     xcb_flush(dis);
-    if (error) { DEBUG("_NET_FULLSCREEN failed"); }
+    if (error) { DEBUG("xcb: _NET_FULLSCREEN failed"); }
 }
 
 /* get numlock modifier using xcb */
@@ -1008,7 +998,7 @@ int setup_keyboard(void)
            if (keycode == XCB_NO_SYMBOL) continue;
            for (unsigned int n=0; numlock[n] != XCB_NO_SYMBOL; n++)
                if (numlock[n] == keycode) {
-                   DEBUGP("found num-lock %d\n", 1 << i);
+                   DEBUGP("xcb: found num-lock %d\n", 1 << i);
                    numlockmask = 1 << i;
                    break;
                }
@@ -1085,14 +1075,14 @@ void spawn(const Arg *arg) {
 }
 
 /* swap master window with current or
- * if current is master with the next
- * if current is not head, then head is
- * behind us, so move_up until is head
+ * if current is head swap with next
+ * if current is not head, then head
+ * is behind us, so move_up until we
+ * are the head
  */
 void swap_master() {
     if (!current || !head->next || mode == MONOCLE) return;
     for (client *t=head; t; t=t->next) if (t->isfullscreen) return;
-    /* if current is head swap with next window */
     if (current == head) move_down();
     else while (current != head) move_up();
     update_current(head);
@@ -1140,7 +1130,7 @@ void tile(void) {
         if (c) for (mode==BSTACK?(cx+=z+d):(cy+=z+d), c=c->next; c; c=c->next)
             if (!c->isfullscreen && !c->istransient && !c->isfloating) {
                 xcb_move_resize(dis, c->win, cx, cy, cw, ch);
-                mode==BSTACK?(cx+=z):(cy+=z);
+                (mode == BSTACK) ? (cx+=z) : (cy+=z);
             }
     } else if (mode == GRID) {
         ++n;                              /* include head on window count */
