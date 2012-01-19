@@ -134,10 +134,11 @@ typedef struct {
     const char *class;
     const int desktop;
     const bool follow;
+    const bool floating;
 } AppRule;
 
 /* Functions */
-static void addwindow(xcb_window_t w);
+static client* addwindow(xcb_window_t w);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
 static void cleanup(void);
@@ -334,7 +335,7 @@ static int checkotherwm(void) {
 /* create a new client and add the new window
  * window should notify of property change events
  */
-void addwindow(xcb_window_t w) {
+client* addwindow(xcb_window_t w) {
     client *c, *t;
     if (!(c = (client *)calloc(1, sizeof(client))))
         die("error: could not calloc() %u bytes\n", sizeof(client));
@@ -347,10 +348,12 @@ void addwindow(xcb_window_t w) {
         c->next = (t = head);
         head = c;
     }
+
     prevfocus = current;
     unsigned int mask = XCB_CW_EVENT_MASK;
     unsigned int values[1] = { XCB_EVENT_MASK_PROPERTY_CHANGE|(FOLLOW_MOUSE?XCB_EVENT_MASK_ENTER_WINDOW:0) };
     xcb_change_window_attributes_checked(dis, (current=c)->win = w, mask, values);
+    return c;
 }
 
 /* on the press of a button check to see if there's a binded function to call */
@@ -383,7 +386,7 @@ void change_desktop(const Arg *arg) {
     tile();
     if (mode == MONOCLE && current) xcb_map_window(dis, current->win);
     else for (client *c=head; c; c=c->next) xcb_map_window(dis, c->win);
-    update_current(NULL);
+    update_current(current);
     select_desktop(previous_desktop);
     for (client *c=head; c; c=c->next) xcb_unmap_window(dis, c->win);
     select_desktop(arg->i);
@@ -411,6 +414,9 @@ void cleanup(void) {
  * remove the client
  * add the window to the new desktop
  * if defined change focus to the new desktop
+ *
+ * keep in mind that current pointer might
+ * change with each select_desktop() invocation
  */
 void client_to_desktop(const Arg *arg) {
     if (arg->i == current_desktop || !current) return;
@@ -422,11 +428,11 @@ void client_to_desktop(const Arg *arg) {
     removeclient(current);
 
     select_desktop(arg->i);
-    addwindow(w);
+    current = addwindow(w);
 
     select_desktop(cd);
     tile();
-    update_current(NULL);
+    update_current(current);
     if (FOLLOW_WINDOW) change_desktop(arg);
     desktopinfo();
 }
@@ -452,7 +458,7 @@ void clientmessage(xcb_generic_event_t *e) {
         setfullscreen(c, (ev->data.data32[0] == 1 || (ev->data.data32[0] == 2 && !c->isfullscreen)));
     else if (c && ev->type == netatoms[NET_ACTIVE]) current = c;
     tile();
-    update_current(NULL);
+    update_current(current);
 }
 
 /* a configure request means that the window requested changes in its geometry
@@ -635,7 +641,7 @@ void maprequest(xcb_generic_event_t *e) {
     if (wintoclient(ev->window))    return;
     DEBUG("xcb: map request");
 
-    bool follow = false;
+    bool follow = false, floating = false;
     int cd = current_desktop, newdsk = current_desktop;
     if (xcb_icccm_get_wm_class_reply(dis, xcb_icccm_get_wm_class(dis, ev->window), &ch, NULL)) { /* TODO: error handling */
         DEBUGP("class: %s instance: %s\n", ch.class_name, ch.instance_name);
@@ -643,6 +649,7 @@ void maprequest(xcb_generic_event_t *e) {
             if (!strcmp(ch.class_name, rules[i].class) || !strcmp(ch.instance_name, rules[i].class)) {
                 follow = rules[i].follow;
                 newdsk = rules[i].desktop;
+                floating = rules[i].floating;
                 break;
             }
         xcb_icccm_get_wm_class_reply_wipe(&ch);
@@ -659,7 +666,8 @@ void maprequest(xcb_generic_event_t *e) {
     addwindow(ev->window);
 
     xcb_icccm_get_wm_transient_for_reply(dis, xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window), &transient, NULL); /* TODO: error handling */
-    if (transient) current->istransient = true;
+    current->istransient = transient?true:false;
+    current->isfloating  = floating;
     DEBUGP("transient: %d\n", current->istransient);
 
     prop_reply  = xcb_get_property_reply(dis, xcb_get_property(dis, 0, screen->root, netatoms[NET_WM_STATE], XCB_ATOM, 0L, 1), NULL); /* TODO: error handling */
@@ -673,7 +681,7 @@ void maprequest(xcb_generic_event_t *e) {
     if (cd == newdsk) {
         tile();
         xcb_map_window(dis, ev->window);
-        update_current(NULL);
+        update_current(current);
         grabbuttons(current);
     } else if (follow) change_desktop(&(Arg){.i = newdsk});
     desktopinfo();
@@ -773,7 +781,7 @@ void move_down() {
     else head = current;
 
     tile();
-    update_current(NULL);
+    update_current(current);
 }
 
 /* move the current client, to the previous from current
@@ -815,7 +823,7 @@ void move_up() {
     current->next = (current->next == head) ? NULL : p;
 
     tile();
-    update_current(NULL);
+    update_current(current);
 }
 
 /* cyclic focus the next window
@@ -835,7 +843,7 @@ void prev_win() {
     if (head == (prevfocus = current)) while (current->next) current=current->next;
     else for (client *t=head; t; t=t->next) if (t->next == current) { current = t; break; }
     if (mode == MONOCLE) xcb_map_window(dis, current->win);
-    update_current(NULL);
+    update_current(current);
 }
 
 /* property notify is called when one of the window's properties
@@ -867,6 +875,10 @@ void quit(const Arg *arg) {
  * the previous client must point to the next client of the given
  * the removing client can be on any desktop, so we must return
  * back the current focused desktop
+ *
+ * keep in mind that the current set and the current update may
+ * differ. current pointer changes in every select_desktop()
+ * invocation.
  */
 void removeclient(client *c) {
     client **p = NULL;
@@ -878,7 +890,7 @@ void removeclient(client *c) {
     select_desktop(cd);
     tile();
     if (mode == MONOCLE && cd == --nd && current) xcb_map_window(dis, current->win);
-    update_current(NULL);
+    update_current(current);
     free(c);
 }
 
@@ -1082,7 +1094,7 @@ void switch_mode(const Arg *arg) {
     mode = arg->i;
     master_size = (mode == BSTACK ? wh : ww) * MASTER_SIZE;
     tile();
-    update_current(NULL);
+    update_current(current);
     desktopinfo();
 }
 
@@ -1159,15 +1171,15 @@ void unmapnotify(xcb_generic_event_t *e) {
  * if current is NULL then delete the active window property
  */
 void update_current(client *c) {
-    if (!current && !c) {
+    if (!c) {
         xcb_delete_property(dis, screen->root, netatoms[NET_ACTIVE]);
         return;
-    } else if(c) current = c;
+    } else current = c;
 
     int border_width = (!head->next || (head->next->istransient &&
                         !head->next->next) || mode == MONOCLE) ? 0 : BORDER_WIDTH;
 
-    for (client *c=head; c; c=c->next) {
+    for (c=head; c; c=c->next) {
         xcb_border_width(dis, c->win, (c->isfullscreen ? 0 : border_width));
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL, (current == c ? &win_focus : &win_unfocus));
         if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
