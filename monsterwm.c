@@ -321,7 +321,8 @@ static void xcb_get_attributes(xcb_window_t *windows, xcb_get_window_attributes_
 static int checkotherwm(void) {
     xcb_generic_error_t *error;
     unsigned int mask = XCB_CW_EVENT_MASK;
-    unsigned int values[1] = {XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT|XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY|XCB_EVENT_MASK_PROPERTY_CHANGE|XCB_EVENT_MASK_BUTTON_PRESS};
+    unsigned int values[1] = {XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT|XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY|
+                              XCB_EVENT_MASK_PROPERTY_CHANGE|XCB_EVENT_MASK_BUTTON_PRESS};
 
     error = xcb_request_check(dis, xcb_change_window_attributes_checked(dis, screen->root, mask, values));
     xcb_flush(dis);
@@ -367,7 +368,6 @@ void buttonpress(xcb_generic_event_t *e) {
             update_current(c);
             buttons[i].func(&(buttons[i].arg));
         }
-    xcb_flush(dis);
 }
 
 /* focus another desktop
@@ -477,7 +477,6 @@ void configurerequest(xcb_generic_event_t *e) {
         if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING)        v[i++] = ev->sibling;
         if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE)     v[i++] = ev->stack_mode;
         xcb_configure_window(dis, ev->window, ev->value_mask, v);
-        xcb_flush(dis);
     }
     tile();
 }
@@ -572,7 +571,6 @@ void grabbuttons(client *c) {
         for (unsigned int m=0; m<LENGTH(modifiers); m++)
             xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
                     screen->root, XCB_NONE, buttons[b].button, buttons[b].mask|modifiers[m]);
-    xcb_flush(dis);
 }
 
 /* the wm should listen to key presses */
@@ -586,7 +584,6 @@ void grabkeys(void) {
             for (unsigned int m=0; m<LENGTH(modifiers); m++)
                 xcb_grab_key(dis, 1, screen->root, keys[i].mod | modifiers[m], keycode[k], XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
     }
-    xcb_flush(dis);
 }
 
 /* on the press of a key check to see if there's a binded function to call */
@@ -598,7 +595,6 @@ void keypress(xcb_generic_event_t *e) {
     for (unsigned int i=0; i<LENGTH(keys); i++)
         if (keysym == keys[i].keysym && CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].func)
                 keys[i].func(&keys[i].arg);
-    xcb_flush(dis);
 }
 
 /* explicitly kill a client - close the highlighted window
@@ -962,18 +958,10 @@ void sendevent(xcb_window_t w, int atom) {
 }
 
 void setfullscreen(client *c, bool fullscreen) {
-    xcb_generic_error_t *error;
-    xcb_void_cookie_t cookie;
-
     DEBUGP("xcb: set fullscreen: %d\n", fullscreen);
-    cookie = xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM, 32, sizeof(xcb_atom_t),
+    xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM, 32, sizeof(xcb_atom_t),
                        ((c->isfullscreen = fullscreen) ? &netatoms[NET_FULLSCREEN] : &XCB_ATOM_NULL));
     if (c->isfullscreen) xcb_move_resize(dis, c->win, 0, 0, ww + BORDER_WIDTH, wh + BORDER_WIDTH + PANEL_HEIGHT);
-
-    /* check error here */
-    error = xcb_request_check(dis, cookie);
-    xcb_flush(dis);
-    if (error) { DEBUG("xcb: _NET_FULLSCREEN failed"); }
 }
 
 /* get numlock modifier using xcb */
@@ -1194,7 +1182,6 @@ void update_current(client *c) {
         xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, current->win, XCB_BUTTON_MASK_ANY);
         grabbuttons(current);
     }
-    xcb_flush(dis);
 }
 
 /* find to which client the given window belongs to */
