@@ -1019,7 +1019,6 @@ int setup(int default_screen) {
     wh = screen->height_in_pixels - (SHOW_PANEL ? PANEL_HEIGHT : 0) - BORDER_WIDTH;
     master_size = ((mode == BSTACK) ? wh : ww) * MASTER_SIZE;
     for (unsigned int i=0; i<DESKTOPS; i++) save_desktop(i);
-    change_desktop(&(Arg){.i = DEFAULT_DESKTOP});
 
     win_focus   = getcolor(FOCUS);
     win_unfocus = getcolor(UNFOCUS);
@@ -1051,6 +1050,7 @@ int setup(int default_screen) {
     events[XCB_PROPERTY_NOTIFY]     = propertynotify;
     events[XCB_UNMAP_NOTIFY]        = unmapnotify;
 
+    change_desktop(&(Arg){.i = DEFAULT_DESKTOP});
     return 0;
 }
 
