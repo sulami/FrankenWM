@@ -347,7 +347,6 @@ client* addwindow(xcb_window_t w) {
         head = c;
     }
 
-    prevfocus = current;
     unsigned int values[1] = { XCB_EVENT_MASK_PROPERTY_CHANGE|(FOLLOW_MOUSE?XCB_EVENT_MASK_ENTER_WINDOW:0) };
     xcb_change_window_attributes_checked(dis, (c->win = w), XCB_CW_EVENT_MASK, values);
     return c;
