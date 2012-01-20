@@ -17,7 +17,7 @@
 /* TODO: Reduce SLOC */
 
 /* set this to 1 to enable debug prints */
-#if 1
+#if 0
 #  define DEBUG(x)      puts(x);
 #  define DEBUGP(x,...) printf(x, ##__VA_ARGS__);
 #else
@@ -661,14 +661,15 @@ void maprequest(xcb_generic_event_t *e) {
     }
 
     select_desktop(newdsk);
-    addwindow(ev->window);
+    prevfocus = current;
+    current   = addwindow(ev->window);
 
     xcb_icccm_get_wm_transient_for_reply(dis, xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window), &transient, NULL); /* TODO: error handling */
     current->istransient = transient?true:false;
     current->isfloating  = floating;
     DEBUGP("transient: %d\n", current->istransient);
 
-    prop_reply  = xcb_get_property_reply(dis, xcb_get_property_unchecked(dis, 0, current->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 0, 1), NULL); /* TODO: error handling */
+    prop_reply  = xcb_get_property_reply(dis, xcb_get_property_unchecked(dis, 0, ev->window, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 0, 1), NULL); /* TODO: error handling */
     if (prop_reply) {
         if (prop_reply->type == XCB_ATOM_ATOM && prop_reply->format == 32) {
             unsigned char *v = xcb_get_property_value(prop_reply);
