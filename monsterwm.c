@@ -1087,8 +1087,8 @@ void swap_master() {
 
 /* switch the tiling mode and reset all floating windows */
 void switch_mode(const Arg *arg) {
+    if (mode == arg->i) for (client *c=head; c; c=c->next) c->isfloating = False;
     if (mode == MONOCLE) for (client *c=head; c; c=c->next) xcb_map_window(dis, c->win);
-    for (client *c=head; c; c=c->next) c->isfloating = False;
     mode = arg->i;
     master_size = (mode == BSTACK ? wh : ww) * MASTER_SIZE;
     tile();
