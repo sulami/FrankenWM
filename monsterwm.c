@@ -17,7 +17,7 @@
 /* TODO: Reduce SLOC */
 
 /* set this to 1 to enable debug prints */
-#if 0
+#if 1
 #  define DEBUG(x)      puts(x);
 #  define DEBUGP(x,...) printf(x, ##__VA_ARGS__);
 #else
@@ -670,8 +670,12 @@ void maprequest(xcb_generic_event_t *e) {
 
     prop_reply  = xcb_get_property_reply(dis, xcb_get_property_unchecked(dis, 0, current->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 0, 1), NULL); /* TODO: error handling */
     if (prop_reply) {
-        unsigned char *v = xcb_get_property_value(prop_reply);
-        setfullscreen(current, (v[0] == netatoms[NET_FULLSCREEN]));
+        if (prop_reply->type == XCB_ATOM_ATOM && prop_reply->format == 32) {
+            unsigned char *v = xcb_get_property_value(prop_reply);
+            for (unsigned int i=0; i<prop_reply->value_len; i++)
+                DEBUGP("%d : %d\n", i, v[0]);
+            setfullscreen(current, (v[0] == netatoms[NET_FULLSCREEN]));
+        }
         free(prop_reply);
     }
 
