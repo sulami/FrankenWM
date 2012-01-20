@@ -974,8 +974,8 @@ void sendevent(xcb_window_t w, int atom) {
 
 void setfullscreen(client *c, bool fullscreen) {
     DEBUGP("xcb: set fullscreen: %d\n", fullscreen);
-    long data[] = { (c->isfullscreen = fullscreen) ? netatoms[NET_FULLSCREEN] : XCB_NONE };
-    xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 32, 1, data);
+    long data[] = { (c->isfullscreen = fullscreen) ? netatoms[NET_FULLSCREEN] : 0, fullscreen };
+    xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 32, 2, data);
     if (c->isfullscreen) xcb_move_resize(dis, c->win, 0, 0, ww + BORDER_WIDTH, wh + BORDER_WIDTH + PANEL_HEIGHT);
 }
 
