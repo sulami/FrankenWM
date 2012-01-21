@@ -670,7 +670,7 @@ void maprequest(xcb_generic_event_t *e) {
     prop_reply  = xcb_get_property_reply(dis, xcb_get_property_unchecked(dis, 0, ev->window, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 0, 1), NULL); /* TODO: error handling */
     if (prop_reply) {
         if (prop_reply->format == 32) {
-            unsigned char *v = xcb_get_property_value(prop_reply);
+            xcb_atom_t *v = xcb_get_property_value(prop_reply);
             for (unsigned int i=0; i<prop_reply->value_len; i++)
                 DEBUGP("%d : %d\n", i, v[0]);
             setfullscreen(current, (v[0] == netatoms[NET_FULLSCREEN]));
