@@ -1123,7 +1123,7 @@ void tile(void) {
     /* count stack windows -- do not consider fullscreen or transient clients */
     for (n=0, c=head->next; c; c=c->next) if (!c->istransient && !c->isfullscreen && !c->isfloating) ++n;
 
-    if (!head->next || !n || (head->next->istransient && !head->next->next) || mode == MONOCLE) {
+    if (!head->next || (head->next->istransient && !head->next->next) || mode == MONOCLE) {
         for (c=head; c; c=c->next) if (!c->isfullscreen && !c->istransient && !c->isfloating)
             xcb_move_resize(dis, c->win, cx, cy, ww + BORDER_WIDTH, h + BORDER_WIDTH);
     } else if (mode == TILE || mode == BSTACK) {
