@@ -700,8 +700,9 @@ void maprequest(xcb_generic_event_t *e) {
  */
 void mousemotion(const Arg *arg) {
     if (!current) return;
-    xcb_get_geometry_reply_t           *geometry;
-   xcb_query_pointer_reply_t          *pointer;
+    xcb_get_geometry_reply_t  *geometry;
+    xcb_query_pointer_reply_t *pointer;
+    xcb_grab_pointer_reply_t  *grab_reply;
     int mx, my, winx, winy, winw, winh, xw, yh;
 
     geometry = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL); /* TODO: error handling */
@@ -711,18 +712,22 @@ void mousemotion(const Arg *arg) {
         free(geometry);
     } else return;
 
-    xcb_grab_pointer(dis, 0, current->win, BUTTONMASK|XCB_EVENT_MASK_BUTTON_MOTION|XCB_EVENT_MASK_POINTER_MOTION,
-            XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, screen->root, XCB_NONE, XCB_CURRENT_TIME);
+    grab_reply = xcb_grab_pointer_reply(dis, xcb_grab_pointer(dis, 0, current->win, BUTTONMASK|XCB_EVENT_MASK_BUTTON_MOTION|XCB_EVENT_MASK_POINTER_MOTION,
+            XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, screen->root, XCB_NONE, XCB_CURRENT_TIME), NULL);
+    if (!grab_reply) return;
+    if (grab_reply->status != XCB_GRAB_STATUS_SUCCESS) return;
 
     pointer = xcb_query_pointer_reply(dis, xcb_query_pointer(dis, screen->root), 0);
     if (!pointer) return;
     mx = pointer->root_x; my = pointer->root_y;
     xcb_flush(dis);
 
-    xcb_generic_event_t *e;
+    xcb_generic_event_t *e = NULL;
     xcb_motion_notify_event_t *ev = NULL;
+    bool ungrab = false;
     do {
-        while(!(e = xcb_wait_for_event(dis)));
+        if (e) free(e); xcb_flush(dis);
+        while(!(e = xcb_wait_for_event(dis))) xcb_flush(dis);
         switch (e->response_type & ~0x80) {
             case XCB_CONFIGURE_REQUEST:
             case XCB_MAP_REQUEST:
@@ -736,10 +741,16 @@ void mousemotion(const Arg *arg) {
                 else if (arg->i == MOVE) xcb_move(dis, current->win, xw, yh);
                 xcb_flush(dis);
                 break;
+            case XCB_KEY_PRESS:
+            case XCB_KEY_RELEASE:
+            case XCB_BUTTON_PRESS:
+            case XCB_BUTTON_RELEASE:
+                ungrab = true;
+
         }
         current->isfloating = true;
-    } while((e->response_type & ~0x80) != XCB_BUTTON_RELEASE);
-    DEBUG("ungrab");
+    } while(!ungrab && current);
+    DEBUG("xcb: ungrab");
     xcb_ungrab_pointer(dis, XCB_CURRENT_TIME);
     tile();
 }
