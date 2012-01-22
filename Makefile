@@ -14,11 +14,21 @@ CPPFLAGS = -DVERSION=\"${VERSION}\" -DWMNAME=\"${WMNAME}\"
 CFLAGS   = -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS}
 LDFLAGS  = -s ${LIBS}
 
+DEBUG 	 = 0
+
 CC 	 = cc
 EXEC = ${WMNAME}
 
 SRC = ${WMNAME}.c
 OBJ = ${SRC:.c=.o}
+
+ifeq (${DEBUG},0)
+   CFLAGS  += -Os
+   LDFLAGS += -s
+else
+   CFLAGS  += -g
+   LDFLAGS += -g
+endif
 
 all: options ${WMNAME}
 
