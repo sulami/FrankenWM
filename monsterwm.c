@@ -46,11 +46,8 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED", "_NET_WM_STATE_FULLSCREEN", 
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
 
-/* mouse motion actions */
 enum { RESIZE, MOVE };
-/* tiling layout modes */
 enum { TILE, MONOCLE, BSTACK, GRID, MODES };
-/* wm and net atoms selected through wmatoms and netatoms arrays */
 enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_COUNT };
 enum { NET_SUPPORTED, NET_FULLSCREEN, NET_WM_STATE, NET_ACTIVE, NET_COUNT };
 
@@ -136,7 +133,7 @@ typedef struct {
     const bool floating;
 } AppRule;
 
-/* Functions */
+ /* function prototypes sorted alphabetically */
 static client* addwindow(xcb_window_t w);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
@@ -479,10 +476,10 @@ void configurerequest(xcb_generic_event_t *e) {
         xcb_configure_window(dis, ev->window, ev->value_mask, v);
     }
     tile();
-    update_current(c?c:current);
+    if (c && c == current) update_current(c);
 }
 
-/* send the given event - WM_DELETE_WINDOW for now */
+/* close the window */
 void deletewindow(xcb_window_t w) {
     xcb_client_message_event_t ev;
     ev.response_type = XCB_CLIENT_MESSAGE;
@@ -620,7 +617,6 @@ void grid(int hh, int cy) {
 void keypress(xcb_generic_event_t *e) {
     xcb_key_press_event_t *ev       = (xcb_key_press_event_t *)e;
     xcb_keysym_t           keysym   = xcb_get_keysym(ev->detail);
-
     DEBUGP("xcb: keypress: code: %d mod: %d\n", ev->detail, ev->state);
     for (unsigned int i=0; i<LENGTH(keys); i++)
         if (keysym == keys[i].keysym && CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].func)
@@ -766,7 +762,7 @@ void mousemotion(const Arg *arg) {
                 ev = (xcb_motion_notify_event_t*)e;
                 xw = (arg->i == MOVE ? winx : winw) + ev->root_x - mx;
                 yh = (arg->i == MOVE ? winy : winh) + ev->root_y - my;
-                if (arg->i == RESIZE) xcb_resize(dis, current->win, xw>MINWSZ?xw:MINWSZ, yh>MINWSZ?yh:MINWSZ);
+                if (arg->i == RESIZE) xcb_resize(dis, current->win, xw>MINWSZ?xw:winw, yh>MINWSZ?yh:winh);
                 else if (arg->i == MOVE) xcb_move(dis, current->win, xw, yh);
                 xcb_flush(dis);
                 break;
@@ -1007,7 +1003,7 @@ void setfullscreen(client *c, bool fullscrn) {
     DEBUGP("xcb: set fullscreen: %d\n", fullscrn);
     long data[] = { (c->isfullscrn = fullscrn) ? netatoms[NET_FULLSCREEN] : XCB_NONE };
     if (fullscrn != c->isfullscrn) xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 32, fullscrn, data);
-    if (c->isfullscrn) xcb_move_resize(dis, c->win, 0, 0, ww + BORDER_WIDTH, wh + BORDER_WIDTH + PANEL_HEIGHT);
+    if (c->isfullscrn) xcb_move_resize(dis, c->win, 0, 0, ww+BORDER_WIDTH, wh+BORDER_WIDTH+PANEL_HEIGHT);
 }
 
 /* get numlock modifier using xcb */
@@ -1130,7 +1126,7 @@ void stack(int hh, int cy) {
      *      |   |    |   |                          |
      *      |   |----|   }--> screen height - hh  --'
      *      |   |    | }-|--> client height - z       :: 2 stack clients on tile mode ..looks like a spaceship
-     *      ----------  -'                            :: peice of aart by c00kiemon5ter o.O om nom nom nom nom
+     *      ----------  -'                            :: piece of aart by c00kiemon5ter o.O om nom nom nom nom
      *
      *     what we do is, remove the growth from the screen height  : (z - growth)
      *     and then divide that space with the windows on the stack : (z - growth)/n
@@ -1195,7 +1191,8 @@ void switch_mode(const Arg *arg) {
 /* tile all windows of current desktop - call the handler tiling function */
 void tile(void) {
     if (!head) return; /* nothing to arange */
-    layout[head->next?mode:MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT), (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
+    layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT),
+                                (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
 }
 
 /* toggle visibility state of the panel */
