@@ -743,15 +743,13 @@ void mousemotion(const Arg *arg) {
         free(geometry);
     } else return;
 
-    grab_reply = xcb_grab_pointer_reply(dis, xcb_grab_pointer(dis, 0, current->win, BUTTONMASK|XCB_EVENT_MASK_BUTTON_MOTION|XCB_EVENT_MASK_POINTER_MOTION,
-            XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, screen->root, XCB_NONE, XCB_CURRENT_TIME), NULL);
-    if (!grab_reply) return;
-    if (grab_reply->status != XCB_GRAB_STATUS_SUCCESS) return;
-
     pointer = xcb_query_pointer_reply(dis, xcb_query_pointer(dis, screen->root), 0);
     if (!pointer) return;
     mx = pointer->root_x; my = pointer->root_y;
-    xcb_flush(dis);
+
+    grab_reply = xcb_grab_pointer_reply(dis, xcb_grab_pointer(dis, 0, screen->root, BUTTONMASK|XCB_EVENT_MASK_BUTTON_MOTION|XCB_EVENT_MASK_POINTER_MOTION,
+            XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_CURRENT_TIME), NULL);
+    if (!grab_reply || grab_reply->status != XCB_GRAB_STATUS_SUCCESS) return;
 
     xcb_generic_event_t *e = NULL;
     xcb_motion_notify_event_t *ev = NULL;
