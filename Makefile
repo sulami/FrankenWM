@@ -11,8 +11,8 @@ INCS = -I. -I/usr/include
 LIBS = -L/usr/lib -lc `pkg-config --libs xcb xcb-icccm xcb-keysyms`
 
 CPPFLAGS = -DVERSION=\"${VERSION}\" -DWMNAME=\"${WMNAME}\"
-CFLAGS   = -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS}
-LDFLAGS  = -s ${LIBS}
+CFLAGS   = -std=c99 -pedantic -Wall -Wextra ${INCS} ${CPPFLAGS}
+LDFLAGS  = ${LIBS}
 
 DEBUG 	 = 0
 
