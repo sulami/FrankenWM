@@ -667,7 +667,7 @@ void maprequest(xcb_generic_event_t *e) {
         for (unsigned int i=0; i<LENGTH(rules); i++)
             if (!strcmp(ch.class_name, rules[i].class) || !strcmp(ch.instance_name, rules[i].class)) {
                 follow = rules[i].follow;
-                newdsk = rules[i].desktop;
+                newdsk = (rules[i].desktop < 0) ? current_desktop : rules[i].desktop;
                 floating = rules[i].floating;
                 break;
             }
@@ -975,25 +975,25 @@ void run(void) {
 void save_desktop(int i) {
     if (i >= DESKTOPS) return;
     desktops[i].master_size = master_size;
-    desktops[i].mode = mode;
-    desktops[i].growth = growth;
-    desktops[i].head = head;
-    desktops[i].current = current;
-    desktops[i].showpanel = showpanel;
-    desktops[i].prevfocus = prevfocus;
+    desktops[i].mode        = mode;
+    desktops[i].growth      = growth;
+    desktops[i].head        = head;
+    desktops[i].current     = current;
+    desktops[i].showpanel   = showpanel;
+    desktops[i].prevfocus   = prevfocus;
 }
 
 /* set the specified desktop's properties */
 void select_desktop(int i) {
     if (i >= DESKTOPS) return;
     save_desktop(current_desktop);
-    master_size = desktops[i].master_size;
-    mode = desktops[i].mode;
-    growth = desktops[i].growth;
-    head = desktops[i].head;
-    current = desktops[i].current;
-    showpanel = desktops[i].showpanel;
-    prevfocus = desktops[i].prevfocus;
+    master_size     = desktops[i].master_size;
+    mode            = desktops[i].mode;
+    growth          = desktops[i].growth;
+    head            = desktops[i].head;
+    current         = desktops[i].current;
+    showpanel       = desktops[i].showpanel;
+    prevfocus       = desktops[i].prevfocus;
     current_desktop = i;
 }
 
