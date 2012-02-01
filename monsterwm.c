@@ -189,13 +189,10 @@ static client* wintoclient(xcb_window_t w);
 static bool running = true;
 static bool showpanel = SHOW_PANEL;
 static int retval = 0;
-static int current_desktop = 0;
-static int previous_desktop = 0;
-static int growth = 0;
+static int previous_desktop = 0, current_desktop = 0;
 static int mode = DEFAULT_MODE;
-static int master_size;
-static int wh; /* window area height - screen height minus the border size and panel height */
-static int ww; /* window area width  - screen width minus the border size */
+static int master_size, growth = 0;
+static int wh, ww; /* window area width/height - screen height minus the panel height */
 static unsigned int win_unfocus, win_focus;
 static unsigned int numlockmask = 0; /* dynamic key lock mask */
 static xcb_connection_t *dis;
@@ -215,8 +212,8 @@ static void (*events[XCB_NO_OPERATION])(xcb_generic_event_t *e);
  * y (or cy) is the num of pixels from top to place the windows (y coordinate)
  */
 static void (*layout[MODES])(int h, int y) = {
-    [TILE]   = stack, [MONOCLE] = monocle,
-    [BSTACK] = stack, [GRID]    = grid,
+    [TILE] = stack, [BSTACK]  = stack,
+    [GRID] = grid,  [MONOCLE] = monocle,
 };
 
 /* get screen of display */
@@ -334,7 +331,7 @@ client* addwindow(xcb_window_t w) {
         for(t=head; t->next; t=t->next); /* get the last client */
         t->next = c;
     } else {
-        c->next = (t = head);
+        c->next = head;
         head = c;
     }
 
@@ -407,23 +404,20 @@ void cleanup(void) {
  */
 void client_to_desktop(const Arg *arg) {
     if (arg->i == current_desktop || !current) return;
-    xcb_window_t w = current->win;
     int cd = current_desktop;
+    client *c = current;
 
-    bool wfloating = current->isfloating;
-    bool wfullscrn = current->isfullscrn;
-    bool transient = current->istransient;
-
-    xcb_unmap_window(dis, current->win);
-    removeclient(current);
-
+    /* add the window to the new desktop keeping the client's properties */
     select_desktop(arg->i);
-    current = addwindow(w);
-    current->isfloating = wfloating;
-    current->isfullscrn = wfullscrn;
-    current->istransient = transient;
+    current = addwindow(c->win);
+    current->isfloating  = c->isfloating;
+    current->isfullscrn  = c->isfullscrn;
+    current->istransient = c->istransient;
 
+    /* remove the window and client from the current desktop */
     select_desktop(cd);
+    xcb_unmap_window(dis, c->win);
+    removeclient(c);
     tile();
     update_current(current);
 
@@ -873,8 +867,9 @@ void move_up() {
  */
 void next_win() {
     if (!current || !head->next) return;
-    update_current((prevfocus = current)->next ? current->next : head);
+    current = (prevfocus = current)->next ? current->next : head;
     if (mode == MONOCLE) xcb_map_window(dis, current->win);
+    update_current(current);
 }
 
 /* cyclic focus the previous window
@@ -973,7 +968,7 @@ void run(void) {
 
 /* save specified desktop's properties */
 void save_desktop(int i) {
-    if (i >= DESKTOPS) return;
+    if (i < 0 || i >= DESKTOPS) return;
     desktops[i].master_size = master_size;
     desktops[i].mode        = mode;
     desktops[i].growth      = growth;
@@ -985,7 +980,7 @@ void save_desktop(int i) {
 
 /* set the specified desktop's properties */
 void select_desktop(int i) {
-    if (i >= DESKTOPS) return;
+    if (i < 0 || i >= DESKTOPS) return;
     save_desktop(current_desktop);
     master_size     = desktops[i].master_size;
     mode            = desktops[i].mode;
@@ -1091,14 +1086,13 @@ void sigchld() {
 
 /* execute a command */
 void spawn(const Arg *arg) {
-    if (fork() == 0) {
-        if (dis) close(screen->root);
-        setsid();
-        execvp((char*)arg->com[0], (char**)arg->com);
-        fprintf(stderr, "error: execvp %s", (char *)arg->com[0]);
-        perror(" failed"); /* also prints the err msg */
-        exit(EXIT_SUCCESS);
-    }
+    if (fork()) return;
+    if (dis) close(screen->root);
+    setsid();
+    execvp((char*)arg->com[0], (char**)arg->com);
+    fprintf(stderr, "error: execvp %s", (char *)arg->com[0]);
+    perror(" failed"); /* also prints the err msg */
+    exit(EXIT_SUCCESS);
 }
 
 /* arrange windows in normal or bottom stack tile */
