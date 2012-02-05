@@ -26,15 +26,12 @@
 #define DEFAULT_DESKTOP 0         /* the desktop to focus on exec */
 #define MINWSZ          50        /* minimum window size in pixels */
 
-/** open applications to specified desktop **/
+/** open applications to specified desktop. if desktop is negative, then spawn in current **/
 static const AppRule rules[] = { \
-    /*  class     desktop  follow  float */  /* desktop index starts from 0 */
-    { "MPlayer",     3,    True,   False },  /* if there are 4 desktops, 3 is the  */
-    { "Gimp",        0,    False,  True  },  /* last desktop, 0 is always the fist */
+    /*  class     desktop  follow  float */
+    { "MPlayer",     3,    True,   False },
+    { "Gimp",        0,    False,  True  },
 };
-
-/* helper for spawning shell commands */
-#define SHCMD(cmd) {.com = (const char*[]){"/bin/sh", "-c", cmd, NULL}}
 
 /** commands **/
 static const char *termcmd[] = { "xterm", NULL };
