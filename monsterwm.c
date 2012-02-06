@@ -623,10 +623,15 @@ void keypress(xcb_generic_event_t *e) {
  */
 void killclient() {
     if (!current) return;
-    Atom *protocols; int n = 0;
-    if (XGetWMProtocols(dis, current->win, &protocols, &n)) while(n-- && protocols[n] != wmatoms[WM_DELETE_WINDOW]);
-    if (n) deletewindow(current->win);
-    else XKillClient(dis, current->win);
+    xcb_icccm_get_wm_protocols_reply_t reply; unsigned int n = 0; bool got = false;
+    if (xcb_icccm_get_wm_protocols_reply(dis,
+        xcb_icccm_get_wm_protocols(dis, current->win, wmatoms[WM_PROTOCOLS]),
+        &reply, NULL)) { /* TODO: Handle error? */
+        for(; n != reply.atoms_len; ++n) if ((got = reply.atoms[n] == wmatoms[WM_DELETE_WINDOW])) break;
+        xcb_icccm_get_wm_protocols_reply_wipe(&reply);
+    }
+    if (got) deletewindow(current->win);
+    else xcb_kill_client(dis, current->win);
     removeclient(current);
 }
 
