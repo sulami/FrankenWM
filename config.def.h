@@ -34,7 +34,7 @@ static const AppRule rules[] = { \
 };
 
 /** commands **/
-static const char *termcmd[]  = { "xterm", NULL };
+static const char *termcmd[] = { "xterm",     NULL };
 static const char *menucmd[] = { "dmenu_run", NULL };
 
 #define DESKTOPCHANGE(K,N) \
