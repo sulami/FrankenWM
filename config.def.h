@@ -34,7 +34,8 @@ static const AppRule rules[] = { \
 };
 
 /** commands **/
-static const char *termcmd[]  = { "uxterm", NULL };
+static const char *termcmd[] = { "xterm",     NULL };
+static const char *menucmd[] = { "dmenu_run", NULL };
 
 #define DESKTOPCHANGE(K,N) \
     {  MOD1,             K,              change_desktop, {.i = N}}, \
@@ -67,6 +68,7 @@ static key keys[] = {
     {  MOD1|CONTROL,     XK_r,          quit,              {.i = 0}}, /* quit with exit value 0 */
     {  MOD1|CONTROL,     XK_q,          quit,              {.i = 1}}, /* quit with exit value 1 */
     {  MOD1|SHIFT,       XK_Return,     spawn,             {.com = termcmd}},
+    {  MOD4,             XK_v,          spawn,             {.com = menucmd}},
        DESKTOPCHANGE(    XK_F1,                             0)
        DESKTOPCHANGE(    XK_F2,                             1)
        DESKTOPCHANGE(    XK_F3,                             2)
@@ -76,5 +78,6 @@ static key keys[] = {
 static Button buttons[] = {
     {  MOD1,    Button1,     mousemotion,   {.i = MOVE}},
     {  MOD1,    Button3,     mousemotion,   {.i = RESIZE}},
+    {  MOD4,    Button3,     spawn,         {.com = menucmd}},
 };
 #endif
