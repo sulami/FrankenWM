@@ -1247,7 +1247,11 @@ void update_current(client *c) {
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root, netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1, &current->win);
     xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win, XCB_CURRENT_TIME);
-    xcb_raise_window(dis, current->win);
+
+    /* keep transient and floating windows on top of regular windows */
+    bool tf = false;
+    for (c=head; c; c=c->next) if (c->istransient || c->isfloating) { xcb_raise_window(dis, current->win); tf = true; }
+    if (!tf || current->isfloating || current->istransient) xcb_raise_window(dis, current->win);
 
     if (CLICK_TO_FOCUS) {
         xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, current->win, XCB_BUTTON_MASK_ANY);
