@@ -750,6 +750,9 @@ void mousemotion(const Arg *arg) {
             XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_CURRENT_TIME), NULL);
     if (!grab_reply || grab_reply->status != XCB_GRAB_STATUS_SUCCESS) return;
 
+    if (current->isfullscrn) setfullscreen(current, False);
+    if (!current->isfloating) current->isfloating = True;
+
     xcb_generic_event_t *e = NULL;
     xcb_motion_notify_event_t *ev = NULL;
     bool ungrab = false;
@@ -774,7 +777,6 @@ void mousemotion(const Arg *arg) {
             case XCB_BUTTON_RELEASE:
                 ungrab = true;
         }
-        current->isfloating = true;
     } while(!ungrab && current);
     DEBUG("xcb: ungrab");
     xcb_ungrab_pointer(dis, XCB_CURRENT_TIME);
