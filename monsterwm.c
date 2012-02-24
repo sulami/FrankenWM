@@ -1254,7 +1254,7 @@ void update_current(client *c) {
     /* keep transient and floating windows on top of regular windows */
     bool r = false;
     if (current->isfloating || current->istransient)                    { xcb_raise_window(dis, current->win); r = true; }
-    else for(c=head; c; c=c->next) if (c->istransient || c->isfloating) { xcb_raise_window(dis, current->win); r = true; }
+    else for(c=head; c; c=c->next) if (c->istransient || c->isfloating) { xcb_raise_window(dis, c->win);       r = true; }
     if (!r) xcb_raise_window(dis, current->win);
 
     if (CLICK_TO_FOCUS) grabbuttons(current);
