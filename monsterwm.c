@@ -114,6 +114,7 @@ static void desktopinfo(void);
 static void destroynotify(XEvent *e);
 static void die(const char* errstr, ...);
 static void enternotify(XEvent *e);
+static void focusurgent();
 static unsigned long getcolor(const char* color);
 static void grabbuttons(client *c);
 static void grabkeys(void);
@@ -364,6 +365,12 @@ void enternotify(XEvent *e) {
     client *c = wintoclient(e->xcrossing.window);
     if (c && e->xcrossing.mode   == NotifyNormal
           && e->xcrossing.detail != NotifyInferior) update_current(c);
+}
+
+/* find and focus the client which received
+ * the urgent hint in the current desktop */
+void focusurgent() {
+    for (client *c=head; c; c=c->next) if (c->isurgent) update_current(c);
 }
 
 /* get a pixel with the requested color
