@@ -120,6 +120,7 @@ static void grabkeys(void);
 static void grid(int h, int y);
 static void keypress(XEvent *e);
 static void killclient();
+static void last_desktop();
 static void maprequest(XEvent *e);
 static void monocle(int h, int y);
 static void move_down();
@@ -426,6 +427,11 @@ void killclient() {
     if (XGetWMProtocols(dis, current->win, &prot, &n)) while(!--n<0 && prot[n] != wmatoms[WM_DELETE_WINDOW]);
     if (n < 0) XKillClient(dis, current->win); else deletewindow(current->win);
     removeclient(current);
+}
+
+/* focus the previously focused desktop */
+void last_desktop() {
+    change_desktop(&(Arg){.i = previous_desktop});
 }
 
 /* a map request is received when a window wants to display itself
