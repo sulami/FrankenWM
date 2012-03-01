@@ -56,7 +56,8 @@ static key keys[] = {
     {  MOD1|SHIFT,       XK_m,          switch_mode,       {.i = MONOCLE}},
     {  MOD1|SHIFT,       XK_b,          switch_mode,       {.i = BSTACK}},
     {  MOD1|SHIFT,       XK_g,          switch_mode,       {.i = GRID}},
-    {  MOD1|CONTROL,     XK_q,          quit,              {NULL}},
+    {  MOD1|CONTROL,     XK_r,          quit,              {.i = 0}}, /* quit with exit value 0 */
+    {  MOD1|CONTROL,     XK_q,          quit,              {.i = 1}}, /* quit with exit value 1 */
     {  MOD1|SHIFT,       XK_Return,     spawn,             {.com = termcmd}},
        DESKTOPCHANGE(    XK_F1,                             0)
        DESKTOPCHANGE(    XK_F2,                             1)
