@@ -133,6 +133,7 @@ static void prev_win();
 static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
 static void removeclient(client *c);
+static void rotate(const Arg *arg);
 static void run(void);
 static void save_desktop(int i);
 static void select_desktop(int i);
@@ -655,6 +656,11 @@ void removeclient(client *c) {
     if (c == current || !head->next) update_current(prevfocus);
     free(c); c = NULL;
     if (cd == nd -1) tile(); else select_desktop(cd);
+}
+
+/* jump and focus the next or previous desktop */
+void rotate(const Arg *arg) {
+    change_desktop(&(Arg){.i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS});
 }
 
 /* main event loop - on receival of an event call the appropriate event handler */
