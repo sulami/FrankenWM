@@ -134,6 +134,7 @@ static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
 static void removeclient(client *c);
 static void rotate(const Arg *arg);
+static void rotate_filled(const Arg *arg);
 static void run(void);
 static void save_desktop(int i);
 static void select_desktop(int i);
@@ -661,6 +662,13 @@ void removeclient(client *c) {
 /* jump and focus the next or previous desktop */
 void rotate(const Arg *arg) {
     change_desktop(&(Arg){.i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS});
+}
+
+/* jump and focus the next or previous desktop that has clients */
+void rotate_filled(const Arg *arg) {
+    int n = arg->i;
+    while (n < DESKTOPS && !desktops[(DESKTOPS + current_desktop + n) % DESKTOPS].head) (n += arg->i);
+    change_desktop(&(Arg){.i = (DESKTOPS + current_desktop + n) % DESKTOPS});
 }
 
 /* main event loop - on receival of an event call the appropriate event handler */
