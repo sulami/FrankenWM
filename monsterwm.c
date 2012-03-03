@@ -678,7 +678,7 @@ void maprequest(xcb_generic_event_t *e) {
     }
 
     /* might be useful in future */
-    if ((geometry = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, ev->window), NULL))) /* TODO: error handling */
+    if ((geometry = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, ev->window), NULL))) { /* TODO: error handling */
         DEBUGP("geom: %ux%u+%d+%d\n", geometry->width, geometry->height,
                                       geometry->x,     geometry->y);
         free(geometry);
