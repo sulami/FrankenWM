@@ -656,7 +656,7 @@ void maprequest(xcb_generic_event_t *e) {
     xcb_get_property_reply_t           *prop_reply;
 
     xcb_get_attributes(windows, attr, 1);
-    if (attr[0]->override_redirect) return;
+    if (attr[0] || attr[0]->override_redirect) return;
     if (wintoclient(ev->window))    return;
     DEBUG("xcb: map request");
 
