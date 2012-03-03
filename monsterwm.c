@@ -380,18 +380,15 @@ void change_desktop(const Arg *arg) {
 
 /* remove all windows in all desktops by sending a delete message */
 void cleanup(void) {
-    xcb_query_tree_reply_t  *reply;
-    unsigned int nchildren;
+    xcb_query_tree_reply_t  *query;
+    xcb_window_t *c;
 
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
-    reply  = xcb_query_tree_reply(dis, xcb_query_tree(dis, screen->root), NULL); /* TODO: error handling */
-    if (reply) {
-        nchildren = reply[0].children_len;
-        for (unsigned int i = 0; i<nchildren; i++) deletewindow(reply[i].parent);
-        free(reply);
+    if ((query = xcb_query_tree_reply(dis,xcb_query_tree(dis,screen->root),0))) {
+        c = xcb_query_tree_children(query);
+        for (unsigned int i = 0; i != query->children_len; ++i) deletewindow(c[i]);
+        free(query);
     }
-    xcb_set_input_focus(dis, XCB_NONE, XCB_INPUT_FOCUS_POINTER_ROOT, XCB_CURRENT_TIME);
-    xcb_flush(dis);
 }
 
 /* move a client to another desktop
