@@ -78,6 +78,7 @@ typedef struct client {
 } client;
 
 /* properties of each desktop
+ * master_size  - the size of the master window
  * mode         - the desktop's tiling layout mode
  * head         - the start of the client list
  * current      - the currently highlighted window
@@ -86,6 +87,7 @@ typedef struct client {
  */
 typedef struct {
     int mode;
+    int master_size;
     client *head, *current, *prevfocus;
     Bool showpanel;
 } desktop;
@@ -133,6 +135,7 @@ static void prev_win();
 static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
 static void removeclient(client *c);
+static void resize_master(const Arg *arg);
 static void rotate(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void run(void);
@@ -158,6 +161,7 @@ static int xerrorstart();
 static Bool running = True, showpanel = SHOW_PANEL;
 static int previous_desktop = 0, current_desktop = 0, retval = 0;
 static int screen, wh, ww, mode = DEFAULT_MODE;
+static int master_size;
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static unsigned int numlockmask = 0, win_unfocus, win_focus;
 static Display *dis;
@@ -659,6 +663,16 @@ void removeclient(client *c) {
     if (cd == nd -1) tile(); else select_desktop(cd);
 }
 
+/* resize the master window - check for boundary size limits
+ * the size of a window can't be less than MINWSZ
+ */
+void resize_master(const Arg *arg) {
+    int msz = master_size + arg->i;
+    if ((mode == BSTACK ? wh : ww) - msz <= MINWSZ || msz <= MINWSZ) return;
+    master_size = msz;
+    tile();
+}
+
 /* jump and focus the next or previous desktop */
 void rotate(const Arg *arg) {
     change_desktop(&(Arg){.i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS});
@@ -680,6 +694,7 @@ void run(void) {
 /* save specified desktop's properties */
 void save_desktop(int i) {
     if (i < 0 || i >= DESKTOPS) return;
+    desktops[i].master_size = master_size;
     desktops[i].mode        = mode;
     desktops[i].head        = head;
     desktops[i].current     = current;
@@ -691,6 +706,7 @@ void save_desktop(int i) {
 void select_desktop(int i) {
     if (i < 0 || i >= DESKTOPS) return;
     save_desktop(current_desktop);
+    master_size     = desktops[i].master_size;
     mode            = desktops[i].mode;
     head            = desktops[i].head;
     current         = desktops[i].current;
@@ -720,6 +736,7 @@ void setup(void) {
 
     ww = XDisplayWidth(dis,  screen);
     wh = XDisplayHeight(dis, screen) - PANEL_HEIGHT;
+    master_size = ((mode == BSTACK) ? wh:ww) * MASTER_SIZE;
     for (unsigned int i=0; i<DESKTOPS; i++) save_desktop(i);
 
     win_focus = getcolor(FOCUS);
@@ -774,13 +791,13 @@ void spawn(const Arg *arg) {
 /* arrange windows in normal or bottom stack tile */
 void stack(int hh, int cy) {
     client *c = NULL, *t = NULL; Bool b = mode == BSTACK;
-    int n = 0, d = 0, z = b ? ww:hh, ma = (b ? hh:ww) * MASTER_SIZE;
+    int n = 0, d = 0, z = b ? ww:hh, ma = master_size;
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t=t->next) if (!ISFFT(t)) { if (c) ++n; else c = t; }
 
     /* if there is only one window, it should cover the available screen space
-     * if there is only one stack window (n == 1) then we don't care about the adjustments
+     * if there is only one stack window (n == 1) then we don't care about growth
      * if more than one stack windows (n > 1) on screen then adjustments may be needed
      *   - d is the num of pixels than remain when spliting
      *   the available width/height to the number of windows
@@ -821,6 +838,7 @@ void swap_master() {
 void switch_mode(const Arg *arg) {
     if (mode == arg->i) for (client *c=head; c; c=c->next) c->isfloating = False;
     mode = arg->i;
+    master_size = (mode == BSTACK ? wh:ww) * MASTER_SIZE;
     tile(); update_current(current);
     desktopinfo();
 }
