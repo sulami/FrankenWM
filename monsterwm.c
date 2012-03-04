@@ -79,13 +79,14 @@ typedef struct client {
 /* properties of each desktop
  * master_size  - the size of the master window
  * mode         - the desktop's tiling layout mode
+ * growth       - growth factor of the first stack window
  * head         - the start of the client list
  * current      - the currently highlighted window
  * prevfocus    - the client that previously had focus
  * showpanel    - the visibility status of the panel
  */
 typedef struct {
-    int master_size, mode;
+    int master_size, mode, growth;
     client *head, *current, *prevfocus;
     Bool showpanel;
 } desktop;
@@ -135,6 +136,7 @@ static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
 static void removeclient(client *c);
 static void resize_master(const Arg *arg);
+static void resize_stack(const Arg *arg);
 static void rotate(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void run(void);
@@ -161,7 +163,7 @@ static Bool running = True, showpanel = SHOW_PANEL;
 static int retval = 0;
 static int previous_desktop = 0, current_desktop = 0;
 static int mode = DEFAULT_MODE;
-static int screen, master_size, wh, ww;
+static int screen, master_size, growth = 0, wh, ww;
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static unsigned int numlockmask = 0, win_unfocus, win_focus;
 static Display *dis;
@@ -684,6 +686,12 @@ void resize_master(const Arg *arg) {
     tile();
 }
 
+/* resize the first stack window - no boundary checks */
+void resize_stack(const Arg *arg) {
+    growth += arg->i;
+    tile();
+}
+
 /* jump and focus the next or previous desktop */
 void rotate(const Arg *arg) {
     change_desktop(&(Arg){.i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS});
@@ -707,6 +715,7 @@ void save_desktop(int i) {
     if (i < 0 || i >= DESKTOPS) return;
     desktops[i].master_size = master_size;
     desktops[i].mode        = mode;
+    desktops[i].growth      = growth;
     desktops[i].head        = head;
     desktops[i].current     = current;
     desktops[i].showpanel   = showpanel;
@@ -719,6 +728,7 @@ void select_desktop(int i) {
     save_desktop(current_desktop);
     master_size     = desktops[i].master_size;
     mode            = desktops[i].mode;
+    growth          = desktops[i].growth;
     head            = desktops[i].head;
     current         = desktops[i].current;
     showpanel       = desktops[i].showpanel;
@@ -812,22 +822,43 @@ void stack(int hh, int cy) {
      * if more than one stack windows (n > 1) on screen then adjustments may be needed
      *   - d is the num of pixels than remain when spliting
      *   the available width/height to the number of windows
-     *   - z is the clients' height/width */
+     *   - z is the clients' height/width
+     *
+     *      ----------  -.    --------------------.
+     *      |   |----| --|--> growth               `}--> first client will get (z+d) height/width
+     *      |   |    |   |                          |
+     *      |   |----|   }--> screen height - hh  --'
+     *      |   |    | }-|--> client height - z       :: 2 stack clients on tile mode ..looks like a spaceship
+     *      ----------  -'                            :: piece of aart by c00kiemon5ter o.O om nom nom nom nom
+     *
+     *     what we do is, remove the growth from the screen height   : (z - growth)
+     *     and then divide that space with the windows on the stack  : (z - growth)/n
+     *     so all windows have equal height/width (z)                :
+     *     growth is left out and will later be added to the first's client height/width
+     *     before that, there will be cases when the num of windows is not perfectly
+     *     divided with then available screen height/width (ie 100px scr. height, and 3 windows)
+     *     so we get that remaining space and merge growth to it (d) : (z - growth) % n + growth
+     *     finally we know each client's height, and how many pixels should be added to
+     *     the first stack window so that it satisfies growth, and doesn't create gaps
+     *     on the bottom of the screen.  */
     if (!c) return; else if (!n) {
         XMoveResizeWindow(dis, c->win, 0, cy, ww - 2*BORDER_WIDTH, hh - 2*BORDER_WIDTH);
         return;
-    } else if (n > 1) { d = z%n; z /= n; }
+    } else if (n > 1) { d = (z - growth)%n + growth; z = (z - growth)/n; }
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
     if (b) XMoveResizeWindow(dis, c->win, 0, cy, ww - 2*BORDER_WIDTH, ma - BORDER_WIDTH);
     else   XMoveResizeWindow(dis, c->win, 0, cy, ma - BORDER_WIDTH, hh - 2*BORDER_WIDTH);
 
+    /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
+    for (c=c->next; c && ISFFT(c); c=c->next);
     int cx = b ? 0:ma, cw = (b ? hh:ww) - 2*BORDER_WIDTH - ma, ch = z - BORDER_WIDTH;
+    if (b) XMoveResizeWindow(dis, c->win, cx, cy += ma, ch - BORDER_WIDTH + d, cw);
+    else   XMoveResizeWindow(dis, c->win, cx, cy, cw, ch - BORDER_WIDTH + d);
 
-    for (cy += b ? ma:0, c=c->next; c; c=c->next) {
+    /* tile the rest of the non-floating, non-fullscreen stack windows */
+    for (b?(cx+=ch+d):(cy+=ch+d), c=c->next; c; c=c->next) {
         if (ISFFT(c)) continue;
-        for (t=c->next; t && ISFFT(t); t=t->next);
-        if (!t) ch += d - BORDER_WIDTH; /* add remaining space to last window */
         if (b) { XMoveResizeWindow(dis, c->win, cx, cy, ch, cw); cx += z; }
         else   { XMoveResizeWindow(dis, c->win, cx, cy, cw, ch); cy += z; }
     }

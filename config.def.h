@@ -55,6 +55,8 @@ static key keys[] = {
     {  MOD1,             XK_k,          prev_win,          {NULL}},
     {  MOD1,             XK_h,          resize_master,     {.i = -10}}, /* decrease */
     {  MOD1,             XK_l,          resize_master,     {.i = +10}}, /* increase */
+    {  MOD1,             XK_o,          resize_stack,      {.i = -10}}, /* shrink */
+    {  MOD1,             XK_p,          resize_stack,      {.i = +10}}, /* grow   */
     {  MOD1|CONTROL,     XK_h,          rotate,            {.i = PREV}},
     {  MOD1|CONTROL,     XK_l,          rotate,            {.i = NEXT}},
     {  MOD1|SHIFT,       XK_h,          rotate_filled,     {.i = PREV}},
