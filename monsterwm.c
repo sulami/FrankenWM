@@ -452,9 +452,8 @@ void maprequest(XEvent *e) {
     if (ch.res_class) XFree(ch.res_class);
     if (ch.res_name) XFree(ch.res_name);
 
-    select_desktop(newdsk);
+    if (cd != newdsk) select_desktop(newdsk);
     client *c = addwindow(e->xmaprequest.window);
-
     c->istransient = XGetTransientForHint(dis, c->win, &w);
     c->isfloating = floating || c->istransient;
 
@@ -464,13 +463,12 @@ void maprequest(XEvent *e) {
         setfullscreen(c, (*(Atom *)state == netatoms[NET_FULLSCREEN]));
     if (state) XFree(state);
 
+    update_current(c);
+    grabbuttons(c);
     select_desktop(cd);
-    if (cd == newdsk) {
-        tile();
-        XMapWindow(dis, c->win);
-        update_current(c);
-        grabbuttons(c);
-    } else if (follow) change_desktop(&(Arg){.i = newdsk});
+    if (cd == newdsk) { XMapWindow(dis, c->win); update_current(c); }
+    else if (follow) change_desktop(&(Arg){.i = newdsk});
+
     desktopinfo();
 }
 
