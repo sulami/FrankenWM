@@ -725,7 +725,6 @@ void mousemotion(const Arg *arg) {
     xcb_generic_event_t *e = NULL;
     xcb_motion_notify_event_t *ev = NULL;
     bool ungrab = false;
-    update_current(current);
     do {
         if (e) free(e); xcb_flush(dis);
         while(!(e = xcb_wait_for_event(dis))) xcb_flush(dis);
@@ -1187,7 +1186,7 @@ void update_current(client *c) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL, (current == c ? &win_focus : &win_unfocus));
         if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
            screen->root, XCB_NONE, XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
-        if (current->isfloating || current->istransient) continue;
+        if (c->isfloating || c->istransient) continue;
         xcb_raise_window(dis, c->win);
     }
 
