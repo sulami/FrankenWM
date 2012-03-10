@@ -26,12 +26,16 @@
 #define DEFAULT_DESKTOP 0         /* the desktop to focus on exec */
 #define MINWSZ          50        /* minimum window size in pixels */
 
-/** open applications to specified desktop. if desktop is negative, then spawn in current **/
+/* open applications to specified desktop with specified mode.
+ * if desktop is negative, then current is assumed */
 static const AppRule rules[] = { \
     /*  class     desktop  follow  float */
     { "MPlayer",     3,    True,   False },
     { "Gimp",        0,    False,  True  },
 };
+
+/* helper for spawning shell commands */
+#define SHCMD(cmd) {.com = (const char*[]){"/bin/sh", "-c", cmd, NULL}}
 
 /** commands **/
 static const char *termcmd[] = { "xterm",     NULL };
