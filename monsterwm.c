@@ -450,7 +450,7 @@ void configurerequest(xcb_generic_event_t *e) {
         if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE)     v[i++] = ev->stack_mode;
         xcb_configure_window(dis, ev->window, ev->value_mask, v);
     }
-    if (c) update_current(c);
+    tile();
 }
 
 /* close the window */
