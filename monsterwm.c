@@ -365,7 +365,13 @@ void enternotify(XEvent *e) {
 /* find and focus the client which received
  * the urgent hint in the current desktop */
 void focusurgent() {
-    for (client *c=head; c; c=c->next) if (c->isurgent) update_current(c);
+    client *c;
+    int cd = current_desktop, d = 0;
+    for (c=head; c && !c->isurgent; c=c->next);
+    if (c) { update_current(c); return; }
+    else for (Bool f=False; d<DESKTOPS && !f; d++) for (select_desktop(d), c=head; c && !(f=c->isurgent); c=c->next);
+    select_desktop(cd);
+    if (c) { change_desktop(&(Arg){.i = --d}); update_current(c); }
 }
 
 /* get a pixel with the requested color
