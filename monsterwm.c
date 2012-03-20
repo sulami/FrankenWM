@@ -87,7 +87,7 @@ typedef struct client {
  */
 typedef struct {
     int mode;
-    int master_size;
+    float master_size;
     client *head, *current, *prevfocus;
     Bool showpanel;
 } desktop;
@@ -161,7 +161,7 @@ static int xerrorstart();
 static Bool running = True, showpanel = SHOW_PANEL;
 static int previous_desktop = 0, current_desktop = 0, retval = 0;
 static int screen, wh, ww, mode = DEFAULT_MODE;
-static int master_size;
+static float master_size = MASTER_SIZE;
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static unsigned int numlockmask = 0, win_unfocus, win_focus;
 static Display *dis;
@@ -667,8 +667,8 @@ void removeclient(client *c) {
  * the size of a window can't be less than MINWSZ
  */
 void resize_master(const Arg *arg) {
-    int msz = master_size + arg->i;
-    if ((mode == BSTACK ? wh : ww) - msz <= MINWSZ || msz <= MINWSZ) return;
+    float msz = master_size + ((float)arg->i / 100);
+    if (msz > 0.95 || msz < 0.05) return;
     master_size = msz;
     tile();
 }
@@ -736,7 +736,6 @@ void setup(void) {
 
     ww = XDisplayWidth(dis,  screen);
     wh = XDisplayHeight(dis, screen) - PANEL_HEIGHT;
-    master_size = ((mode == BSTACK) ? wh:ww) * MASTER_SIZE;
     for (unsigned int i=0; i<DESKTOPS; i++) save_desktop(i);
 
     win_focus = getcolor(FOCUS);
@@ -791,7 +790,7 @@ void spawn(const Arg *arg) {
 /* arrange windows in normal or bottom stack tile */
 void stack(int hh, int cy) {
     client *c = NULL, *t = NULL; Bool b = mode == BSTACK;
-    int n = 0, d = 0, z = b ? ww:hh, ma = master_size;
+    int n = 0, d = 0, z = b ? ww:hh, ma = (mode == BSTACK ? wh:ww) * master_size;
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t=t->next) if (!ISFFT(t)) { if (c) ++n; else c = t; }
@@ -838,7 +837,6 @@ void swap_master() {
 void switch_mode(const Arg *arg) {
     if (mode == arg->i) for (client *c=head; c; c=c->next) c->isfloating = False;
     mode = arg->i;
-    master_size = (mode == BSTACK ? wh:ww) * MASTER_SIZE;
     tile(); update_current(current);
     desktopinfo();
 }
