@@ -7,16 +7,15 @@ PREFIX ?= /usr/local
 BINDIR ?= ${PREFIX}/bin
 MANPREFIX = ${PREFIX}/share/man
 
-INCS = -I. -I/usr/include
-LIBS = -L/usr/lib -lc `pkg-config --libs xcb xcb-icccm xcb-keysyms`
+INCS = -I.
+LIBS = -lc `pkg-config --libs xcb xcb-icccm xcb-keysyms`
 
-CPPFLAGS = -DVERSION=\"${VERSION}\" -DWMNAME=\"${WMNAME}\"
-CFLAGS   = -std=c99 -pedantic -Wall -Wextra ${INCS} ${CPPFLAGS}
-LDFLAGS  = ${LIBS}
+CPPFLAGS += -DVERSION=\"${VERSION}\" -DWMNAME=\"${WMNAME}\"
+CFLAGS   += -std=c99 -pedantic -Wall -Wextra ${INCS} ${CPPFLAGS}
+LDFLAGS  += ${LIBS}
 
 DEBUG 	 = 0
 
-CC 	 = cc
 EXEC = ${WMNAME}
 
 SRC = ${WMNAME}.c
