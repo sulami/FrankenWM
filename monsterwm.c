@@ -1011,7 +1011,6 @@ int setup(int default_screen) {
 
     ww = screen->width_in_pixels;
     wh = screen->height_in_pixels - PANEL_HEIGHT;
-    //master_size = ((mode == BSTACK) ? wh:ww) * MASTER_SIZE;
     for (unsigned int i=0; i<DESKTOPS; i++) save_desktop(i);
 
     win_focus   = getcolor(FOCUS);
