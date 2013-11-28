@@ -345,6 +345,11 @@ void buttonpress(xcb_generic_event_t *e) {
             if (current != c) update_current(c);
             buttons[i].func(&(buttons[i].arg));
         }
+
+    if (CLICK_TO_FOCUS) {
+        xcb_allow_events(dis, XCB_ALLOW_REPLAY_POINTER, ev->time);
+        xcb_flush(dis);
+    }
 }
 
 /* focus another desktop
@@ -541,10 +546,15 @@ unsigned int getcolor(char* color) {
 /* set the given client to listen to button events (presses / releases) */
 void grabbuttons(client *c) {
     unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask, numlockmask|XCB_MOD_MASK_LOCK };
+    xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
     for (unsigned int b=0; b<LENGTH(buttons); b++)
         for (unsigned int m=0; m<LENGTH(modifiers); m++)
-            xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
-                    screen->root, XCB_NONE, buttons[b].button, buttons[b].mask|modifiers[m]);
+            if (CLICK_TO_FOCUS)
+                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                        XCB_WINDOW_NONE, XCB_CURSOR_NONE, XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY); 
+            else
+                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                        XCB_WINDOW_NONE, XCB_CURSOR_NONE, buttons[b].button, buttons[b].mask|modifiers[m]);
 }
 
 /* the wm should listen to key presses */
@@ -1194,8 +1204,8 @@ void update_current(client *c) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL, (c == current ? &win_focus:&win_unfocus));
         xcb_border_width(dis, c->win, (!head->next || c->isfullscrn
                     || (mode == MONOCLE && !ISFFT(c))) ? 0:BORDER_WIDTH);
-        if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
-           screen->root, XCB_NONE, XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
+        //if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
+        //   screen->root, XCB_NONE, XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
         if (c != current) w[c->isfullscrn ? --fl : ISFFT(c) ? --ft : --n] = c->win;
     }
 
@@ -1204,7 +1214,7 @@ void update_current(client *c) {
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root, netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1, &current->win);
     xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win, XCB_CURRENT_TIME);
-    if (CLICK_TO_FOCUS) xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, XCB_NONE, current->win);
+    //if (CLICK_TO_FOCUS) xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, XCB_NONE, current->win);
     tile();
 }
 
