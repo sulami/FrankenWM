@@ -445,7 +445,7 @@ void configurerequest(xcb_generic_event_t *e) {
         unsigned int v[7];
         unsigned int i = 0;
         if (ev->value_mask & XCB_CONFIG_WINDOW_X)              v[i++] = ev->x;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_Y)              v[i++] = ev->y + (showpanel && TOP_PANEL) ? PANEL_HEIGHT : 0;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_Y)              v[i++] = (ev->y + (showpanel && TOP_PANEL)) ? PANEL_HEIGHT : 0;
         if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)          v[i++] = (ev->width  < ww - BORDER_WIDTH) ? ev->width  : ww + BORDER_WIDTH;
         if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT)         v[i++] = (ev->height < wh - BORDER_WIDTH) ? ev->height : wh + BORDER_WIDTH;
         if (ev->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)   v[i++] = ev->border_width;
