@@ -7,14 +7,14 @@ PREFIX ?= /usr/local
 BINDIR ?= ${PREFIX}/bin
 MANPREFIX = ${PREFIX}/share/man
 
-INCS = -I.
+INCS = -I. -I${PREFIX}/include
 LIBS = -lc `pkg-config --libs xcb xcb-icccm xcb-keysyms`
 
 CPPFLAGS += -DVERSION=\"${VERSION}\" -DWMNAME=\"${WMNAME}\"
 
 DEBUG 	 = 0
-CFLAGS   += -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS} -DVERSION=\"${VERSION}\"
-LDFLAGS  += -s ${LIBS}
+CFLAGS   += -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS} -DVERSION=\"${VERSION}\" 
+LDFLAGS  += ${LIBS}
 
 EXEC = ${WMNAME}
 
@@ -23,7 +23,6 @@ OBJ = ${SRC:.c=.o}
 
 ifeq (${DEBUG},0)
    CFLAGS  += -Os
-   LDFLAGS += -s
 else
    CFLAGS  += -g
    LDFLAGS += -g
