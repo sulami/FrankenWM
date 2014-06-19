@@ -581,7 +581,6 @@ void grid(int hh, int cy) {
     for (client *c=head; c; c=c->next) {
         if (ISFFT(c)) continue; else ++i;
         if (i/rows + 1 > cols - n%cols) rows = n/cols + 1;
-        xcb_move_resize(dis, c->win, cn*cw, cy + rn*ch/rows, cw - BORDER_WIDTH, ch/rows - BORDER_WIDTH);
         xcb_move_resize(dis, c->win, cn*cw, cy + rn*ch/rows + USELESSGAP, cw - 2*BORDER_WIDTH - USELESSGAP, ch/rows - 2*BORDER_WIDTH - USELESSGAP);
         if (++rn >= rows) { rn = 0; cn++; }
     }
