@@ -209,53 +209,78 @@ static void (*events[XCB_NO_OPERATION])(xcb_generic_event_t *e);
  * h (or hh) - avaible height that windows have to expand
  * y (or cy) - offset from top to place the windows (reserved by the panel) */
 static void (*layout[MODES])(int h, int y) = {
-    [TILE] = stack, [BSTACK] = stack, [GRID] = grid, [MONOCLE] = monocle,
+    [TILE] = stack,
+    [BSTACK] = stack,
+    [GRID] = grid,
+    [MONOCLE] = monocle,
 };
 
 /* get screen of display */
-static xcb_screen_t *xcb_screen_of_display(xcb_connection_t *con, int screen) {
+static xcb_screen_t *xcb_screen_of_display(xcb_connection_t *con, int screen)
+{
     xcb_screen_iterator_t iter;
+
     iter = xcb_setup_roots_iterator(xcb_get_setup(con));
-    for (; iter.rem; --screen, xcb_screen_next(&iter)) if (screen == 0) return iter.data;
+    for (; iter.rem; --screen, xcb_screen_next(&iter)) {
+        if (screen == 0)
+            return iter.data;
+    }
+
     return NULL;
 }
 
 /* wrapper to move and resize window */
-static inline void xcb_move_resize(xcb_connection_t *con, xcb_window_t win, int x, int y, int w, int h) {
+static inline void xcb_move_resize(xcb_connection_t *con, xcb_window_t win,
+                                   int x, int y, int w, int h)
+{
     unsigned int pos[4] = { x, y, w, h };
+
     xcb_configure_window(con, win, XCB_MOVE_RESIZE, pos);
 }
 
 /* wrapper to move window */
-static inline void xcb_move(xcb_connection_t *con, xcb_window_t win, int x, int y) {
+static inline void xcb_move(xcb_connection_t *con, xcb_window_t win, int x,
+                            int y)
+{
     unsigned int pos[2] = { x, y };
+
     xcb_configure_window(con, win, XCB_MOVE, pos);
 }
 
 /* wrapper to resize window */
-static inline void xcb_resize(xcb_connection_t *con, xcb_window_t win, int w, int h) {
+static inline void xcb_resize(xcb_connection_t *con, xcb_window_t win, int w,
+                              int h)
+{
     unsigned int pos[2] = { w, h };
+
     xcb_configure_window(con, win, XCB_RESIZE, pos);
 }
 
 /* wrapper to raise window */
-static inline void xcb_raise_window(xcb_connection_t *con, xcb_window_t win) {
+static inline void xcb_raise_window(xcb_connection_t *con, xcb_window_t win)
+{
     unsigned int arg[1] = { XCB_STACK_MODE_ABOVE };
+
     xcb_configure_window(con, win, XCB_CONFIG_WINDOW_STACK_MODE, arg);
 }
 
 /* wrapper to set xcb border width */
-static inline void xcb_border_width(xcb_connection_t *con, xcb_window_t win, int w) {
+static inline void xcb_border_width(xcb_connection_t *con, xcb_window_t win,
+                                    int w)
+{
     unsigned int arg[1] = { w };
+
     xcb_configure_window(con, win, XCB_CONFIG_WINDOW_BORDER_WIDTH, arg);
 }
 
 /* wrapper to get xcb keysymbol from keycode */
-static xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode) {
+static xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode)
+{
     xcb_key_symbols_t *keysyms;
     xcb_keysym_t       keysym;
 
-    if (!(keysyms = xcb_key_symbols_alloc(dis))) return 0;
+    if (!(keysyms = xcb_key_symbols_alloc(dis)))
+        return 0;
     keysym = xcb_key_symbols_get_keysym(keysyms, keycode, 0);
     xcb_key_symbols_free(keysyms);
 
@@ -263,11 +288,13 @@ static xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode) {
 }
 
 /* wrapper to get xcb keycodes from keysymbol */
-static xcb_keycode_t* xcb_get_keycodes(xcb_keysym_t keysym) {
+static xcb_keycode_t* xcb_get_keycodes(xcb_keysym_t keysym)
+{
     xcb_key_symbols_t *keysyms;
     xcb_keycode_t     *keycode;
 
-    if (!(keysyms = xcb_key_symbols_alloc(dis))) return NULL;
+    if (!(keysyms = xcb_key_symbols_alloc(dis)))
+        return NULL;
     keycode = xcb_key_symbols_get_keycode(keysyms, keysym);
     xcb_key_symbols_free(keysyms);
 
@@ -275,71 +302,109 @@ static xcb_keycode_t* xcb_get_keycodes(xcb_keysym_t keysym) {
 }
 
 /* retieve RGB color from hex (think of html) */
-static unsigned int xcb_get_colorpixel(char *hex) {
-    char strgroups[3][3]  = {{hex[1], hex[2], '\0'}, {hex[3], hex[4], '\0'}, {hex[5], hex[6], '\0'}};
-    unsigned int rgb16[3] = {(strtol(strgroups[0], NULL, 16)), (strtol(strgroups[1], NULL, 16)), (strtol(strgroups[2], NULL, 16))};
+static unsigned int xcb_get_colorpixel(char *hex)
+{
+    char strgroups[3][3]  = {{hex[1], hex[2], '\0'},
+                             {hex[3], hex[4], '\0'},
+                             {hex[5], hex[6], '\0'}};
+    unsigned int rgb16[3] = {(strtol(strgroups[0], NULL, 16)),
+                             (strtol(strgroups[1], NULL, 16)),
+                             (strtol(strgroups[2], NULL, 16))};
+
     return (rgb16[0] << 16) + (rgb16[1] << 8) + rgb16[2];
 }
 
 /* wrapper to get atoms using xcb */
-static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count) {
+static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count)
+{
     xcb_intern_atom_cookie_t cookies[count];
     xcb_intern_atom_reply_t  *reply;
 
-    for (unsigned int i = 0; i < count; i++) cookies[i] = xcb_intern_atom(dis, 0, strlen(names[i]), names[i]);
+    for (unsigned int i = 0; i < count; i++)
+        cookies[i] = xcb_intern_atom(dis, 0, strlen(names[i]), names[i]);
+
     for (unsigned int i = 0; i < count; i++) {
         reply = xcb_intern_atom_reply(dis, cookies[i], NULL); /* TODO: Handle error */
         if (reply) {
             DEBUGP("%s : %d\n", names[i], reply->atom);
             atoms[i] = reply->atom; free(reply);
-        } else puts("WARN: monsterwm failed to register %s atom.\nThings might not work right.");
+        } else {
+            puts("WARN: monsterwm failed to register %s atom.\nThings might not work right.");
+        }
     }
 }
 
 /* wrapper to window get attributes using xcb */
-static void xcb_get_attributes(xcb_window_t *windows, xcb_get_window_attributes_reply_t **reply, unsigned int count) {
+static void xcb_get_attributes(xcb_window_t *windows,
+                               xcb_get_window_attributes_reply_t **reply,
+                               unsigned int count)
+{
     xcb_get_window_attributes_cookie_t cookies[count];
-    for (unsigned int i = 0; i < count; i++) cookies[i] = xcb_get_window_attributes(dis, windows[i]);
-    for (unsigned int i = 0; i < count; i++) reply[i]   = xcb_get_window_attributes_reply(dis, cookies[i], NULL); /* TODO: Handle error */
+
+    for (unsigned int i = 0; i < count; i++)
+        cookies[i] = xcb_get_window_attributes(dis, windows[i]);
+    for (unsigned int i = 0; i < count; i++)
+        reply[i] = xcb_get_window_attributes_reply(dis, cookies[i], NULL); /* TODO: Handle error */
 }
 
 /* check if other wm exists */
-static int xcb_checkotherwm(void) {
+static int xcb_checkotherwm(void)
+{
     xcb_generic_error_t *error;
-    unsigned int values[1] = {XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT|XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY|
-                              XCB_EVENT_MASK_PROPERTY_CHANGE|XCB_EVENT_MASK_BUTTON_PRESS};
-    error = xcb_request_check(dis, xcb_change_window_attributes_checked(dis, screen->root, XCB_CW_EVENT_MASK, values));
+    unsigned int values[1] = {XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT|
+                              XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY|
+                              XCB_EVENT_MASK_PROPERTY_CHANGE|
+                              XCB_EVENT_MASK_BUTTON_PRESS};
+
+    error = xcb_request_check(dis, xcb_change_window_attributes_checked(dis,
+                                    screen->root, XCB_CW_EVENT_MASK, values));
     xcb_flush(dis);
-    if (error) return 1;
+    if (error)
+        return 1;
     return 0;
 }
 
 /* create a new client and add the new window
  * window should notify of property change events
  */
-client* addwindow(xcb_window_t w) {
+client *addwindow(xcb_window_t w)
+{
     client *c, *t = prev_client(head);
-    if (!(c = (client *)calloc(1, sizeof(client)))) err(EXIT_FAILURE, "cannot allocate client");
 
-    if (!head) head = c;
-    else if (!ATTACH_ASIDE) { c->next = head; head = c; }
-    else if (t) t->next = c; else head->next = c;
+    if (!(c = (client *)calloc(1, sizeof(client))))
+         err(EXIT_FAILURE, "cannot allocate client");
 
-    unsigned int values[1] = { XCB_EVENT_MASK_PROPERTY_CHANGE|(FOLLOW_MOUSE?XCB_EVENT_MASK_ENTER_WINDOW:0) };
-    xcb_change_window_attributes_checked(dis, (c->win = w), XCB_CW_EVENT_MASK, values);
+    if (!head) {
+        head = c;
+    } else if (!ATTACH_ASIDE) {
+        c->next = head; head = c;
+    } else if (t) {
+        t->next = c;
+    } else {
+        head->next = c;
+    }
+
+    unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
+                              (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
+    xcb_change_window_attributes_checked(dis, (c->win = w), XCB_CW_EVENT_MASK,
+                                         values);
+
     return c;
 }
 
 /* on the press of a button check to see if there's a binded function to call */
-void buttonpress(xcb_generic_event_t *e) {
-    xcb_button_press_event_t *ev = (xcb_button_press_event_t*)e;
+void buttonpress(xcb_generic_event_t *e)
+{
+    xcb_button_press_event_t *ev = (xcb_button_press_event_t *)e;
     DEBUGP("xcb: button press: %d state: %d\n", ev->detail, ev->state);
 
     client *c = wintoclient(ev->event);
-    if (!c) return;
-    if (CLICK_TO_FOCUS && current != c && ev->detail == XCB_BUTTON_INDEX_1) update_current(c);
+    if (!c)
+        return;
+    if (CLICK_TO_FOCUS && current != c && ev->detail == XCB_BUTTON_INDEX_1)
+        update_current(c);
 
-    for (unsigned int i=0; i<LENGTH(buttons); i++)
+    for (unsigned int i = 0; i < LENGTH(buttons); i++)
         if (buttons[i].func && buttons[i].button == ev->detail &&
             CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state)) {
             if (current != c) update_current(c);
@@ -359,54 +424,74 @@ void buttonpress(xcb_generic_event_t *e) {
  * first the current window and then all other
  * then unmap the old windows
  * first all others then the current */
-void change_desktop(const Arg *arg) {
-    if (arg->i == current_desktop) return;
+void change_desktop(const Arg *arg)
+{
+    if (arg->i == current_desktop)
+        return;
     previous_desktop = current_desktop;
     select_desktop(arg->i);
-    if (current) xcb_map_window(dis, current->win);
-    for (client *c=head; c; c=c->next) xcb_map_window(dis, c->win);
+    if (current)
+        xcb_map_window(dis, current->win);
+    for (client *c = head; c; c = c->next)
+        xcb_map_window(dis, c->win);
     select_desktop(previous_desktop);
-    for (client *c=head; c; c=c->next) if (c != current) xcb_unmap_window(dis, c->win);
-    if (current) xcb_unmap_window(dis, current->win);
+    for (client *c = head; c; c = c->next) {
+        if (c != current)
+            xcb_unmap_window(dis, c->win);
+    }
+    if (current)
+        xcb_unmap_window(dis, current->win);
     select_desktop(arg->i);
-    tile(); update_current(current);
+    tile();
+    update_current(current);
     desktopinfo();
 }
 
 /* remove all windows in all desktops by sending a delete message */
-void cleanup(void) {
-    xcb_query_tree_reply_t  *query;
+void cleanup(void)
+{
+    xcb_query_tree_reply_t *query;
     xcb_window_t *c;
 
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
-    if ((query = xcb_query_tree_reply(dis,xcb_query_tree(dis,screen->root),0))) {
+    if ((query = xcb_query_tree_reply(dis,xcb_query_tree(dis,screen->root), 0))) {
         c = xcb_query_tree_children(query);
-        for (unsigned int i = 0; i != query->children_len; ++i) deletewindow(c[i]);
+        for (unsigned int i = 0; i != query->children_len; ++i)
+            deletewindow(c[i]);
         free(query);
     }
-    xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root, XCB_CURRENT_TIME);
+    xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root,
+                        XCB_CURRENT_TIME);
 }
 
 /* move a client to another desktop
  *
  * remove the current client from the current desktop's client list
  * and add it as last client of the new desktop's client list */
-void client_to_desktop(const Arg *arg) {
-    if (!current || arg->i == current_desktop) return;
+void client_to_desktop(const Arg *arg)
+{
+    if (!current || arg->i == current_desktop)
+        return;
     int cd = current_desktop;
     client *p = prev_client(current), *c = current;
 
     select_desktop(arg->i);
     client *l = prev_client(head);
-    update_current(l ? (l->next = c):head ? (head->next = c):(head = c));
+    update_current(l ? (l->next = c) : head ? (head->next = c) : (head = c));
 
     select_desktop(cd);
-    if (c == head || !p) head = c->next; else p->next = c->next;
+    if (c == head || !p)
+        head = c->next;
+    else
+        p->next = c->next;
     c->next = NULL;
     xcb_unmap_window(dis, c->win);
     update_current(prevfocus);
 
-    if (FOLLOW_WINDOW) change_desktop(arg); else tile();
+    if (FOLLOW_WINDOW)
+        change_desktop(arg);
+    else
+        tile();
     desktopinfo();
 }
 
@@ -420,15 +505,21 @@ void client_to_desktop(const Arg *arg) {
  *   - toggle _NET_WM_STATE_TOGGLE=2
  *
  * check if window requested fullscreen or activation */
-void clientmessage(xcb_generic_event_t *e) {
-    xcb_client_message_event_t *ev = (xcb_client_message_event_t*)e;
+void clientmessage(xcb_generic_event_t *e)
+{
+    xcb_client_message_event_t *ev = (xcb_client_message_event_t *)e;
     client *t = NULL, *c = wintoclient(ev->window);
+
     if (c && ev->type                      == netatoms[NET_WM_STATE]
           && ((unsigned)ev->data.data32[1] == netatoms[NET_FULLSCREEN]
           ||  (unsigned)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
-        setfullscreen(c, (ev->data.data32[0] == 1 || (ev->data.data32[0] == 2 && !c->isfullscrn)));
-    else if (c && ev->type == netatoms[NET_ACTIVE]) for (t=head; t && t!=c; t=t->next);
-    if (t) update_current(c);
+        setfullscreen(c, (ev->data.data32[0] == 1 ||
+                         (ev->data.data32[0] == 2 &&
+                         !c->isfullscrn)));
+    else if (c && ev->type == netatoms[NET_ACTIVE])
+        for (t=head; t && t!=c; t=t->next);
+    if (t)
+        update_current(c);
     tile();
 }
 
@@ -437,13 +528,17 @@ void clientmessage(xcb_generic_event_t *e) {
  * appropriate values as requested, and tile the window again so that it fills
  * the gaps that otherwise could have been created
  */
-void configurerequest(xcb_generic_event_t *e) {
-    xcb_configure_request_event_t *ev = (xcb_configure_request_event_t*)e;
+void configurerequest(xcb_generic_event_t *e)
+{
+    xcb_configure_request_event_t *ev = (xcb_configure_request_event_t *)e;
     client *c = wintoclient(ev->window);
-    if (c && c->isfullscrn) setfullscreen(c, true);
-    else {
+
+    if (c && c->isfullscrn) {
+        setfullscreen(c, true);
+    } else {
         unsigned int v[7];
         unsigned int i = 0;
+        MARKER
         if (ev->value_mask & XCB_CONFIG_WINDOW_X)              v[i++] = ev->x;
         if (ev->value_mask & XCB_CONFIG_WINDOW_Y)              v[i++] = (ev->y + (showpanel && TOP_PANEL)) ? PANEL_HEIGHT : 0;
         if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)          v[i++] = (ev->width  < ww - BORDER_WIDTH) ? ev->width  : ww + BORDER_WIDTH;
