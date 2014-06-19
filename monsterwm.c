@@ -577,11 +577,12 @@ void grid(int hh, int cy) {
     for (cols=0; cols <= n/2; cols++) if (cols*cols >= n) break; /* emulate square root */
     if (n == 5) cols = 2;
 
-    int rows = n/cols, ch = hh - BORDER_WIDTH, cw = (ww - BORDER_WIDTH)/(cols?cols:1);
+    int rows = n/cols, ch = hh - USELESSGAP, cw = (ww - USELESSGAP)/(cols?cols:1);
     for (client *c=head; c; c=c->next) {
         if (ISFFT(c)) continue; else ++i;
         if (i/rows + 1 > cols - n%cols) rows = n/cols + 1;
         xcb_move_resize(dis, c->win, cn*cw, cy + rn*ch/rows, cw - BORDER_WIDTH, ch/rows - BORDER_WIDTH);
+        xcb_move_resize(dis, c->win, cn*cw, cy + rn*ch/rows + USELESSGAP, cw - 2*BORDER_WIDTH - USELESSGAP, ch/rows - 2*BORDER_WIDTH - USELESSGAP);
         if (++rn >= rows) { rn = 0; cn++; }
     }
 }
@@ -757,7 +758,7 @@ void mousemotion(const Arg *arg) {
 
 /* each window should cover all the available screen space */
 void monocle(int hh, int cy) {
-    for (client *c=head; c; c=c->next) if (!ISFFT(c)) xcb_move_resize(dis, c->win, 0, cy, ww, hh);
+    for (client *c=head; c; c=c->next) if (!ISFFT(c)) xcb_move_resize(dis, c->win, USELESSGAP, cy + USELESSGAP, ww - 2*USELESSGAP, hh - 2*USELESSGAP);
 }
 
 /* move the current client, to current->next
@@ -1107,22 +1108,24 @@ void stack(int hh, int cy) {
      *     the first stack window so that it satisfies growth, and doesn't create gaps
      *     on the bottom of the screen.  */
     if (!c) return; else if (!n) {
-        xcb_move_resize(dis, c->win, 0, cy, ww - 2*BORDER_WIDTH, hh - 2*BORDER_WIDTH);
+        xcb_move_resize(dis, c->win, USELESSGAP, cy + USELESSGAP, ww - 2*(BORDER_WIDTH + USELESSGAP), hh - 2*(BORDER_WIDTH + USELESSGAP));
         return;
     } else if (n > 1) { d = (z - growth)%n + growth; z = (z - growth)/n; }
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
-    if (b) xcb_move_resize(dis, c->win, 0, cy, ww - 2*BORDER_WIDTH, ma - BORDER_WIDTH);
-    else   xcb_move_resize(dis, c->win, 0, cy, ma - BORDER_WIDTH, hh - 2*BORDER_WIDTH);
+    if (b) xcb_move_resize(dis, c->win, USELESSGAP, cy + USELESSGAP,
+    ww - 2*(BORDER_WIDTH + USELESSGAP), ma - 2*(BORDER_WIDTH + USELESSGAP));
+    else   xcb_move_resize(dis, c->win, USELESSGAP, cy + USELESSGAP,
+    ma - 2*(BORDER_WIDTH + USELESSGAP), hh - 2*(BORDER_WIDTH + USELESSGAP));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
     for (c=c->next; c && ISFFT(c); c=c->next);
-    int cx = b ? 0:ma, cw = (b ? hh:ww) - 2*BORDER_WIDTH - ma, ch = z - BORDER_WIDTH;
-    if (b) xcb_move_resize(dis, c->win, cx, cy += ma, ch - BORDER_WIDTH + d, cw);
-    else   xcb_move_resize(dis, c->win, cx, cy, cw, ch - BORDER_WIDTH + d);
+    int ch = z - 2*BORDER_WIDTH - USELESSGAP, cx = b ? 0:ma, cw = (b ? hh:ww) - 2*BORDER_WIDTH - ma - USELESSGAP;
+    if (b) xcb_move_resize(dis, c->win, cx += USELESSGAP, cy += ma, ch - USELESSGAP + d, cw);
+    else   xcb_move_resize(dis, c->win, cx, cy += USELESSGAP, cw, ch - USELESSGAP + d);
 
     /* tile the rest of the non-floating, non-fullscreen stack windows */
-    for (b?(cx+=ch+d):(cy+=ch+d), c=c->next; c; c=c->next) {
+    for (b?(cx+=z+d-USELESSGAP):(cy+=z+d-USELESSGAP), c=c->next; c; c=c->next) {
         if (ISFFT(c)) continue;
         if (b) { xcb_move_resize(dis, c->win, cx, cy, ch, cw); cx += z; }
         else   { xcb_move_resize(dis, c->win, cx, cy, cw, ch); cy += z; }
