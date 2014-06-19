@@ -2,8 +2,8 @@ monsterwm-xcb
 =============
 
 This is the sulami-edition of [cloudef's monsterwm-xcb][xcb], which is the
-xcb-version of [c00kiemon5ter's monsterwm][]. I mainly added patches from the
-original to the xcb version.
+xcb-version of [c00kiemon5ter's monsterwm][orig]. I mainly added patches from
+the original to the xcb version.
 
   [xcb]: https://gitbub.com/cloudef/monsterwm-xcb
   [orig]: https://github.com/c00kiemon5ter/monsterwm
