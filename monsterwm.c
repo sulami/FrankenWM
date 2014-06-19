@@ -538,22 +538,30 @@ void configurerequest(xcb_generic_event_t *e)
     } else {
         unsigned int v[7];
         unsigned int i = 0;
-        MARKER
-        if (ev->value_mask & XCB_CONFIG_WINDOW_X)              v[i++] = ev->x;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_Y)              v[i++] = (ev->y + (showpanel && TOP_PANEL)) ? PANEL_HEIGHT : 0;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)          v[i++] = (ev->width  < ww - BORDER_WIDTH) ? ev->width  : ww + BORDER_WIDTH;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT)         v[i++] = (ev->height < wh - BORDER_WIDTH) ? ev->height : wh + BORDER_WIDTH;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)   v[i++] = ev->border_width;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING)        v[i++] = ev->sibling;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE)     v[i++] = ev->stack_mode;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_X)
+            v[i++] = ev->x;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_Y)
+            v[i++] = (ev->y + (showpanel && TOP_PANEL)) ? PANEL_HEIGHT : 0;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
+            v[i++] = (ev->width < ww - BORDER_WIDTH) ? ev->width : ww + BORDER_WIDTH;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
+            v[i++] = (ev->height < wh - BORDER_WIDTH) ? ev->height : wh + BORDER_WIDTH;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
+            v[i++] = ev->border_width;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING)
+            v[i++] = ev->sibling;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
+            v[i++] = ev->stack_mode;
         xcb_configure_window(dis, ev->window, ev->value_mask, v);
     }
     tile();
 }
 
 /* close the window */
-void deletewindow(xcb_window_t w) {
+void deletewindow(xcb_window_t w)
+{
     xcb_client_message_event_t ev;
+
     ev.response_type = XCB_CLIENT_MESSAGE;
     ev.window = w;
     ev.format = 32;
@@ -561,7 +569,7 @@ void deletewindow(xcb_window_t w) {
     ev.type = wmatoms[WM_PROTOCOLS];
     ev.data.data32[0] = wmatoms[WM_DELETE_WINDOW];
     ev.data.data32[1] = XCB_CURRENT_TIME;
-    xcb_send_event(dis, 0, w, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
+    xcb_send_event(dis, 0, w, XCB_EVENT_MASK_NO_EVENT, (char *)&ev);
 }
 
 /* output info about the desktops on standard output stream
@@ -576,80 +584,119 @@ void deletewindow(xcb_window_t w) {
  *   whether any client in that desktop has received an urgent hint
  *
  * once the info is collected, immediately flush the stream */
-void desktopinfo(void) {
+void desktopinfo(void)
+{
     bool urgent = false;
-    int cd = current_desktop, n=0, d=0;
-    for (client *c; d<DESKTOPS; d++) {
-        for (select_desktop(d), c=head, n=0, urgent=false; c; c=c->next, ++n) if (c->isurgent) urgent = true;
-        fprintf(stdout, "%d:%d:%d:%d:%d%c", d, n, mode, current_desktop == cd, urgent, d+1==DESKTOPS?'\n':' ');
+    int cd = current_desktop, n = 0, d = 0;
+
+    for (client *c; d < DESKTOPS; d++) {
+        for (select_desktop(d), c=head, n=0, urgent=false; c; c=c->next, ++n) {
+            if (c->isurgent)
+                urgent = true;
+        }
+        fprintf(stdout, "%d:%d:%d:%d:%d%c", d, n, mode, current_desktop == cd,
+                urgent, d + 1 == DESKTOPS ? '\n' : ' ');
     }
     fflush(stdout);
-    if (cd != d-1) select_desktop(cd);
+    if (cd != d - 1)
+        select_desktop(cd);
 }
 
 /* a destroy notification is received when a window is being closed
  * on receival, remove the appropriate client that held that window
  */
-void destroynotify(xcb_generic_event_t *e) {
+void destroynotify(xcb_generic_event_t *e)
+{
     DEBUG("xcb: destoroy notify");
-    xcb_destroy_notify_event_t *ev = (xcb_destroy_notify_event_t*)e;
+    xcb_destroy_notify_event_t *ev = (xcb_destroy_notify_event_t *)e;
     client *c = wintoclient(ev->window);
-    if (c) removeclient(c);
+
+    if (c)
+        removeclient(c);
     desktopinfo();
 }
 
 /* when the mouse enters a window's borders
  * the window, if notifying of such events (EnterWindowMask)
  * will notify the wm and will get focus */
-void enternotify(xcb_generic_event_t *e) {
-    xcb_enter_notify_event_t *ev = (xcb_enter_notify_event_t*)e;
-    if (!FOLLOW_MOUSE) return;
+void enternotify(xcb_generic_event_t *e)
+{
+    xcb_enter_notify_event_t *ev = (xcb_enter_notify_event_t *)e;
+
+    if (!FOLLOW_MOUSE)
+        return;
     DEBUG("xcb: enter notify");
     client *c = wintoclient(ev->event);
-    if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) update_current(c);
+    if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL &&
+        ev->detail != XCB_NOTIFY_DETAIL_INFERIOR)
+        update_current(c);
 }
 
 /* find and focus the client which received
  * the urgent hint in the current desktop */
-void focusurgent() {
+void focusurgent()
+{
     client *c;
     int cd = current_desktop, d = 0;
-    for (c=head; c && !c->isurgent; c=c->next);
-    if (c) { update_current(c); return; }
-    else for (bool f=false; d<DESKTOPS && !f; d++) for (select_desktop(d), c=head; c && !(f=c->isurgent); c=c->next);
+
+    for (c = head; c && !c->isurgent; c = c->next);
+    if (c) {
+        update_current(c);
+        return;
+    } else {
+        for (bool f = false; d < DESKTOPS && !f; d++) {
+            for (select_desktop(d), c = head; c && !(f = c->isurgent);
+            c = c->next);
+        }
+    }
     select_desktop(cd);
-    if (c) { change_desktop(&(Arg){.i = --d}); update_current(c); }
+    if (c) {
+        change_desktop(&(Arg){.i = --d});
+        update_current(c);
+    }
 }
 
 /* get a pixel with the requested color
  * to fill some window area - borders */
-unsigned int getcolor(char* color) {
+unsigned int getcolor(char *color)
+{
     xcb_colormap_t map = screen->default_colormap;
     xcb_alloc_color_reply_t *c;
     unsigned int r, g, b, rgb, pixel;
 
     rgb = xcb_get_colorpixel(color);
     r = rgb >> 16; g = rgb >> 8 & 0xFF; b = rgb & 0xFF;
-    c = xcb_alloc_color_reply(dis, xcb_alloc_color(dis, map, r * 257, g * 257, b * 257), NULL);
+    c = xcb_alloc_color_reply(dis, xcb_alloc_color(dis, map, r * 257, g * 257,
+                                                   b * 257), NULL);
     if (!c)
         errx(EXIT_FAILURE, "error: cannot allocate color '%s'\n", color);
 
-    pixel = c->pixel; free(c);
+    pixel = c->pixel;
+    free(c);
+
     return pixel;
 }
 
 /* set the given client to listen to button events (presses / releases) */
-void grabbuttons(client *c) {
-    unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask, numlockmask|XCB_MOD_MASK_LOCK };
+void grabbuttons(client *c)
+{
+    unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
+                                 numlockmask|XCB_MOD_MASK_LOCK };
+
     xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
-    for (unsigned int b=0; b<LENGTH(buttons); b++)
-        for (unsigned int m=0; m<LENGTH(modifiers); m++)
+    for (unsigned int b = 0; b < LENGTH(buttons); b++)
+        for (unsigned int m = 0; m < LENGTH(modifiers); m++)
             if (CLICK_TO_FOCUS)
-                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                        XCB_WINDOW_NONE, XCB_CURSOR_NONE, XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY); 
+                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                                XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
             else
-                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                        XCB_WINDOW_NONE, XCB_CURSOR_NONE, buttons[b].button, buttons[b].mask|modifiers[m]);
+                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                                buttons[b].button,
+                                buttons[b].mask|modifiers[m]);
 }
 
 /* the wm should listen to key presses */
