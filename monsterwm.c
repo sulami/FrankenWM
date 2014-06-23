@@ -139,6 +139,7 @@ typedef struct {
 static client* addwindow(xcb_window_t w);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
+static void centerwindow();
 static void cleanup(void);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
@@ -371,6 +372,19 @@ void change_desktop(const Arg *arg) {
     select_desktop(arg->i);
     tile(); update_current(current);
     desktopinfo();
+}
+
+/*
+ * place the current window in the center of the screen floating
+ */
+void centerwindow(void) {
+    xcb_get_geometry_reply_t *wa;
+    desktop *d = &desktops[current_desktop];
+    wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    if (!d->current || !wa) return;
+    if (!d->current->isfloating && !d->current->istransient) { d->current->isfloating = true; tile(); }
+    xcb_raise_window(dis, d->current->win);
+    xcb_move(dis, d->current->win, (ww - wa->width)/2, (wh - wa->height)/2);
 }
 
 /* remove all windows in all desktops by sending a delete message */
