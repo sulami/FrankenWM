@@ -170,6 +170,7 @@ static void resize_master(const Arg *arg);
 static void resize_stack(const Arg *arg);
 static void rotate(const Arg *arg);
 static void rotate_filled(const Arg *arg);
+static void showhide();
 static void run(void);
 static void save_desktop(int i);
 static void select_desktop(int i);
@@ -189,7 +190,7 @@ static client* wintoclient(xcb_window_t w);
 #include "config.h"
 
 /* variables */
-static bool running = true, showpanel = SHOW_PANEL;
+static bool running = true, showpanel = SHOW_PANEL, show = true;
 static int previous_desktop = 0, current_desktop = 0, retval = 0;
 static int wh, ww, mode = DEFAULT_MODE, master_size = 0, growth = 0;
 static unsigned int numlockmask = 0, win_unfocus, win_focus;
@@ -363,8 +364,8 @@ void change_desktop(const Arg *arg) {
     if (arg->i == current_desktop) return;
     previous_desktop = current_desktop;
     select_desktop(arg->i);
-    if (current) xcb_map_window(dis, current->win);
-    for (client *c=head; c; c=c->next) xcb_map_window(dis, c->win);
+    if (current && show) xcb_map_window(dis, current->win);
+    for (client *c=head; show && c; c=c->next) xcb_map_window(dis, c->win);
     select_desktop(previous_desktop);
     for (client *c=head; c; c=c->next) if (c != current) xcb_unmap_window(dis, c->win);
     if (current) xcb_unmap_window(dis, current->win);
@@ -684,7 +685,7 @@ void maprequest(xcb_generic_event_t *e) {
     DEBUGP("floating:  %d\n", c->isfloating);
 
     if (cd != newdsk) select_desktop(cd);
-    if (cd == newdsk) { tile(); xcb_map_window(dis, c->win); update_current(c); }
+    if (cd == newdsk) { tile(); if (show) xcb_map_window(dis, c->win); update_current(c); }
     else if (follow) { change_desktop(&(Arg){.i = newdsk}); update_current(c); }
     grabbuttons(c);
 
@@ -1154,6 +1155,15 @@ void tile(void) {
     if (!head) return; /* nothing to arange */
     layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0:PANEL_HEIGHT),
                                 (TOP_PANEL && showpanel ? PANEL_HEIGHT:0));
+}
+
+/*
+ * toggle visibility of all windows in all desktops
+ */
+void showhide(void) {
+    if ((show = !show)) tile();
+    else for (client *c = desktops[current_desktop].head; c; c=c->next)
+        xcb_move(dis, c->win, -2*ww, 0);
 }
 
 /* toggle visibility state of the panel */
