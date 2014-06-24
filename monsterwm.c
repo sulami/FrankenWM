@@ -757,7 +757,9 @@ void mousemotion(const Arg *arg) {
 
 /* each window should cover all the available screen space */
 void monocle(int hh, int cy) {
-    for (client *c=head; c; c=c->next) if (!ISFFT(c)) xcb_move_resize(dis, c->win, 0, cy, ww, hh);
+    for (client *c = head; c; c = c->next)
+        if (!ISFFT(c))
+            xcb_move_resize(dis, c->win, 0, cy, ww - 2 * BORDER_WIDTH, hh - 2 * BORDER_WIDTH);
 }
 
 /* move the current client, to current->next
@@ -975,8 +977,7 @@ void setfullscreen(client *c, bool fullscrn) {
     long data[] = { fullscrn ? netatoms[NET_FULLSCREEN] : XCB_NONE };
     if (fullscrn != c->isfullscrn) xcb_change_property(dis, XCB_PROP_MODE_REPLACE, c->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 32, fullscrn, data);
     if ((c->isfullscrn = fullscrn)) xcb_move_resize(dis, c->win, 0, 0, ww, wh + PANEL_HEIGHT);
-    xcb_border_width(dis, c->win, (!head->next || c->isfullscrn
-                || (mode == MONOCLE && !ISFFT(c))) ? 0:BORDER_WIDTH);
+    xcb_border_width(dis, c->win, (!head->next || c->isfullscrn) ? 0:BORDER_WIDTH);
     update_current(c);
 }
 
@@ -1186,7 +1187,7 @@ void unmapnotify(xcb_generic_event_t *e) {
  * a window should have borders in any case, except if
  *  - the window is the only window on screen
  *  - the window is fullscreen
- *  - the mode is MONOCLE and the window is not floating or transient */
+ */
 void update_current(client *c) {
     if (!head) {
         xcb_delete_property(dis, screen->root, netatoms[NET_ACTIVE]);
@@ -1202,8 +1203,7 @@ void update_current(client *c) {
     w[(current->isfloating||current->istransient)?0:ft] = current->win;
     for (fl += !ISFFT(current)?1:0, c = head; c; c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL, (c == current ? &win_focus:&win_unfocus));
-        xcb_border_width(dis, c->win, (!head->next || c->isfullscrn
-                    || (mode == MONOCLE && !ISFFT(c))) ? 0:BORDER_WIDTH);
+        xcb_border_width(dis, c->win, c->isfullscrn ? 0 : BORDER_WIDTH);
         //if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
         //   screen->root, XCB_NONE, XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
         if (c != current) w[c->isfullscrn ? --fl : ISFFT(c) ? --ft : --n] = c->win;
