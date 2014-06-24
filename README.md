@@ -50,8 +50,8 @@ Bugs
 Fill bugs only on monsterwm-xcb, when you are sure the bug doesn't occur on
 [monsterwm][].
 
-[monsterwm-xcb-sulami issues][monsterwm-xcb-sulami-bug]
-[monsterwm-xcb issues][monsterwm-xcb-bug] | [monsterwm issues][monsterwm-bug]
+[monsterwm-xcb-sulami issues][monsterwm-xcb-sulami-bug] |
+ [monsterwm-xcb issues][monsterwm-xcb-bug] | [monsterwm issues][monsterwm-bug]
 
    [monsterwm-xcb-sulami-bug]: https://github.com/sulami/monsterwm-xcb-sulami/issues
    [monsterwm-bug]: https://github.com/c00kiemon5ter/monsterwm/issues
