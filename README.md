@@ -38,9 +38,9 @@ The branches are (so far):
   screen
   * fibonacci - tiling mode which halfs the windows going down the stack (think
   bspwm)
+  * initlayouts - uses one desktop per layout by default
   * showhide - show/hide all windows on all desktops (still somewhat buggy)
   * uselessgaps - add gaps around the windows to see you wallpaper
-
   * cleanup - my personal code cleanup branch, do not use it. behaves like
   master but does not take patches (yet)
 
