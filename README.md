@@ -39,6 +39,7 @@ The branches are (so far):
   * fibonacci - tiling mode which halfs the windows going down the stack (think
   bspwm)
   * initlayouts - uses one desktop per layout by default
+  * monocleborders - adds borders in monocle mode
   * showhide - show/hide all windows on all desktops (still somewhat buggy)
   * uselessgaps - add gaps around the windows to see you wallpaper
   * cleanup - my personal code cleanup branch, do not use it. behaves like
@@ -50,8 +51,8 @@ Bugs
 Fill bugs only on monsterwm-xcb, when you are sure the bug doesn't occur on
 [monsterwm][].
 
-[monsterwm-xcb-sulami issues][monsterwm-xcb-sulami-bug]
-[monsterwm-xcb issues][monsterwm-xcb-bug] | [monsterwm issues][monsterwm-bug]
+[monsterwm-xcb-sulami issues][monsterwm-xcb-sulami-bug] |
+ [monsterwm-xcb issues][monsterwm-xcb-bug] | [monsterwm issues][monsterwm-bug]
 
    [monsterwm-xcb-sulami-bug]: https://github.com/sulami/monsterwm-xcb-sulami/issues
    [monsterwm-bug]: https://github.com/c00kiemon5ter/monsterwm/issues
