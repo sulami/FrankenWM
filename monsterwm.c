@@ -51,7 +51,7 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED", "_NET_WM_STATE_FULLSCREEN",
 #define USAGE           "usage: monsterwm [-h] [-v]"
 
 enum { RESIZE, MOVE };
-enum { TILE, MONOCLE, BSTACK, GRID, MODES };
+enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, MODES };
 enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_COUNT };
 enum { NET_SUPPORTED, NET_FULLSCREEN, NET_WM_STATE, NET_ACTIVE, NET_COUNT };
 
@@ -150,6 +150,7 @@ static void deletewindow(xcb_window_t w);
 static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
 static void enternotify(xcb_generic_event_t *e);
+static void fibonacci(int h, int y);
 static void focusurgent();
 static unsigned int getcolor(char *color);
 static void grabbuttons(client *c);
@@ -217,6 +218,7 @@ static void (*layout[MODES])(int h, int y) = {
     [BSTACK] = stack,
     [GRID] = grid,
     [MONOCLE] = monocle,
+    [FIBONACCI] = fibonacci,
 };
 
 /* get screen of display */
@@ -653,6 +655,23 @@ void enternotify(xcb_generic_event_t *e)
     if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL &&
         ev->detail != XCB_NOTIFY_DETAIL_INFERIOR)
         update_current(c);
+}
+
+/*
+ * fibonacci mode / fibonacci layout
+ * tile the windows based on the fibonacci series pattern.
+ * arrange windows in such a way that every new window shares
+ * half the space of the space taken by the last window
+ */
+void fibonacci(int h, int y) {
+    int j = -1, cw = ww - BORDER_WIDTH, ch = h - BORDER_WIDTH, x = 0;
+    for (client *n, *c = head; c; c = c->next) {
+        if (ISFFT(c)) continue; else j++;
+        for (n = c->next; n; n = n->next) if (!ISFFT(n)) break;
+        if (n) (j&1) ? (ch /= 2) : (cw /= 2);
+        if (j) (j&1) ? (x += cw) : (y += ch);
+        xcb_move_resize(dis, c->win, x, y, cw - BORDER_WIDTH, ch - BORDER_WIDTH);
+    }
 }
 
 /* find and focus the client which received
