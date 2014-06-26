@@ -65,6 +65,8 @@ static key keys[] = {
     {  MOD1|CONTROL,     XK_l,          rotate,            {.i = +1}},
     {  MOD1|SHIFT,       XK_h,          rotate_filled,     {.i = -1}},
     {  MOD1|SHIFT,       XK_l,          rotate_filled,     {.i = +1}},
+    {  MOD4,             XK_o,          adjust_gaps,       {.i = -1}},
+    {  MOD4,             XK_p,          adjust_gaps,       {.i = +1}},
     {  MOD1,             XK_Tab,        last_desktop,      {NULL}},
     {  MOD1,             XK_Return,     swap_master,       {NULL}},
     {  MOD1|SHIFT,       XK_j,          move_down,         {NULL}},

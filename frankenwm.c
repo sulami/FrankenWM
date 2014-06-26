@@ -139,6 +139,7 @@ typedef struct {
 
  /* function prototypes sorted alphabetically */
 static client *addwindow(xcb_window_t w);
+static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
 static void centerwindow();
@@ -196,7 +197,7 @@ static client *wintoclient(xcb_window_t w);
 /* variables */
 static bool running = true, showpanel = SHOW_PANEL, show = true;
 static int previous_desktop, current_desktop, retval;
-static int wh, ww, mode = DEFAULT_MODE, master_size, growth;
+static int wh, ww, mode = DEFAULT_MODE, master_size, growth, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
@@ -397,6 +398,17 @@ client *addwindow(xcb_window_t w)
                                          values);
 
     return c;
+}
+
+/* change the size of the useless gaps on the fly and re-tile */
+void adjust_gaps(const Arg *arg)
+{
+    if (arg->i == +1)
+        gaps++;
+    else if (arg->i == -1)
+        if (gaps)
+            gaps--;
+    tile();
 }
 
 /* on the press of a button check to see if there's a binded function to call */
@@ -665,16 +677,16 @@ void enternotify(xcb_generic_event_t *e)
  */
 void fibonacci(int h, int y) {
     int j = -1, x = 0,
-        cw = ww - BORDER_WIDTH - USELESSGAP,
-        ch = h - BORDER_WIDTH - USELESSGAP;
+        cw = ww - BORDER_WIDTH - gaps,
+        ch = h - BORDER_WIDTH - gaps;
     for (client *n, *c = head; c; c = c->next) {
         if (ISFFT(c)) continue; else j++;
         for (n = c->next; n; n = n->next) if (!ISFFT(n)) break;
         if (n) (j&1) ? (ch /= 2) : (cw /= 2);
         if (j) (j&1) ? (x += cw) : (y += ch);
-        xcb_move_resize(dis, c->win, x + USELESSGAP, y + USELESSGAP,
-                        cw - BORDER_WIDTH - USELESSGAP,
-                        ch - BORDER_WIDTH - USELESSGAP);
+        xcb_move_resize(dis, c->win, x + gaps, y + gaps,
+                        cw - BORDER_WIDTH - gaps,
+                        ch - BORDER_WIDTH - gaps);
     }
 }
 
@@ -777,8 +789,8 @@ void grid(int hh, int cy)
         cols = 2;
 
     int rows = n / cols,
-        ch = hh - USELESSGAP,
-        cw = (ww - USELESSGAP) / (cols ? cols : 1);
+        ch = hh - gaps,
+        cw = (ww - gaps) / (cols ? cols : 1);
     for (client *c = head; c; c = c->next) {
         if (ISFFT(c))
             continue;
@@ -786,10 +798,10 @@ void grid(int hh, int cy)
             ++i;
         if (i / rows + 1 > cols - n % cols)
             rows = n / cols + 1;
-        xcb_move_resize(dis, c->win, cn * cw + USELESSGAP,
-                        cy + rn * ch / rows + USELESSGAP,
-                        cw - 2 * BORDER_WIDTH - USELESSGAP,
-                        ch / rows - 2 * BORDER_WIDTH - USELESSGAP);
+        xcb_move_resize(dis, c->win, cn * cw + gaps,
+                        cy + rn * ch / rows + gaps,
+                        cw - 2 * BORDER_WIDTH - gaps,
+                        ch / rows - 2 * BORDER_WIDTH - gaps);
         if (++rn >= rows) {
             rn = 0;
             cn++;
@@ -1030,8 +1042,8 @@ void monocle(int hh, int cy)
 {
     for (client *c = head; c; c = c->next)
         if (!ISFFT(c))
-            xcb_move_resize(dis, c->win, USELESSGAP, cy + USELESSGAP,
-                            ww - 2 * USELESSGAP, hh - 2 * USELESSGAP);
+            xcb_move_resize(dis, c->win, gaps, cy + gaps,
+                            ww - 2 * gaps, hh - 2 * gaps);
 }
 
 /* move the current client, to current->next
@@ -1377,6 +1389,7 @@ int setup(int default_screen)
 
     ww = screen->width_in_pixels;
     wh = screen->height_in_pixels - PANEL_HEIGHT;
+    gaps = USELESSGAP;
     for (unsigned int i = 0; i < DESKTOPS; i++)
         save_desktop(i);
 
@@ -1509,9 +1522,9 @@ void stack(int hh, int cy)
     if (!c) {
         return;
     } else if (!n) {
-        xcb_move_resize(dis, c->win, USELESSGAP, cy + USELESSGAP,
-                        ww - 2 * (BORDER_WIDTH + USELESSGAP),
-                        hh - 2 * (BORDER_WIDTH + USELESSGAP));
+        xcb_move_resize(dis, c->win, gaps, cy + gaps,
+                        ww - 2 * (BORDER_WIDTH + gaps),
+                        hh - 2 * (BORDER_WIDTH + gaps));
         return;
     } else if (n > 1) {
         d = (z - growth) % n + growth; z = (z - growth) / n;
@@ -1519,28 +1532,26 @@ void stack(int hh, int cy)
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
     if (b)
-        xcb_move_resize(dis, c->win, USELESSGAP, cy + USELESSGAP,
-                        ww - 2 * (BORDER_WIDTH + USELESSGAP),
-                        ma - 2 * (BORDER_WIDTH + USELESSGAP));
+        xcb_move_resize(dis, c->win, gaps, cy + gaps,
+                        ww - 2 * (BORDER_WIDTH + gaps),
+                        ma - 2 * (BORDER_WIDTH + gaps));
     else
-        xcb_move_resize(dis, c->win, USELESSGAP, cy + USELESSGAP,
-                        ma - 2 * (BORDER_WIDTH + USELESSGAP),
-                        hh - 2 * (BORDER_WIDTH + USELESSGAP));
+        xcb_move_resize(dis, c->win, gaps, cy + gaps,
+                        ma - 2 * (BORDER_WIDTH + gaps),
+                        hh - 2 * (BORDER_WIDTH + gaps));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
     for (c = c->next; c && ISFFT(c); c = c->next);
     int cx = b ? 0 : ma,
-        cw = (b ? hh : ww) - 2 * BORDER_WIDTH - ma - USELESSGAP,
-        ch = z - 2 * BORDER_WIDTH - USELESSGAP;
+        cw = (b ? hh : ww) - 2 * BORDER_WIDTH - ma - gaps,
+        ch = z - 2 * BORDER_WIDTH - gaps;
     if (b)
-        xcb_move_resize(dis, c->win, cx += USELESSGAP, cy += ma,
-                        ch - USELESSGAP + d, cw);
+        xcb_move_resize(dis, c->win, cx += gaps, cy += ma, ch - gaps + d, cw);
     else
-        xcb_move_resize(dis, c->win, cx, cy += USELESSGAP, cw,
-                        ch - USELESSGAP + d);
+        xcb_move_resize(dis, c->win, cx, cy += gaps, cw, ch - gaps + d);
 
     /* tile the rest of the non-floating, non-fullscreen stack windows */
-    for (b ? (cx += z + d - USELESSGAP) : (cy += z + d - USELESSGAP),
+    for (b ? (cx += z + d - gaps) : (cy += z + d - gaps),
          c = c->next; c; c = c->next) {
         if (ISFFT(c))
             continue;
