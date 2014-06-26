@@ -664,13 +664,17 @@ void enternotify(xcb_generic_event_t *e)
  * half the space of the space taken by the last window
  */
 void fibonacci(int h, int y) {
-    int j = -1, cw = ww - BORDER_WIDTH, ch = h - BORDER_WIDTH, x = 0;
+    int j = -1, x = 0,
+        cw = ww - BORDER_WIDTH - USELESSGAP,
+        ch = h - BORDER_WIDTH - USELESSGAP;
     for (client *n, *c = head; c; c = c->next) {
         if (ISFFT(c)) continue; else j++;
         for (n = c->next; n; n = n->next) if (!ISFFT(n)) break;
         if (n) (j&1) ? (ch /= 2) : (cw /= 2);
         if (j) (j&1) ? (x += cw) : (y += ch);
-        xcb_move_resize(dis, c->win, x, y, cw - BORDER_WIDTH, ch - BORDER_WIDTH);
+        xcb_move_resize(dis, c->win, x + USELESSGAP, y + USELESSGAP,
+                        cw - BORDER_WIDTH - USELESSGAP,
+                        ch - BORDER_WIDTH - USELESSGAP);
     }
 }
 
