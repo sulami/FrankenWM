@@ -1,7 +1,7 @@
 # Makefile for monsterwm - see LICENSE for license and copyright information
 
-VERSION = xcb-cloudef-git
-WMNAME  = monsterwm
+VERSION = master
+WMNAME  = frankenwm
 
 PREFIX ?= /usr/local
 BINDIR ?= ${PREFIX}/bin

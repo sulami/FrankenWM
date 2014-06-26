@@ -48,7 +48,7 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED", "_NET_WM_STATE_FULLSCREEN",
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
 #define ISFFT(c)        (c->isfullscrn || c->isfloating || c->istransient)
-#define USAGE           "usage: monsterwm [-h] [-v]"
+#define USAGE           "usage: frankenwm [-h] [-v]"
 
 enum { RESIZE, MOVE };
 enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, MODES };
@@ -335,7 +335,7 @@ static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count)
             DEBUGP("%s : %d\n", names[i], reply->atom);
             atoms[i] = reply->atom; free(reply);
         } else {
-            puts("WARN: monsterwm failed to register %s atom.\nThings might not work right.");
+            puts("WARN: frankenwm failed to register %s atom.\nThings might not work right.");
         }
     }
 }
@@ -1706,7 +1706,7 @@ int main(int argc, char *argv[])
     if (argc == 2 && argv[1][0] == '-') switch (argv[1][1]) {
         case 'v':
             errx(EXIT_SUCCESS,
-            "%s - by c00kiemon5ter >:3 omnomnomnom (extra cookies by Cloudef)",
+            "%s - by sulami (thanks to c00kiemon5ter and Cloudef)",
             VERSION);
         case 'h':
             errx(EXIT_SUCCESS, "%s", USAGE);

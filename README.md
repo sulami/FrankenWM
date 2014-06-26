@@ -1,20 +1,33 @@
-monsterwm-xcb
-=============
+FrankenWM
+=========
 
-This is the sulami-edition of [cloudef's monsterwm-xcb][xcb], which is the
-xcb-version of [c00kiemon5ter's monsterwm][orig]. I mainly added patches from
-the original to the xcb version.
+*"monsterwm's bastard child"*
 
-  [xcb]: https://github.com/cloudef/monsterwm-xcb
-  [orig]: https://github.com/c00kiemon5ter/monsterwm
+or
+
+*"not the wm your desktop needs, but the one it deserves"*
+
+FrankenWM is a dynamic tiling WM (comparable to dwm or Awesome), featuring the
+v-stack, b-stack, grid, fibonacci and monocle layouts out of the box. If you
+want to, you can add gaps between the windows as well.
+
+It was once based on monsterwm but has undergone many greater changes including
+adding pieces from other WMs (hence the name) and porting all sorts of stuff
+from Xlib to XCB. Many of the original monsterwm patches have been ported as
+well.
+
+All settings must be set at compile time by editing `config.h` and it does not
+feature a status bar (but supports leaving preconfigured space for one). Refer
+to the [monsterwm docs][mwmdocs] for examples on how to parse the output to use
+it in a status bar.
+
+  [mwmdocs]: https://github.com/c00kiemon5ter/monsterwm#panel---statusbar
 
 Installation
 ------------
 
-You need xcb and xcb-utils then,
-copy `config.def.h` as `config.h`
-and edit to suit your needs.
-Build and install.
+You need xcb and xcb-utils then, copy `config.def.h` as `config.h` and edit to
+suit your needs.  Build and install.
 
     $ cp config.def.h config.h
     $ $EDITOR config.h
@@ -24,63 +37,38 @@ Build and install.
 The packages in Arch Linux needed for example would be
 `libxcb` `xcb-util` `xcb-util-wm` `xcb-util-keysym`
 
-Patches
--------
-
-Monsterwm uses git branches as dwm-style patches. Just git merge a branch from
-this repo into master and you should be golden. Patches are only tested on
-their own, multiple patches might collide, please contact me when this happens.
-
-The branches are (so far):
-
-  * master - the base to build on
-  * centerwindow - place the current window floating in the center of the
-  screen
-  * fibonacci - tiling mode which halfs the windows going down the stack (think
-  bspwm)
-  * initlayouts - uses one desktop per layout by default
-  * monocleborders - adds borders in monocle mode
-  * showhide - show/hide all windows on all desktops (still somewhat buggy)
-  * uselessgaps - add gaps around the windows to see you wallpaper
-  * cleanup - my personal code cleanup branch, do not use it. behaves like
-  master but does not take patches (yet)
-
 Bugs
 ----
 
-Fill bugs only on monsterwm-xcb, when you are sure the bug doesn't occur on
-[monsterwm][].
+Bugs can be reported here: [FrankenWM issues][bug]
 
-[monsterwm-xcb-sulami issues][monsterwm-xcb-sulami-bug] |
- [monsterwm-xcb issues][monsterwm-xcb-bug] | [monsterwm issues][monsterwm-bug]
-
-   [monsterwm-xcb-sulami-bug]: https://github.com/sulami/monsterwm-xcb-sulami/issues
-   [monsterwm-bug]: https://github.com/c00kiemon5ter/monsterwm/issues
-   [monsterwm-xcb-bug]: https://github.com/Cloudef/monsterwm-xcb/issues
-
-
-License
--------
-
-Licensed under MIT/X Consortium License, see [LICENSE][law] file for more
-copyright and license information.
-
-   [law]: https://raw.github.com/Cloudef/monsterwm-xcb/master/LICENSE
+   [bug]: https://github.com/sulami/FrankenWM/issues
 
 Thanks
 ------
 
-[the suckless team][skls] for [dwm][],
-[moetunes][] for [dminiwm][],
-[pyknite][] for [catwm][],
-[c00kiemonster][cookiemonster] for [monsterwm][]
+Parts of FrankenWM come from:
 
-  [skls]: http://suckless.org/
-  [dwm]:  http://dwm.suckless.org/
-  [moetunes]: https://github.com/moetunes
-  [dminiwm]:  https://bbs.archlinux.org/viewtopic.php?id=126463
-  [pyknite]: https://github.com/pyknite
-  [catwm]:   https://github.com/pyknite/catwm
-  [monsterwm]: https://github.com/c00kiemon5ter/monsterwm
+ * [c00kiemonster's][cookiemonster] [monsterwm][monsterwm]
+ * [cloudef's][cloudef] [monsterwm-xcb][monsterwm-xcb]
+ * [venam's][venam] [2bwm][twobwm]
+
+
+Inspiration from:
+
+ * [suckless'][suckless] [dwm][dwm]
+ * [baskerville's][baskerville] [bspwm][bspwm]
+
+
   [cookiemonster]: https://github.com/c00kiemon5ter
+  [monsterwm]: https://github.com/c00kiemon5ter/monsterwm
+  [cloudef]: https://github.com/cloudef
+  [monsterwm-xcb]: https://github.com/cloudef/monsterwm-xcb
+  [venam]: https://github.com/venam
+  [twobwm]: https://github.com/venam/2bwm
+
+  [suckless]: http://suckless.org/
+  [dwm]:  http://dwm.suckless.org/
+  [baskerville]: https://github.com/baskerville
+  [bspwm]: https://github.com/baskerville/bspwm
 
