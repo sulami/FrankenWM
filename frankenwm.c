@@ -403,11 +403,11 @@ client *addwindow(xcb_window_t w)
 /* change the size of the useless gaps on the fly and re-tile */
 void adjust_gaps(const Arg *arg)
 {
-    if (arg->i == +1)
-        gaps++;
-    else if (arg->i == -1)
-        if (gaps)
-            gaps--;
+    if (arg->i > 0)
+        gaps += arg->i;
+    else
+        if (gaps >= -arg->i)
+            gaps += arg->i;
     tile();
 }
 
