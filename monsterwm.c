@@ -1316,8 +1316,11 @@ void setfullscreen(client *c, bool fullscrn)
                             fullscrn, data);
     if ((c->isfullscrn = fullscrn))
         xcb_move_resize(dis, c->win, 0, 0, ww, wh + PANEL_HEIGHT);
-    xcb_border_width(dis, c->win, (!head->next || c->isfullscrn
-                || (mode == MONOCLE && !ISFFT(c))) ? 0:BORDER_WIDTH);
+    xcb_border_width(dis, c->win,
+                     (!head->next ||
+                      c->isfullscrn ||
+                      ( mode == MONOCLE && !ISFFT(c)  && !MONOCLE_BORDERS)
+                     ) ? 0:BORDER_WIDTH);
     update_current(c);
 }
 
@@ -1612,7 +1615,8 @@ void unmapnotify(xcb_generic_event_t *e)
     desktopinfo();
 }
 
-/* highlight borders and set active window and input focus
+/*
+ * highlight borders and set active window and input focus
  * if given current is NULL then delete the active window property
  *
  * stack order by client properties, top to bottom:
@@ -1626,7 +1630,9 @@ void unmapnotify(xcb_generic_event_t *e)
  * a window should have borders in any case, except if
  *  - the window is the only window on screen
  *  - the window is fullscreen
- *  - the mode is MONOCLE and the window is not floating or transient */
+ *  - the mode is MONOCLE and the window is not floating or transient
+ *    and MONOCLE_BORDERS is set to false
+ */
 void update_current(client *c)
 {
     if (!head) {
@@ -1652,8 +1658,11 @@ void update_current(client *c)
     for (fl += !ISFFT(current) ? 1 : 0, c = head; c; c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
-        xcb_border_width(dis, c->win, (!head->next || c->isfullscrn
-                    || (mode == MONOCLE && !ISFFT(c))) ? 0 : BORDER_WIDTH);
+        xcb_border_width(dis, c->win,
+                         (!head->next ||
+                          c->isfullscrn ||
+                          ( mode == MONOCLE && !ISFFT(c) && !MONOCLE_BORDERS)
+                          ) ? 0 : BORDER_WIDTH);
         /*
          * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
          *     XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC,

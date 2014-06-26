@@ -26,6 +26,7 @@
 #define DEFAULT_DESKTOP 0         /* the desktop to focus on exec */
 #define MINWSZ          50        /* minimum window size in pixels */
 #define USELESSGAP      8         /* the size of the useless gap in pixels */
+#define MONOCLE_BORDERS False     /* display borders in monocle mode */
 
 /* open applications to specified desktop with specified mode.
  * if desktop is negative, then current is assumed */
