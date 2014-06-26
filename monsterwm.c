@@ -173,6 +173,7 @@ static void resize_master(const Arg *arg);
 static void resize_stack(const Arg *arg);
 static void rotate(const Arg *arg);
 static void rotate_filled(const Arg *arg);
+static void showhide();
 static void run(void);
 static void save_desktop(int i);
 static void select_desktop(int i);
@@ -192,7 +193,7 @@ static client *wintoclient(xcb_window_t w);
 #include "config.h"
 
 /* variables */
-static bool running = true, showpanel = SHOW_PANEL;
+static bool running = true, showpanel = SHOW_PANEL, show = true;
 static int previous_desktop, current_desktop, retval;
 static int wh, ww, mode = DEFAULT_MODE, master_size, growth;
 static unsigned int numlockmask, win_unfocus, win_focus;
@@ -435,9 +436,9 @@ void change_desktop(const Arg *arg)
         return;
     previous_desktop = current_desktop;
     select_desktop(arg->i);
-    if (current)
+    if (current && show)
         xcb_map_window(dis, current->win);
-    for (client *c = head; c; c = c->next)
+    for (client *c = head; c && show; c = c->next)
         xcb_map_window(dis, c->win);
     select_desktop(previous_desktop);
     for (client *c = head; c; c = c->next)
@@ -903,6 +904,8 @@ void maprequest(xcb_generic_event_t *e)
         select_desktop(cd);
     if (cd == newdsk) {
         tile();
+        if (show)
+            xcb_map_window(dis, c->win);
         xcb_map_window(dis, c->win);
         update_current(c);
     } else if (follow) {
@@ -1559,6 +1562,16 @@ void tile(void)
         return; /* nothing to arange */
     layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT),
                                 (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
+}
+
+/*
+ * toggle visibility of all windows in all desktops
+ */
+void showhide(void) {
+    if ((show = !show))
+        tile();
+    else for (client *c = desktops[current_desktop].head; c; c = c->next)
+        xcb_move(dis, c->win, -2 * ww, 0);
 }
 
 /* toggle visibility state of the panel */

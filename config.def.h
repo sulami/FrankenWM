@@ -50,6 +50,7 @@ static const char *menucmd[] = { "dmenu_run", NULL };
 static key keys[] = {
     /* modifier          key            function           argument */
     {  MOD1,             XK_b,          togglepanel,       {NULL}},
+    {  MOD4,             XK_s,          showhide,          {NULL}},
     {  MOD1,             XK_BackSpace,  focusurgent,       {NULL}},
     {  MOD1|SHIFT,       XK_c,          killclient,        {NULL}},
     {  MOD4,             XK_c,          centerwindow,      {NULL}},
