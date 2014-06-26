@@ -1053,7 +1053,27 @@ int setup(int default_screen) {
     events[XCB_PROPERTY_NOTIFY]     = propertynotify;
     events[XCB_UNMAP_NOTIFY]        = unmapnotify;
 
+    /* grab existing windows */
+    xcb_get_window_attributes_reply_t *attr;
+    xcb_query_tree_reply_t *reply = xcb_query_tree_reply(dis,
+                                        xcb_query_tree(dis, screen->root), 0);
+    if (reply) {
+        int len = xcb_query_tree_children_length(reply);
+        xcb_window_t *children = xcb_query_tree_children(reply);
+        for (int i = 0; i < len; i++) {
+            attr = xcb_get_window_attributes_reply(dis,
+                            xcb_get_window_attributes(dis, children[i]), NULL);
+            if (!attr) continue;
+            /* ignore windows in override redirect mode as we won't see them */
+            if (!attr->override_redirect &&
+                attr->map_state == XCB_MAP_STATE_VIEWABLE) {
+                addwindow(children[i]);
+            }
+        }
+    }
+
     change_desktop(&(Arg){.i = DEFAULT_DESKTOP});
+    switch_mode(&(Arg){.i = DEFAULT_MODE});
     return 0;
 }
 
