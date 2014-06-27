@@ -1,28 +1,30 @@
-.TH MONSTERWM 1 monsterwm-xcb
+.TH FRANKENWM 1 frankenwm
 .SH NAME
-monsterwm \- minimal and dynamic tiling window manager
+FrankenWM \- monsterwm's bastard child
 .SH SYNOPSIS
-.B monsterwm
+.B frankenwm
 .RB [ \-v ]
 .SH DESCRIPTION
-monsterwm is a very minimal, lightweight, tiny but monsterous, dynamic tiling
-window manager with floating mode support. It will try to stay as small as
-possible.
+FrankenWM is a dynamic tiling window manager pieced together from other WMs and
+based on XCB.
 .P
 .SH MODES
 It allows the "normal" method of tiling window managers (with the new window as
 the master) and with the new window opened at the bottom of the stack
 .P
-.B monsterwm
+.B frankenwm
 three other modes available:
 .I Bottom stack
 where the slave clients (the smaller "windows") are tiled beneath the master.
 .I Grid mode
 where, once there are four or more cliens in a workspace, they are all
 equally divided into a grid.
+.I Fibonacci mode
+where the clients share 50% of the space of the client above them in the stack,
+somewhat comparable to bspwm.
 .I Monocle mode
-or fullscreen mode, where the clients take up the entire workspace, and additional
-clients are hidden behind the current shown window.
+or fullscreen mode, where the clients take up the entire workspace, and
+additional clients are hidden behind the current shown window.
 .I Floating mode
 where, windows can move and be resized freely in the screen space. Windows
 retain their floating status until the user switches to a tiling mode.
@@ -32,11 +34,11 @@ retain their floating status until the user switches to a tiling mode.
 prints version information to standard output, then exits.
 .SH USAGE
 .SS Status bar
-monsterwm does not provide a status bar. Consistent with the Unix philosophy,
-monsterwm provides information to the status bar or panel of choice via text.
+frankenwm does not provide a status bar. Consistent with the Unix philosophy,
+frankenwm provides information to the status bar or panel of choice via text.
 .SS Keyboard and mouse commands
 All of
-.I monsterwm's
+.I frankenwm's
 commands can be customized by editing
 .I config.h
 and recompiling. The default key-bindings include:
@@ -64,6 +66,9 @@ Sets bottom stack layout
 .B Mod1\-Shift\-g
 Sets grid layout
 .TP
+.B Mod1\-Shift\-i
+Sets fibonacci layout
+.TP
 .B Mod1\-j
 Focus next window.
 .TP
@@ -82,12 +87,19 @@ Increase master area size.
 .B Mod1\-h
 Decrease master area size.
 .TP
+.B Mod4\-p
+Decrease useless gap size.
+.TP
+.B Mod4\-o
+Increase useless gap size.
+.TP
 .B Mod1\-Return
 Swaps the focused window to/from master area (tiled layouts only).
 .TP
 .B Mod1\-Backspace
-Focus the window that raised an urgent hint. If no such window in current desktop,
-search other desktops, and focus the desktop and window that raised the urgent hint.
+Focus the window that raised an urgent hint. If no such window in current
+desktop, search other desktops, and focus the desktop and window that raised
+the urgent hint.
 .TP
 .B Mod1\-Shift\-{Left,Right}
 Rotate to the next/previous desktop
@@ -95,15 +107,21 @@ Rotate to the next/previous desktop
 .B Mod1\-Shift\-c
 Close focused window.
 .TP
+.B Mod4\-s
+Toggle display of windows on all desktops
+.TP
+.B Mod4\-c
+Center the focussed window in floating mode on the screen
+.TP
 .B Mod1\-Tab
 Toggles to the last selected desktop.
 .TP
 .B Mod1\-Shift\-q
-Quit monsterwm.
+Quit frankenwm.
 .TP
 .B Mod1\-F{1..n}
 Move to the nth workspace. By default,
-.I monsterwm
+.I frankenwm
 is configured with four workspaces.
 .TP
 .B Mod1\-Shift\-F{1..n}
@@ -120,7 +138,7 @@ will bring up
 .I dmenu
 .TP
 .SH CUSTOMIZATION
-.I monsterwm
+.I frankenwm
 is customized by copying
 .I config.def.h
 to
@@ -129,9 +147,11 @@ and (re)compiling the source code.
 .SH SEE ALSO
 .BR dmenu (1)
 .SH BUGS
-.I monsterwm
+.I frankenwm
 is under active development. Please report all bugs to the author.
 .SH AUTHOR
-Ivan Kanakarakis <ivan.kanak at gmail.com>
+Robin Schroer <sulamiification at gmail.com>
+.SH BASED ON WORKS OF
 Jari Vetoniemi <cloudef at cloudef.eu>
+Ivan Kanakarakis <ivan.kanak at gmail.com>
 
