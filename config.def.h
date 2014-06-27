@@ -26,6 +26,7 @@
 #define DEFAULT_DESKTOP 0         /* the desktop to focus on exec */
 #define MINWSZ          50        /* minimum window size in pixels */
 #define USELESSGAP      8         /* the size of the useless gap in pixels */
+#define GLOBALGAPS      True      /* use the same gap size on all desktops */
 #define MONOCLE_BORDERS False     /* display borders in monocle mode */
 
 /*

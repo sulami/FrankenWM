@@ -119,7 +119,7 @@ typedef struct client {
  * showpanel    - the visibility status of the panel
  */
 typedef struct {
-    int mode, growth;
+    int mode, growth, gaps;
     float master_size;
     client *head, *current, *prevfocus;
     bool showpanel;
@@ -408,6 +408,12 @@ void adjust_gaps(const Arg *arg)
     else
         if (gaps >= -arg->i)
             gaps += arg->i;
+
+    if (GLOBALGAPS)
+        for (int i = 0; i < DESKTOPS; i++)
+            desktops[i].gaps = gaps;
+    else
+        desktops[current_desktop].gaps = gaps;
     tile();
 }
 
@@ -1331,6 +1337,7 @@ void select_desktop(int i)
     current         = desktops[i].current;
     showpanel       = desktops[i].showpanel;
     prevfocus       = desktops[i].prevfocus;
+    gaps            = desktops[i].gaps;
     current_desktop = i;
 }
 
@@ -1404,8 +1411,10 @@ int setup(int default_screen)
     ww = screen->width_in_pixels;
     wh = screen->height_in_pixels - PANEL_HEIGHT;
     gaps = USELESSGAP;
-    for (unsigned int i = 0; i < DESKTOPS; i++)
+    for (unsigned int i = 0; i < DESKTOPS; i++) {
+        desktops[i].gaps = USELESSGAP;
         save_desktop(i);
+    }
 
     win_focus   = getcolor(FOCUS);
     win_unfocus = getcolor(UNFOCUS);
