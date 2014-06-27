@@ -152,6 +152,7 @@ static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
 static void enternotify(xcb_generic_event_t *e);
 static void fibonacci(int h, int y);
+static void focusmaster();
 static void focusurgent();
 static unsigned int getcolor(char *color);
 static void grabbuttons(client *c);
@@ -708,6 +709,17 @@ void fibonacci(int h, int y)
 
         xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
     }
+}
+
+/*
+ * focus the (first) master window
+ */
+void focusmaster()
+{
+    if (!head)
+        return;
+
+    update_current(head);
 }
 
 /* find and focus the client which received

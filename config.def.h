@@ -68,6 +68,8 @@ static key keys[] = {
     /* select windows */
     {  MOD4,             XK_j,          next_win,          {NULL}},
     {  MOD4,             XK_k,          prev_win,          {NULL}},
+    /* focus the (first) master window */
+    {  MOD4,             XK_w,          focusmaster,       {NULL}},
     /* select urgent window */
     {  MOD4,             XK_BackSpace,  focusurgent,       {NULL}},
 
