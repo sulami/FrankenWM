@@ -680,6 +680,7 @@ void fibonacci(int h, int y)
     int j = -1, x = gaps,
         cw = ww - 2 * gaps - 2 * BORDER_WIDTH,
         ch = h - 2 * gaps - 2 * BORDER_WIDTH;
+
     for (client *n, *c = head; c; c = c->next) {
         if (ISFFT(c))
             continue;
@@ -688,11 +689,18 @@ void fibonacci(int h, int y)
         for (n = c->next; n; n = n->next)
             if (!ISFFT(n))
                 break;
+
+        /* not the last window in stack ? -> half the client size */
         if (n)
-            (j & 1) ? (ch = ch / 2 - BORDER_WIDTH) : (cw = cw / 2 - BORDER_WIDTH);
+            (j & 1) ? (ch = ch / 2 - BORDER_WIDTH - gaps / 2) :
+                      (cw = cw / 2 - BORDER_WIDTH - gaps / 2);
+
+        /* not the master client ? -> shift client right or down*/
         if (j)
-            (j & 1) ? (x = x + cw + 2 * BORDER_WIDTH) : (y = y + ch + 2 * BORDER_WIDTH);
-        xcb_move_resize(dis, c->win, x, y, cw, ch);
+            (j & 1) ? (x = x + cw + 2 * BORDER_WIDTH + gaps) :
+                      (y = y + ch + 2 * BORDER_WIDTH + gaps);
+
+        xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
     }
 }
 
