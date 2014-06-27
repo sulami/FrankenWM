@@ -712,14 +712,18 @@ void fibonacci(int h, int y)
 }
 
 /*
- * focus the (first) master window
+ * focus the (first) master window, or switch back to the slave previously
+ * focussed, toggling between them
  */
 void focusmaster()
 {
     if (!head)
         return;
 
-    update_current(head);
+    if (current == head)
+        update_current(prevfocus);
+    else
+        update_current(head);
 }
 
 /* find and focus the client which received
