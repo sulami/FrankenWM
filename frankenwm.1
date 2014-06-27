@@ -43,99 +43,101 @@ commands can be customized by editing
 .I config.h
 and recompiling. The default key-bindings include:
 .TP
-.B Mod1\-Shift\-Return
+.B Mod4\-Shift\-Return
 Start
 .BR xterm (1).
 .TP
-.B Mod4\-v
+.B Mod4\-r
 Start
 .BR dmenu (1).
 .TP
-.B Mod1\-b
+.B Mod4\-Control\-b
 Toggles the panel on and off.
 .TP
-.B Mod1\-Shift\-t
+.B Mod4\-Shift\-t
 Sets tiled layout.
 .TP
-.B Mod1\-Shift\-m
+.B Mod4\-Shift\-m
 Sets monocle layout.
 .TP
-.B Mod1\-Shift\-b
+.B Mod4\-Shift\-b
 Sets bottom stack layout
 .TP
-.B Mod1\-Shift\-g
+.B Mod4\-Shift\-g
 Sets grid layout
 .TP
-.B Mod1\-Shift\-i
+.B Mod4\-Shift\-f
 Sets fibonacci layout
 .TP
-.B Mod1\-j
+.B Mod4\-j
 Focus next window.
 .TP
-.B Mod1\-k
+.B Mod4\-k
 Focus previous window.
 .TP
-.B Mod1\-Shift\-j
+.B Mod4\-Shift\-j
 Move the focussed window down the stack
 .TP
-.B Mod1\-Shift\-k
+.B Mod4\-Shift\-k
 Move the focussed window up the stack
 .TP
-.B Mod1\-l
+.B Mod4\-l
 Increase master area size.
 .TP
-.B Mod1\-h
+.B Mod4\-h
 Decrease master area size.
 .TP
-.B Mod4\-p
+.B Mod4\-Shift\-p
 Decrease useless gap size.
 .TP
-.B Mod4\-o
+.B Mod4\-Shift\-o
 Increase useless gap size.
 .TP
-.B Mod1\-Return
+.B Mod4\-Return
 Swaps the focused window to/from master area (tiled layouts only).
 .TP
-.B Mod1\-Backspace
+.B Mod4\-Backspace
 Focus the window that raised an urgent hint. If no such window in current
 desktop, search other desktops, and focus the desktop and window that raised
 the urgent hint.
 .TP
-.B Mod1\-Shift\-{Left,Right}
+.B Mod4\-Shift\-{h,l}
 Rotate to the next/previous desktop
 .TP
-.B Mod1\-Shift\-c
+.B Mod4\-Control\-{h,l}
+Rotate to the next/previous desktop with windows
+.TP
+.B Mod4\-Shift\-c
 Close focused window.
 .TP
-.B Mod4\-s
+.B Mod4\-Shift\-s
 Toggle display of windows on all desktops
 .TP
 .B Mod4\-c
 Center the focussed window in floating mode on the screen
 .TP
-.B Mod1\-Tab
+.B Mod4\-Tab
 Toggles to the last selected desktop.
 .TP
-.B Mod1\-Shift\-q
-Quit frankenwm.
+.B Mod4\-Shift\-{o,p}
+Resize the useless gaps between the windows
 .TP
-.B Mod1\-F{1..n}
+.B Mod4\-Shift\-{r,q}
+Quit frankenwm, return {0,1}
+.TP
+.B Mod4\-{1..n}
 Move to the nth workspace. By default,
 .I frankenwm
 is configured with four workspaces.
 .TP
-.B Mod1\-Shift\-F{1..n}
+.B Mod4\-Shift\-F{1..n}
 Move focused window to nth workspace.
 .TP
-.B Mod1\-Button1
+.B Mod4\-Button1
 Dragging the mouse will move the selected window
 .TP
-.B Mod1\-Button3
-Dragging the mouse will resize the selected window
-.TP
 .B Mod4\-Button3
-will bring up
-.I dmenu
+Dragging the mouse will resize the selected window
 .TP
 .SH CUSTOMIZATION
 .I frankenwm
