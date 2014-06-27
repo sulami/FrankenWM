@@ -675,18 +675,24 @@ void enternotify(xcb_generic_event_t *e)
  * arrange windows in such a way that every new window shares
  * half the space of the space taken by the last window
  */
-void fibonacci(int h, int y) {
-    int j = -1, x = 0,
-        cw = ww - BORDER_WIDTH - gaps,
-        ch = h - BORDER_WIDTH - gaps;
+void fibonacci(int h, int y)
+{
+    int j = -1, x = gaps,
+        cw = ww - 2 * gaps - 2 * BORDER_WIDTH,
+        ch = h - 2 * gaps - 2 * BORDER_WIDTH;
     for (client *n, *c = head; c; c = c->next) {
-        if (ISFFT(c)) continue; else j++;
-        for (n = c->next; n; n = n->next) if (!ISFFT(n)) break;
-        if (n) (j&1) ? (ch /= 2) : (cw /= 2);
-        if (j) (j&1) ? (x += cw) : (y += ch);
-        xcb_move_resize(dis, c->win, x + gaps, y + gaps,
-                        cw - BORDER_WIDTH - gaps,
-                        ch - BORDER_WIDTH - gaps);
+        if (ISFFT(c))
+            continue;
+        else
+            j++;
+        for (n = c->next; n; n = n->next)
+            if (!ISFFT(n))
+                break;
+        if (n)
+            (j & 1) ? (ch = ch / 2 - BORDER_WIDTH) : (cw = cw / 2 - BORDER_WIDTH);
+        if (j)
+            (j & 1) ? (x = x + cw + 2 * BORDER_WIDTH) : (y = y + ch + 2 * BORDER_WIDTH);
+        xcb_move_resize(dis, c->win, x, y, cw, ch);
     }
 }
 
