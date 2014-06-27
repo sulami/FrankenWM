@@ -973,7 +973,6 @@ void maprequest(xcb_generic_event_t *e)
         tile();
         if (show)
             xcb_map_window(dis, c->win);
-        xcb_map_window(dis, c->win);
         update_current(c);
     } else if (follow) {
         change_desktop(&(Arg){.i = newdsk});
@@ -1618,6 +1617,8 @@ void swap_master()
 /* switch the tiling mode and reset all floating windows */
 void switch_mode(const Arg *arg)
 {
+    if (!show)
+        showhide();
     if (mode == arg->i)
         for (client *c = head; c; c = c->next)
             c->isfloating = False;
@@ -1640,10 +1641,15 @@ void tile(void)
  * toggle visibility of all windows in all desktops
  */
 void showhide(void) {
-    if ((show = !show))
+    if ((show = !show)) {
         tile();
-    else for (client *c = desktops[current_desktop].head; c; c = c->next)
-        xcb_move(dis, c->win, -2 * ww, 0);
+        if (show)
+            for (client *c = desktops[current_desktop].head; c; c = c->next)
+                xcb_map_window(dis, c->win);
+    } else {
+        for (client *c = desktops[current_desktop].head; c; c = c->next)
+            xcb_move(dis, c->win, -2 * ww, 0);
+    }
 }
 
 /* toggle visibility state of the panel */
