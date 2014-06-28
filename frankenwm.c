@@ -761,8 +761,12 @@ void float_y(const Arg *arg)
  */
 void focusmaster()
 {
-    if (!head)
+    if (!head || !current || (current == head && !head->next))
         return;
+
+    /* fix for glitchy toggle behaviour between head and head->next */
+    if (current == head->next)
+        prevfocus = current;
 
     if (current == head)
         update_current(prevfocus);
