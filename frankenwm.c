@@ -1566,11 +1566,13 @@ int setup(int default_screen)
         for (int i = 0; i < len; i++) {
             attr = xcb_get_window_attributes_reply(dis,
                             xcb_get_window_attributes(dis, children[i]), NULL);
-            if (!attr) continue;
+            if (!attr)
+                continue;
             /* ignore windows in override redirect mode as we won't see them */
             if (!attr->override_redirect &&
                 attr->map_state == XCB_MAP_STATE_VIEWABLE) {
                 addwindow(children[i]);
+                grabbuttons(wintoclient(children[i]));
             }
         }
     }
