@@ -1870,8 +1870,8 @@ int main(int argc, char *argv[])
     if (xcb_connection_has_error((dis = xcb_connect(NULL, &default_screen))))
         errx(EXIT_FAILURE, "error: cannot open display\n");
     if (setup(default_screen) != -1) {
-      desktopinfo(); /* zero out every desktop on (re)start */
-      run();
+        desktopinfo(); /* zero out every desktop on (re)start */
+        run();
     }
     cleanup();
     xcb_disconnect(dis);
