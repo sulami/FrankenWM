@@ -152,6 +152,8 @@ static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
 static void enternotify(xcb_generic_event_t *e);
 static void fibonacci(int h, int y);
+static void float_x(const Arg *arg);
+static void float_y(const Arg *arg);
 static void focusmaster();
 static void focusurgent();
 static unsigned int getcolor(char *color);
@@ -174,6 +176,8 @@ static void quit(const Arg *arg);
 static void removeclient(client *c);
 static void resize_master(const Arg *arg);
 static void resize_stack(const Arg *arg);
+static void resize_x(const Arg *arg);
+static void resize_y(const Arg *arg);
 static void rotate(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void showhide();
@@ -709,6 +713,46 @@ void fibonacci(int h, int y)
 
         xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
     }
+}
+
+/*
+ * handles x-movement of floating windows
+ */
+void float_x(const Arg *arg)
+{
+    xcb_get_geometry_reply_t *r;
+
+    if (!arg->i || !current)
+        return;
+
+    if (!current->isfloating) {
+        current->isfloating = True;
+        tile();
+    }
+
+    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    r->x += arg->i;
+    xcb_move(dis, current->win, r->x, r->y);
+}
+
+/*
+ * handles y-movement of floating windows
+ */
+void float_y(const Arg *arg)
+{
+    xcb_get_geometry_reply_t *r;
+
+    if (!arg->i || !current)
+        return;
+
+    if (!current->isfloating) {
+        current->isfloating = True;
+        tile();
+    }
+
+    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    r->y += arg->i;
+    xcb_move(dis, current->win, r->x, r->y);
 }
 
 /*
@@ -1281,6 +1325,54 @@ void resize_stack(const Arg *arg)
 {
     growth += arg->i;
     tile();
+}
+
+/*
+ * resize floating windows in x-dimension (and float them if not already)
+ */
+void resize_x(const Arg *arg)
+{
+    xcb_get_geometry_reply_t *r;
+
+    if (!arg->i || !current)
+        return;
+
+    if (!current->isfloating) {
+        current->isfloating = True;
+        tile();
+    }
+
+    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+
+    if (r->width + arg->i < MINWSZ || r->width + arg->i <= 0)
+        return;
+
+    r->width += arg->i;
+    xcb_move_resize(dis, current->win, r->x, r->y, r->width, r->height);
+}
+
+/*
+ * resize floating windows in y-dimension (and float them if not already)
+ */
+void resize_y(const Arg *arg)
+{
+    xcb_get_geometry_reply_t *r;
+
+    if (!arg->i || !current)
+        return;
+
+    if (!current->isfloating) {
+        current->isfloating = True;
+        tile();
+    }
+
+    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+
+    if (r->height + arg->i < MINWSZ || r->height + arg->i <= 0)
+        return;
+
+    r->height += arg->i;
+    xcb_move_resize(dis, current->win, r->x, r->y, r->width, r->height);
 }
 
 /* jump and focus the next or previous desktop */

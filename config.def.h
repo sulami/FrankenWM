@@ -60,7 +60,8 @@ static const char *menucmd[] = { "dmenu_run", NULL };
 /*
  * EDIT THIS: shortcuts
  * By default, all shortcuts use only Mod4 (+ Shift/Control), but you can use
- * Mod1 as well if you like to, I just prefer not to.
+ * Mod1 as well if you like to, I just prefer not to. (Update: handling
+ * floating windows makes more sense when using Mod1 as well, so there's that)
  */
 static key keys[] = {
     /* modifier          key            function           argument */
@@ -82,6 +83,17 @@ static key keys[] = {
     {  MOD4,             XK_c,          centerwindow,      {NULL}},
     /* show/hide all windows on all desktops */
     {  MOD4|SHIFT,       XK_s,          showhide,          {NULL}},
+
+    /* move floating windows */
+    {  MOD4|MOD1,        XK_j,          float_y,           {.i = +10}},
+    {  MOD4|MOD1,        XK_k,          float_y,           {.i = -10}},
+    {  MOD4|MOD1,        XK_h,          float_x,           {.i = -10}},
+    {  MOD4|MOD1,        XK_l,          float_x,           {.i = +10}},
+    /* resize floating windows */
+    {  MOD4|MOD1|CONTROL,XK_j,          resize_y,          {.i = +10}},
+    {  MOD4|MOD1|CONTROL,XK_k,          resize_y,          {.i = -10}},
+    {  MOD4|MOD1|CONTROL,XK_h,          resize_x,          {.i = -10}},
+    {  MOD4|MOD1|CONTROL,XK_l,          resize_x,          {.i = +10}},
 
     /* mode selection */
     {  MOD4|SHIFT,       XK_t,          switch_mode,       {.i = TILE}},
