@@ -1685,14 +1685,10 @@ void stack(int hh, int cy)
                         ww - 2 * (BORDER_WIDTH + gaps),
                         ma - 2 * (BORDER_WIDTH + gaps));
     else
-        if (stackinvert)
-            xcb_move_resize(dis, c->win, ww - ma + gaps, cy + gaps,
-                            ma - 2 * (BORDER_WIDTH + gaps),
-                            hh - 2 * (BORDER_WIDTH + gaps));
-        else
-            xcb_move_resize(dis, c->win, gaps, cy + gaps,
-                            ma - 2 * (BORDER_WIDTH + gaps),
-                            hh - 2 * (BORDER_WIDTH + gaps));
+        xcb_move_resize(dis, c->win, stackinvert ? (ww - ma + gaps) : gaps,
+                        cy + gaps,
+                        ma - 2 * (BORDER_WIDTH + gaps),
+                        hh - 2 * (BORDER_WIDTH + gaps));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
     for (c = c->next; c && ISFFT(c); c = c->next);
