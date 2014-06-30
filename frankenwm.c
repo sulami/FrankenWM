@@ -15,8 +15,6 @@
 #include <xcb/xcb_icccm.h>
 #include <xcb/xcb_keysyms.h>
 
-/* TODO: Reduce SLOC */
-
 /* set this to 1 to enable debug prints */
 #if 0
 #  define DEBUG(x)      puts(x);
@@ -1898,4 +1896,5 @@ int main(int argc, char *argv[])
     return retval;
 }
 
-/* vim: set ts=4 sw=4 :*/
+/* vim: set ts=4 sw=4 expandtab :*/
+
