@@ -982,8 +982,9 @@ void maprequest(xcb_generic_event_t *e)
             if (strstr(ch.class_name, rules[i].class) ||
                 strstr(ch.instance_name, rules[i].class)) {
                 follow = rules[i].follow;
-                newdsk = (rules[i].desktop < 0) ? current_desktop
-                                                : rules[i].desktop;
+                newdsk = (rules[i].desktop < 0 ||
+                          rules[i].desktop >= DESKTOPS) ? current_desktop
+                                                        : rules[i].desktop;
                 floating = rules[i].floating;
                 break;
             }

@@ -32,9 +32,9 @@
 
 /*
  * EDIT THIS: applicaton specific rules
- * open applications to specified desktop with specified mode.
- * if desktop is negative, then current is assumed
- * sadly, this can not be empty (for now), so enter something non-existent if
+ * Open applications to specified desktop with specified mode.
+ * If desktop is negative, then current is assumed. Desktops are 0-indexed.
+ * Sadly, this can not be empty (for now), so enter something non-existent if
  * you do not wish to use this functionality
  */
 static const AppRule rules[] = { \
