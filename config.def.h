@@ -28,6 +28,7 @@
 #define USELESSGAP      8         /* the size of the useless gap in pixels */
 #define GLOBALGAPS      True      /* use the same gap size on all desktops */
 #define MONOCLE_BORDERS False     /* display borders in monocle mode */
+#define STACKINVERT     False     /* v-stack stacks left by default */
 
 /*
  * EDIT THIS: applicaton specific rules
@@ -101,6 +102,8 @@ static key keys[] = {
     {  MOD4|SHIFT,       XK_b,          switch_mode,       {.i = BSTACK}},
     {  MOD4|SHIFT,       XK_g,          switch_mode,       {.i = GRID}},
     {  MOD4|SHIFT,       XK_f,          switch_mode,       {.i = FIBONACCI}},
+    /* toggles v-stack between left- and right-stacking */
+    {  MOD4|SHIFT,       XK_i,          invertstack,       {NULL}},
 
     /* spawn terminal, dmenu, w/e you want to */
     {  MOD4|SHIFT,       XK_Return,     spawn,             {.com = termcmd}},

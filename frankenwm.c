@@ -122,7 +122,7 @@ typedef struct {
     int mode, growth, gaps;
     float master_size;
     client *head, *current, *prevfocus;
-    bool showpanel;
+    bool showpanel, stackinvert;
 } desktop;
 
 /* define behavior of certain applications
@@ -160,6 +160,7 @@ static unsigned int getcolor(char *color);
 static void grabbuttons(client *c);
 static void grabkeys(void);
 static void grid(int h, int y);
+static void invertstack();
 static void keypress(xcb_generic_event_t *e);
 static void killclient();
 static void last_desktop();
@@ -200,7 +201,8 @@ static client *wintoclient(xcb_window_t w);
 #include "config.h"
 
 /* variables */
-static bool running = true, showpanel = SHOW_PANEL, show = true;
+static bool running = true, showpanel = SHOW_PANEL, show = true,
+            stackinvert = STACKINVERT;
 static int previous_desktop, current_desktop, retval;
 static int wh, ww, mode = DEFAULT_MODE, master_size, growth, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus;
@@ -893,6 +895,14 @@ void grid(int hh, int cy)
     }
 }
 
+/* invert v-stack left-right */
+void invertstack()
+{
+    if ((stackinvert = !stackinvert))
+        desktops[current_desktop].stackinvert = stackinvert;
+    tile();
+}
+
 /* on the press of a key check to see if there's a binded function to call */
 void keypress(xcb_generic_event_t *e)
 {
@@ -1433,6 +1443,8 @@ void save_desktop(int i)
     desktops[i].current     = current;
     desktops[i].showpanel   = showpanel;
     desktops[i].prevfocus   = prevfocus;
+    desktops[i].gaps        = gaps;
+    desktops[i].stackinvert = stackinvert;
 }
 
 /* set the specified desktop's properties */
@@ -1449,6 +1461,7 @@ void select_desktop(int i)
     showpanel       = desktops[i].showpanel;
     prevfocus       = desktops[i].prevfocus;
     gaps            = desktops[i].gaps;
+    stackinvert     = desktops[i].stackinvert;
     current_desktop = i;
 }
 
@@ -1672,13 +1685,18 @@ void stack(int hh, int cy)
                         ww - 2 * (BORDER_WIDTH + gaps),
                         ma - 2 * (BORDER_WIDTH + gaps));
     else
-        xcb_move_resize(dis, c->win, gaps, cy + gaps,
-                        ma - 2 * (BORDER_WIDTH + gaps),
-                        hh - 2 * (BORDER_WIDTH + gaps));
+        if (stackinvert)
+            xcb_move_resize(dis, c->win, ww - ma + gaps, cy + gaps,
+                            ma - 2 * (BORDER_WIDTH + gaps),
+                            hh - 2 * (BORDER_WIDTH + gaps));
+        else
+            xcb_move_resize(dis, c->win, gaps, cy + gaps,
+                            ma - 2 * (BORDER_WIDTH + gaps),
+                            hh - 2 * (BORDER_WIDTH + gaps));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
     for (c = c->next; c && ISFFT(c); c = c->next);
-    int cx = b ? 0 : ma,
+    int cx = b ? 0 : (stackinvert ? gaps : ma),
         cw = (b ? hh : ww) - 2 * BORDER_WIDTH - ma - gaps,
         ch = z - 2 * BORDER_WIDTH - gaps;
     if (b)
