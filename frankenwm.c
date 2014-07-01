@@ -14,6 +14,7 @@
 #include <xcb/xcb_atom.h>
 #include <xcb/xcb_icccm.h>
 #include <xcb/xcb_keysyms.h>
+#include <xcb/xcb_ewmh.h>
 
 /* set this to 1 to enable debug prints */
 #if 0
@@ -39,8 +40,25 @@
 #define XCB_RESIZE      XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT
 
 static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW" };
-static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED", "_NET_WM_STATE_FULLSCREEN",
-                                  "_NET_WM_STATE", "_NET_ACTIVE_WINDOW" };
+enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_COUNT };
+
+static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
+                                  "_NET_WM_STATE_FULLSCREEN",
+                                  "_NET_WM_STATE",
+                                  "_NET_ACTIVE_WINDOW",
+                                  "_NET_NUMBER_OF_DESKTOPS",
+                                  "_NET_CURRENT_DESKTOP",
+                                  "_NET_DESKTOP_GEOMETRY",
+                                  "_NET_SHOWING_DESKTOP" };
+enum { NET_SUPPORTED,
+       NET_FULLSCREEN,
+       NET_WM_STATE,
+       NET_ACTIVE,
+       NET_NUMBER_DESKTOPS,
+       NET_CURRENT_DESKTOP,
+       NET_DESKTOP_GEOMETRY,
+       NET_SHOWING_DESKTOP,
+       NET_COUNT };
 
 #define LENGTH(x) (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
@@ -50,8 +68,6 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED", "_NET_WM_STATE_FULLSCREEN",
 
 enum { RESIZE, MOVE };
 enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, MODES };
-enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_COUNT };
-enum { NET_SUPPORTED, NET_FULLSCREEN, NET_WM_STATE, NET_ACTIVE, NET_COUNT };
 
 /* argument structure to be passed to function by config.h
  * com  - a command to run
@@ -201,13 +217,14 @@ static client *wintoclient(xcb_window_t w);
 /* variables */
 static bool running = true, showpanel = SHOW_PANEL, show = true,
             stackinvert = STACKINVERT;
-static int previous_desktop, current_desktop, retval;
+static int default_screen, previous_desktop, current_desktop, retval;
 static int wh, ww, mode = DEFAULT_MODE, master_size, growth, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
 static client *head, *prevfocus, *current;
 
+static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
 static desktop desktops[DESKTOPS];
 
@@ -475,6 +492,7 @@ void change_desktop(const Arg *arg)
     tile();
     update_current(current);
     desktopinfo();
+    xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
 }
 
 /*
@@ -510,6 +528,9 @@ void cleanup(void)
     }
     xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root,
                         XCB_CURRENT_TIME);
+    xcb_ewmh_connection_wipe(ewmh);
+    if (ewmh)
+        free(ewmh);
 }
 
 /* move a client to another desktop
@@ -648,6 +669,7 @@ void desktopinfo(void)
     fflush(stdout);
     if (cd != d - 1)
         select_desktop(cd);
+
 }
 
 /* a destroy notification is received when a window is being closed
@@ -1526,6 +1548,8 @@ int setup_keyboard(void)
  */
 int setup(int default_screen)
 {
+    xcb_intern_atom_cookie_t *cookie;
+
     sigchld();
     screen = xcb_screen_of_display(dis, default_screen);
     if (!screen)
@@ -1553,6 +1577,29 @@ int setup(int default_screen)
     /* check if another wm is running */
     if (xcb_checkotherwm())
         err(EXIT_FAILURE, "error: other wm is running\n");
+
+    /* initialize EWMH */
+    ewmh = calloc(1, sizeof(xcb_ewmh_connection_t));
+    if (!ewmh)
+        err(EXIT_FAILURE, "error: failed to set ewmh atoms\n");
+    cookie = xcb_ewmh_init_atoms(dis, ewmh);
+    xcb_ewmh_init_atoms_replies(ewmh, cookie, (void *)0);
+
+    /* set EWMH atoms */
+    xcb_atom_t net_atoms[] = { ewmh->_NET_SUPPORTED,
+                               ewmh->_NET_WM_STATE_FULLSCREEN,
+                               ewmh->_NET_WM_STATE,
+                               ewmh->_NET_ACTIVE_WINDOW,
+                               ewmh->_NET_NUMBER_OF_DESKTOPS,
+                               ewmh->_NET_CURRENT_DESKTOP,
+                               ewmh->_NET_DESKTOP_GEOMETRY,
+                               ewmh->_NET_SHOWING_DESKTOP };
+
+    xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
+    xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
+    xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
+    xcb_ewmh_set_desktop_geometry(ewmh, default_screen, ww, wh);
+    xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                         netatoms[NET_SUPPORTED], XCB_ATOM_ATOM, 32, NET_COUNT,
@@ -1761,9 +1808,11 @@ void showhide(void) {
         if (show)
             for (client *c = desktops[current_desktop].head; c; c = c->next)
                 xcb_map_window(dis, c->win);
+        xcb_ewmh_set_showing_desktop(ewmh, default_screen, 1);
     } else {
         for (client *c = desktops[current_desktop].head; c; c = c->next)
             xcb_move(dis, c->win, -2 * ww, 0);
+        xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
     }
 }
 
@@ -1873,7 +1922,6 @@ client *wintoclient(xcb_window_t w)
 
 int main(int argc, char *argv[])
 {
-    int default_screen;
     if (argc == 2 && argv[1][0] == '-') switch (argv[1][1]) {
         case 'v':
             errx(EXIT_SUCCESS,
