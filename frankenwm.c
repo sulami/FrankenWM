@@ -989,6 +989,7 @@ void maprequest(xcb_generic_event_t *e)
     xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
     xcb_ewmh_get_atoms_reply_t         type;
+    bool atom_success = false;
 
     xcb_get_attributes(windows, attr, 1);
     if (!attr[0] || attr[0]->override_redirect)
@@ -1004,6 +1005,7 @@ void maprequest(xcb_generic_event_t *e)
                 return;
             }
         }
+        atom_success = true;
     }
 
     DEBUG("xcb: map request");
@@ -1026,15 +1028,17 @@ void maprequest(xcb_generic_event_t *e)
             }
         xcb_icccm_get_wm_class_reply_wipe(&ch);
     }
-    for (unsigned int i = 0; i < type.atoms_len; i++) {
-        xcb_atom_t a = type.atoms[i];
-        if (a == ewmh->_NET_WM_WINDOW_TYPE_SPLASH
-            || a == ewmh->_NET_WM_WINDOW_TYPE_DIALOG
-            || a == ewmh->_NET_WM_WINDOW_TYPE_DROPDOWN_MENU
-            || a == ewmh->_NET_WM_WINDOW_TYPE_POPUP_MENU
-            || a == ewmh->_NET_WM_WINDOW_TYPE_TOOLTIP
-            || a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
-            floating = true;
+    if (atom_success) {
+        for (unsigned int i = 0; i < type.atoms_len; i++) {
+            xcb_atom_t a = type.atoms[i];
+            if (a == ewmh->_NET_WM_WINDOW_TYPE_SPLASH
+                || a == ewmh->_NET_WM_WINDOW_TYPE_DIALOG
+                || a == ewmh->_NET_WM_WINDOW_TYPE_DROPDOWN_MENU
+                || a == ewmh->_NET_WM_WINDOW_TYPE_POPUP_MENU
+                || a == ewmh->_NET_WM_WINDOW_TYPE_TOOLTIP
+                || a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
+                floating = true;
+            }
         }
     }
 
