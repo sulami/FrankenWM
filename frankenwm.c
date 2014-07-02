@@ -49,15 +49,17 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_NUMBER_OF_DESKTOPS",
                                   "_NET_CURRENT_DESKTOP",
                                   "_NET_DESKTOP_GEOMETRY",
-                                  "_NET_SHOWING_DESKTOP" };
+                                  "_NET_SHOWING_DESKTOP",
+                                  "_NET_WM_WINDOW_TYPE" };
 enum { NET_SUPPORTED,
        NET_FULLSCREEN,
        NET_WM_STATE,
        NET_ACTIVE,
-       NET_NUMBER_DESKTOPS,
+       NET_NUMBER_OF_DESKTOPS,
        NET_CURRENT_DESKTOP,
        NET_DESKTOP_GEOMETRY,
        NET_SHOWING_DESKTOP,
+       NET_WM_WINDOW_TYPE,
        NET_COUNT };
 
 #define LENGTH(x) (sizeof(x)/sizeof(*x))
@@ -986,12 +988,24 @@ void maprequest(xcb_generic_event_t *e)
     xcb_icccm_get_wm_class_reply_t     ch;
     xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
+    xcb_ewmh_get_atoms_reply_t         type;
 
     xcb_get_attributes(windows, attr, 1);
     if (!attr[0] || attr[0]->override_redirect)
         return;
     if (wintoclient(ev->window))
         return;
+    if (xcb_ewmh_get_wm_window_type_reply(ewmh,
+            xcb_ewmh_get_wm_window_type(ewmh, ev->window), &type, NULL) == 1) {
+        for (unsigned int i = 0; i < type.atoms_len; i++) {
+            xcb_atom_t a = type.atoms[i];
+            if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLBAR
+                || a == ewmh->_NET_WM_WINDOW_TYPE_DOCK) {
+                return;
+            }
+        }
+    }
+
     DEBUG("xcb: map request");
 
     bool follow = false, floating = false;
@@ -1011,6 +1025,17 @@ void maprequest(xcb_generic_event_t *e)
                 break;
             }
         xcb_icccm_get_wm_class_reply_wipe(&ch);
+    }
+    for (unsigned int i = 0; i < type.atoms_len; i++) {
+        xcb_atom_t a = type.atoms[i];
+        if (a == ewmh->_NET_WM_WINDOW_TYPE_SPLASH
+            || a == ewmh->_NET_WM_WINDOW_TYPE_DIALOG
+            || a == ewmh->_NET_WM_WINDOW_TYPE_DROPDOWN_MENU
+            || a == ewmh->_NET_WM_WINDOW_TYPE_POPUP_MENU
+            || a == ewmh->_NET_WM_WINDOW_TYPE_TOOLTIP
+            || a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
+            floating = true;
+        }
     }
 
     /* might be useful in future */
