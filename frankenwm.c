@@ -679,7 +679,7 @@ void desktopinfo(void)
  */
 void destroynotify(xcb_generic_event_t *e)
 {
-    DEBUG("xcb: destoroy notify");
+    DEBUG("xcb: destroy notify");
     xcb_destroy_notify_event_t *ev = (xcb_destroy_notify_event_t *)e;
     client *c = wintoclient(ev->window);
 
