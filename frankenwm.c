@@ -50,6 +50,7 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_CURRENT_DESKTOP",
                                   "_NET_DESKTOP_GEOMETRY",
                                   "_NET_SHOWING_DESKTOP",
+                                  "_NET_CLOSE_WINDOW",
                                   "_NET_WM_WINDOW_TYPE" };
 enum { NET_SUPPORTED,
        NET_FULLSCREEN,
@@ -59,6 +60,7 @@ enum { NET_SUPPORTED,
        NET_CURRENT_DESKTOP,
        NET_DESKTOP_GEOMETRY,
        NET_SHOWING_DESKTOP,
+       NET_CLOSE_WINDOW,
        NET_WM_WINDOW_TYPE,
        NET_COUNT };
 
@@ -566,24 +568,23 @@ void client_to_desktop(const Arg *arg)
     desktopinfo();
 }
 
-/* To change the state of a mapped window, a client MUST
- * send a _NET_WM_STATE client message to the root window
- * message_type must be _NET_WM_STATE
- *   data.l[0] is the action to be taken
- *   data.l[1] is the property to alter three actions:
+/*
+ * Here we take and process client messages. Currently supported messages are:
+ * _NET_WM_STATE
+ * _NET_ACTIVE_WINDOW
+ *
  *   - remove/unset _NET_WM_STATE_REMOVE=0
  *   - add/set _NET_WM_STATE_ADD=1,
  *   - toggle _NET_WM_STATE_TOGGLE=2
- *
- * check if window requested fullscreen or activation */
+ */
 void clientmessage(xcb_generic_event_t *e)
 {
     xcb_client_message_event_t *ev = (xcb_client_message_event_t *)e;
     client *t = NULL, *c = wintoclient(ev->window);
 
-    if (c && ev->type                      == netatoms[NET_WM_STATE]
+    if (c && ev->type == netatoms[NET_WM_STATE]
           && ((unsigned)ev->data.data32[1] == netatoms[NET_FULLSCREEN]
-          ||  (unsigned)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
+           || (unsigned)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
         setfullscreen(c, (ev->data.data32[0] == 1 ||
                          (ev->data.data32[0] == 2 &&
                          !c->isfullscrn)));
