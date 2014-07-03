@@ -571,6 +571,7 @@ void client_to_desktop(const Arg *arg)
 /*
  * Here we take and process client messages. Currently supported messages are:
  * _NET_WM_STATE
+ * _NET_CURRENT_DESKTOP
  * _NET_ACTIVE_WINDOW
  * _NET_CLOSE_WINDOW
  *
@@ -591,6 +592,9 @@ void clientmessage(xcb_generic_event_t *e)
         setfullscreen(c, (ev->data.data32[0] == 1 ||
                          (ev->data.data32[0] == 2 &&
                          !c->isfullscrn)));
+    else if (c && ev->type == netatoms[NET_CURRENT_DESKTOP]
+             && ev->data.data32[0] < DESKTOPS)
+        change_desktop(&(Arg){.i = ev->data.data32[0]});
     else if (c && ev->type == netatoms[NET_CLOSE_WINDOW])
         removeclient(c);
     else if (c && ev->type == netatoms[NET_ACTIVE])
