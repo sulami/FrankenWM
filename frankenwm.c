@@ -572,10 +572,13 @@ void client_to_desktop(const Arg *arg)
  * Here we take and process client messages. Currently supported messages are:
  * _NET_WM_STATE
  * _NET_ACTIVE_WINDOW
+ * _NET_CLOSE_WINDOW
  *
- *   - remove/unset _NET_WM_STATE_REMOVE=0
- *   - add/set _NET_WM_STATE_ADD=1,
- *   - toggle _NET_WM_STATE_TOGGLE=2
+ * data.data32[0] is the action to be taken
+ * data.data32[1] is the property to alter three actions:
+ *   remove/unset _NET_WM_STATE_REMOVE=0
+ *   add/set _NET_WM_STATE_ADD=1
+ *   toggle _NET_WM_STATE_TOGGLE=2
  */
 void clientmessage(xcb_generic_event_t *e)
 {
@@ -588,6 +591,8 @@ void clientmessage(xcb_generic_event_t *e)
         setfullscreen(c, (ev->data.data32[0] == 1 ||
                          (ev->data.data32[0] == 2 &&
                          !c->isfullscrn)));
+    else if (c && ev->type == netatoms[NET_CLOSE_WINDOW])
+        removeclient(c);
     else if (c && ev->type == netatoms[NET_ACTIVE])
         for (t = head; t && t != c; t = t->next);
     if (t)
@@ -1624,7 +1629,9 @@ int setup(int default_screen)
                                ewmh->_NET_NUMBER_OF_DESKTOPS,
                                ewmh->_NET_CURRENT_DESKTOP,
                                ewmh->_NET_DESKTOP_GEOMETRY,
-                               ewmh->_NET_SHOWING_DESKTOP };
+                               ewmh->_NET_SHOWING_DESKTOP,
+                               ewmh->_NET_CLOSE_WINDOW,
+                               ewmh->_NET_WM_WINDOW_TYPE };
 
     xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
     xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
