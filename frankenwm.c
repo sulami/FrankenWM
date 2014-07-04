@@ -1104,6 +1104,9 @@ void maprequest(xcb_generic_event_t *e)
     grabbuttons(c);
 
     desktopinfo();
+
+    if (c->isfloating && AUTOCENTER)
+        centerwindow();
 }
 
 /* grab the pointer and get it's current position
