@@ -49,7 +49,8 @@ static const AppRule rules[] = { \
 /*
  * EDIT THIS: commands
  * Adjust those and add them to the shortcuts below to launch anything you want
- * by pressing a key (combination)
+ * by pressing a key (combination). The last argument should ALWAYS be a null
+ * pointer.
  */
 static const char *termcmd[] = { "xterm",     NULL };
 static const char *menucmd[] = { "dmenu_run", NULL };
