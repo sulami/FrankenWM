@@ -45,6 +45,7 @@ enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_COUNT };
 static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_WM_STATE_FULLSCREEN",
                                   "_NET_WM_STATE",
+                                  "_NET_SUPPORTING_WM_CHECK",
                                   "_NET_ACTIVE_WINDOW",
                                   "_NET_NUMBER_OF_DESKTOPS",
                                   "_NET_CURRENT_DESKTOP",
@@ -57,6 +58,7 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
 enum { NET_SUPPORTED,
        NET_FULLSCREEN,
        NET_WM_STATE,
+       NET_SUPPORTING_WM_CHECK,
        NET_ACTIVE,
        NET_NUMBER_OF_DESKTOPS,
        NET_CURRENT_DESKTOP,
@@ -1636,6 +1638,7 @@ int setup(int default_screen)
     xcb_atom_t net_atoms[] = { ewmh->_NET_SUPPORTED,
                                ewmh->_NET_WM_STATE_FULLSCREEN,
                                ewmh->_NET_WM_STATE,
+                               ewmh->_NET_SUPPORTING_WM_CHECK,
                                ewmh->_NET_ACTIVE_WINDOW,
                                ewmh->_NET_NUMBER_OF_DESKTOPS,
                                ewmh->_NET_CURRENT_DESKTOP,
@@ -1651,6 +1654,7 @@ int setup(int default_screen)
     xcb_ewmh_geometry_t workarea[2] = {{ 0, 0, ww, wh }};
 
     xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
+    xcb_ewmh_set_supporting_wm_check(ewmh, default_screen, screen->root);
     xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
     xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
     xcb_ewmh_set_desktop_geometry(ewmh, default_screen, ww, wh);
