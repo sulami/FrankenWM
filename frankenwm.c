@@ -49,6 +49,7 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_NUMBER_OF_DESKTOPS",
                                   "_NET_CURRENT_DESKTOP",
                                   "_NET_DESKTOP_GEOMETRY",
+                                  "_NET_DESKTOP_VIEWPORT",
                                   "_NET_SHOWING_DESKTOP",
                                   "_NET_CLOSE_WINDOW",
                                   "_NET_WM_WINDOW_TYPE" };
@@ -59,6 +60,7 @@ enum { NET_SUPPORTED,
        NET_NUMBER_OF_DESKTOPS,
        NET_CURRENT_DESKTOP,
        NET_DESKTOP_GEOMETRY,
+       NET_DESKTOP_VIEWPORT,
        NET_SHOWING_DESKTOP,
        NET_CLOSE_WINDOW,
        NET_WM_WINDOW_TYPE,
@@ -1636,14 +1638,18 @@ int setup(int default_screen)
                                ewmh->_NET_NUMBER_OF_DESKTOPS,
                                ewmh->_NET_CURRENT_DESKTOP,
                                ewmh->_NET_DESKTOP_GEOMETRY,
+                               ewmh->_NET_DESKTOP_VIEWPORT,
                                ewmh->_NET_SHOWING_DESKTOP,
                                ewmh->_NET_CLOSE_WINDOW,
                                ewmh->_NET_WM_WINDOW_TYPE };
+
+    xcb_ewmh_coordinates_t viewports[2] = {{ 0, 0 }};
 
     xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
     xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
     xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
     xcb_ewmh_set_desktop_geometry(ewmh, default_screen, ww, wh);
+    xcb_ewmh_set_desktop_viewport(ewmh, default_screen, 1, viewports);
     xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
