@@ -436,9 +436,7 @@ client *addwindow(xcb_window_t w)
 /* change the size of the window borders */
 void adjust_borders(const Arg *arg)
 {
-    if (arg->i > 0)
-        borders += arg->i;
-    else if (borders >= -arg->i)
+    if (arg->i > 0 || borders >= -arg->i)
         borders += arg->i;
     tile();
 }
@@ -446,11 +444,8 @@ void adjust_borders(const Arg *arg)
 /* change the size of the useless gaps on the fly and re-tile */
 void adjust_gaps(const Arg *arg)
 {
-    if (arg->i > 0)
+    if (arg->i > 0 || gaps >= -arg->i)
         gaps += arg->i;
-    else
-        if (gaps >= -arg->i)
-            gaps += arg->i;
 
     if (GLOBALGAPS)
         for (int i = 0; i < DESKTOPS; i++)
