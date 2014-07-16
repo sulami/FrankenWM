@@ -764,10 +764,8 @@ void dualstack(int hh, int cy)
         if (d > 1 && d != l + 1)
             cy += ch / (d <= l ? l : r);
         xcb_move_resize(dis, c->win,
-                        d <= l ? cx : ww - cw - 2 * borders - gaps,
-                        cy,
-                        cw,
-                        ch / (d <= l ? l : r) - 2 * borders);
+                        d <= l ? cx : ww - cw - 2 * borders - gaps, cy,
+                        cw, ch / (d <= l ? l : r) - 2 * borders);
     }
 }
 
