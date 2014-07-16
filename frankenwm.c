@@ -751,7 +751,7 @@ void dualstack(int hh, int cy)
 
     int cx = gaps,
         cw = (ww - ma) / 2 - borders - gaps,
-        ch = z - 2 * borders - 2 * gaps;
+        ch = z - - 2 * gaps;
         cy += gaps;
 
     /* tile the non-floating, non-fullscreen stack windows */
@@ -759,15 +759,15 @@ void dualstack(int hh, int cy)
         for (d = 0, t = head; t != c; t = t->next, d++);
         if (ISFFT(c))
             continue;
-        /* if (d > l) */
-        /*     cy = cb; */
-        /* if (d > 1) */
-        /*     cy += (d <= l ? l : r) * borders; */
+        if (d == l + 1) /* we are on the right stack, reset cy */
+            cy = cb + gaps;
+        if (d > 1 && d != l + 1)
+            cy += ch / (d <= l ? l : r);
         xcb_move_resize(dis, c->win,
                         d <= l ? cx : ww - cw - 2 * borders - gaps,
-                        cy + (d <= l ? d - 1 : d - l - 1) * ch / (d <= l ? l : r),
+                        cy,
                         cw,
-                        ch / (d <= l ? l : r) - borders);
+                        ch / (d <= l ? l : r) - 2 * borders);
     }
 }
 
