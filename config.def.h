@@ -104,6 +104,7 @@ static key keys[] = {
     {  MOD4|SHIFT,       XK_b,          switch_mode,       {.i = BSTACK}},
     {  MOD4|SHIFT,       XK_g,          switch_mode,       {.i = GRID}},
     {  MOD4|SHIFT,       XK_f,          switch_mode,       {.i = FIBONACCI}},
+    {  MOD4|SHIFT,       XK_d,          switch_mode,       {.i = DUALSTACK}},
     /* toggles v-stack between left- and right-stacking */
     {  MOD4|SHIFT,       XK_i,          invertstack,       {NULL}},
 

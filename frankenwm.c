@@ -77,7 +77,7 @@ enum { NET_SUPPORTED,
 #define USAGE           "usage: frankenwm [-h] [-v]"
 
 enum { RESIZE, MOVE };
-enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, MODES };
+enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, DUALSTACK, MODES };
 
 /* argument structure to be passed to function by config.h
  * com  - a command to run
@@ -175,6 +175,7 @@ static void configurerequest(xcb_generic_event_t *e);
 static void deletewindow(xcb_window_t w);
 static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
+static void dualstack(int hh, int cy);
 static void enternotify(xcb_generic_event_t *e);
 static void fibonacci(int h, int y);
 static void float_x(const Arg *arg);
@@ -253,6 +254,7 @@ static void (*layout[MODES])(int h, int y) = {
     [GRID] = grid,
     [MONOCLE] = monocle,
     [FIBONACCI] = fibonacci,
+    [DUALSTACK] = dualstack,
 };
 
 /* get screen of display */
@@ -709,6 +711,55 @@ void destroynotify(xcb_generic_event_t *e)
     if (c)
         removeclient(c);
     desktopinfo();
+}
+
+/* dualstack layout (three-column-layout, tcl in dwm) */
+void dualstack(int hh, int cy)
+{
+    client *c = NULL, *t = NULL;
+    int n = 0, d = 0, z = hh,
+        ma = ww * MASTER_SIZE + master_size;
+
+    /* count stack windows and grab first non-floating, non-fullscreen window */
+    for (t = head; t; t = t->next) {
+        if (!ISFFT(t)) {
+            if (c)
+                ++n;
+            else
+                c = t;
+        }
+    }
+
+    if (!c) {
+        return;
+    } else if (!n) {
+        xcb_move_resize(dis, c->win, gaps, cy + gaps,
+                        ww - 2 * (borders + gaps),
+                        hh - 2 * (borders + gaps));
+        return;
+    } else if (n > 1) {
+        d = (z - growth) % n + growth; z = (z - growth) / n;
+    }
+
+    /* tile the first non-floating, non-fullscreen window to cover the master area */
+    xcb_move_resize(dis, c->win, gaps,
+                    cy + gaps,
+                    ma - 2 * (borders + gaps),
+                    hh - 2 * (borders + gaps));
+
+    /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
+    for (c = c->next; c && ISFFT(c); c = c->next);
+    int cx = ma,
+        cw = ww - 2 * borders - ma - gaps,
+        ch = z - 2 * borders - gaps;
+    xcb_move_resize(dis, c->win, cx, cy += gaps, cw, ch - gaps + d);
+
+    /* tile the rest of the non-floating, non-fullscreen stack windows */
+    for (cy += z + d - gaps, c = c->next; c; c = c->next) {
+        if (ISFFT(c))
+            continue;
+        xcb_move_resize(dis, c->win, cx, cy, cw, ch); cy += z;
+    }
 }
 
 /* when the mouse enters a window's borders
