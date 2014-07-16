@@ -134,8 +134,8 @@ static key keys[] = {
     {  MOD4,             XK_p,          resize_stack,      {.i = +10}},
 
     /* resize the useless gaps between the windows */
-    {  MOD4|SHIFT,       XK_o,          adjust_gaps,       {.i = -1}},
-    {  MOD4|SHIFT,       XK_p,          adjust_gaps,       {.i = +1}},
+    {  MOD4|CONTROL,     XK_o,          adjust_gaps,       {.i = -1}},
+    {  MOD4|CONTROL,     XK_p,          adjust_gaps,       {.i = +1}},
     /* toggle the panel space */
     {  MOD4|CONTROL,     XK_b,          togglepanel,       {NULL}},
 
