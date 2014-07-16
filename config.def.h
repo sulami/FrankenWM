@@ -133,6 +133,9 @@ static key keys[] = {
     {  MOD4,             XK_o,          resize_stack,      {.i = -10}},
     {  MOD4,             XK_p,          resize_stack,      {.i = +10}},
 
+    /* resize the borders */
+    {  MOD4|CONTROL,     XK_u,          adjust_borders,    {.i = -1}},
+    {  MOD4|CONTROL,     XK_i,          adjust_borders,    {.i = +1}},
     /* resize the useless gaps between the windows */
     {  MOD4|CONTROL,     XK_o,          adjust_gaps,       {.i = -1}},
     {  MOD4|CONTROL,     XK_p,          adjust_gaps,       {.i = +1}},
