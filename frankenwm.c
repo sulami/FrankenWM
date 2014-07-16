@@ -437,9 +437,8 @@ void adjust_gaps(const Arg *arg)
 {
     if (arg->i > 0)
         gaps += arg->i;
-    else
-        if (gaps >= -arg->i)
-            gaps += arg->i;
+    else if (gaps >= -arg->i)
+        gaps += arg->i;
 
     if (GLOBALGAPS)
         for (int i = 0; i < DESKTOPS; i++)
