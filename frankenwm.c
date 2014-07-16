@@ -163,6 +163,7 @@ typedef struct {
 
  /* function prototypes sorted alphabetically */
 static client *addwindow(xcb_window_t w);
+static void adjust_borders(const Arg *arg);
 static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
@@ -228,7 +229,7 @@ static client *wintoclient(xcb_window_t w);
 static bool running = true, showpanel = SHOW_PANEL, show = true,
             stackinvert = STACKINVERT;
 static int default_screen, previous_desktop, current_desktop, retval;
-static int wh, ww, mode = DEFAULT_MODE, master_size, growth, gaps;
+static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
@@ -432,6 +433,16 @@ client *addwindow(xcb_window_t w)
     return c;
 }
 
+/* change the size of the window borders */
+void adjust_borders(const Arg *arg)
+{
+    if (arg->i > 0)
+        borders += arg->i;
+    else if (borders >= -arg->i)
+        borders += arg->i;
+    tile();
+}
+
 /* change the size of the useless gaps on the fly and re-tile */
 void adjust_gaps(const Arg *arg)
 {
@@ -630,9 +641,9 @@ void configurerequest(xcb_generic_event_t *e)
         if (ev->value_mask & XCB_CONFIG_WINDOW_Y)
             v[i++] = (ev->y + (showpanel && TOP_PANEL)) ? PANEL_HEIGHT : 0;
         if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
-            v[i++] = (ev->width < ww - BORDER_WIDTH) ? ev->width : ww + BORDER_WIDTH;
+            v[i++] = (ev->width < ww - borders) ? ev->width : ww + borders;
         if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
-            v[i++] = (ev->height < wh - BORDER_WIDTH) ? ev->height : wh + BORDER_WIDTH;
+            v[i++] = (ev->height < wh - borders) ? ev->height : wh + borders;
         if (ev->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
             v[i++] = ev->border_width;
         if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING)
@@ -729,8 +740,8 @@ void enternotify(xcb_generic_event_t *e)
 void fibonacci(int h, int y)
 {
     int j = -1, x = gaps,
-        cw = ww - 2 * gaps - 2 * BORDER_WIDTH,
-        ch = h - 2 * gaps - 2 * BORDER_WIDTH;
+        cw = ww - 2 * gaps - 2 * borders,
+        ch = h - 2 * gaps - 2 * borders;
 
     for (client *n, *c = head; c; c = c->next) {
         if (ISFFT(c))
@@ -743,13 +754,13 @@ void fibonacci(int h, int y)
 
         /* not the last window in stack ? -> half the client size */
         if (n)
-            (j & 1) ? (ch = ch / 2 - BORDER_WIDTH - gaps / 2) :
-                      (cw = cw / 2 - BORDER_WIDTH - gaps / 2);
+            (j & 1) ? (ch = ch / 2 - borders - gaps / 2) :
+                      (cw = cw / 2 - borders - gaps / 2);
 
         /* not the master client ? -> shift client right or down*/
         if (j)
-            (j & 1) ? (x = x + cw + 2 * BORDER_WIDTH + gaps) :
-                      (y = y + ch + 2 * BORDER_WIDTH + gaps);
+            (j & 1) ? (x = x + cw + 2 * borders + gaps) :
+                      (y = y + ch + 2 * borders + gaps);
 
         xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
     }
@@ -924,8 +935,8 @@ void grid(int hh, int cy)
             rows = n / cols + 1;
         xcb_move_resize(dis, c->win, cn * cw + gaps,
                         cy + rn * ch / rows + gaps,
-                        cw - 2 * BORDER_WIDTH - gaps,
-                        ch / rows - 2 * BORDER_WIDTH - gaps);
+                        cw - 2 * borders - gaps,
+                        ch / rows - 2 * borders - gaps);
         if (++rn >= rows) {
             rn = 0;
             cn++;
@@ -1551,7 +1562,7 @@ void setfullscreen(client *c, bool fullscrn)
                      (!head->next ||
                       c->isfullscrn ||
                       ( mode == MONOCLE && !ISFFT(c)  && !MONOCLE_BORDERS)
-                     ) ? 0:BORDER_WIDTH);
+                     ) ? 0:borders);
     update_current(c);
 }
 
@@ -1606,6 +1617,7 @@ int setup(int default_screen)
 
     ww = screen->width_in_pixels;
     wh = screen->height_in_pixels - PANEL_HEIGHT;
+    borders = BORDER_WIDTH;
     gaps = USELESSGAP;
     for (unsigned int i = 0; i < DESKTOPS; i++) {
         desktops[i].gaps = USELESSGAP;
@@ -1779,8 +1791,8 @@ void stack(int hh, int cy)
         return;
     } else if (!n) {
         xcb_move_resize(dis, c->win, gaps, cy + gaps,
-                        ww - 2 * (BORDER_WIDTH + gaps),
-                        hh - 2 * (BORDER_WIDTH + gaps));
+                        ww - 2 * (borders + gaps),
+                        hh - 2 * (borders + gaps));
         return;
     } else if (n > 1) {
         d = (z - growth) % n + growth; z = (z - growth) / n;
@@ -1789,19 +1801,19 @@ void stack(int hh, int cy)
     /* tile the first non-floating, non-fullscreen window to cover the master area */
     if (b)
         xcb_move_resize(dis, c->win, gaps, cy + gaps,
-                        ww - 2 * (BORDER_WIDTH + gaps),
-                        ma - 2 * (BORDER_WIDTH + gaps));
+                        ww - 2 * (borders + gaps),
+                        ma - 2 * (borders + gaps));
     else
         xcb_move_resize(dis, c->win, stackinvert ? (ww - ma + gaps) : gaps,
                         cy + gaps,
-                        ma - 2 * (BORDER_WIDTH + gaps),
-                        hh - 2 * (BORDER_WIDTH + gaps));
+                        ma - 2 * (borders + gaps),
+                        hh - 2 * (borders + gaps));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
     for (c = c->next; c && ISFFT(c); c = c->next);
     int cx = b ? 0 : (stackinvert ? gaps : ma),
-        cw = (b ? hh : ww) - 2 * BORDER_WIDTH - ma - gaps,
-        ch = z - 2 * BORDER_WIDTH - gaps;
+        cw = (b ? hh : ww) - 2 * borders - ma - gaps,
+        ch = z - 2 * borders - gaps;
     if (b)
         xcb_move_resize(dis, c->win, cx += gaps, cy += ma, ch - gaps + d, cw);
     else
@@ -1943,7 +1955,7 @@ void update_current(client *c)
                          (!head->next ||
                           c->isfullscrn ||
                           ( mode == MONOCLE && !ISFFT(c) && !MONOCLE_BORDERS)
-                          ) ? 0 : BORDER_WIDTH);
+                          ) ? 0 : borders);
         /*
          * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
          *     XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC,
