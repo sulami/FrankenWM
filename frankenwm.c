@@ -717,7 +717,7 @@ void destroynotify(xcb_generic_event_t *e)
 void dualstack(int hh, int cy)
 {
     client *c = NULL, *t = NULL;
-    int n = 0, d = 0, z = hh,
+    int n = 0, z = hh, d = 0, l = 0, r = 0, cb = cy,
         ma = ww * MASTER_SIZE + master_size;
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
@@ -730,6 +730,9 @@ void dualstack(int hh, int cy)
         }
     }
 
+    l = (n - 1) / 2 + 1; /* left stack size */
+    r = n - l;          /* right stack size */
+
     if (!c) {
         return;
     } else if (!n) {
@@ -737,28 +740,34 @@ void dualstack(int hh, int cy)
                         ww - 2 * (borders + gaps),
                         hh - 2 * (borders + gaps));
         return;
-    } else if (n > 1) {
-        d = (z - growth) % n + growth; z = (z - growth) / n;
     }
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
-    xcb_move_resize(dis, c->win, gaps,
+    xcb_move_resize(dis, c->win, (ww - ma) / 2 + borders + gaps,
                     cy + gaps,
-                    ma - 2 * (borders + gaps),
+                    n > 1 ? ma - 2 * (borders + gaps) - 2 * borders
+                          : ma + (ww - ma) / 2 - 2 * (borders + gaps) - borders,
                     hh - 2 * (borders + gaps));
 
-    /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
-    for (c = c->next; c && ISFFT(c); c = c->next);
-    int cx = ma,
-        cw = ww - 2 * borders - ma - gaps,
-        ch = z - 2 * borders - gaps;
-    xcb_move_resize(dis, c->win, cx, cy += gaps, cw, ch - gaps + d);
+    int cx = gaps,
+        cw = (ww - ma) / 2 - borders - gaps,
+        ch = z - 2 * borders - 2 * gaps;
+        cy += gaps;
 
-    /* tile the rest of the non-floating, non-fullscreen stack windows */
-    for (cy += z + d - gaps, c = c->next; c; c = c->next) {
+    /* tile the non-floating, non-fullscreen stack windows */
+    for (c = c->next; c; c = c->next) {
+        for (d = 0, t = head; t != c; t = t->next, d++);
         if (ISFFT(c))
             continue;
-        xcb_move_resize(dis, c->win, cx, cy, cw, ch); cy += z;
+        /* if (d > l) */
+        /*     cy = cb; */
+        /* if (d > 1) */
+        /*     cy += (d <= l ? l : r) * borders; */
+        xcb_move_resize(dis, c->win,
+                        d <= l ? cx : ww - cw - 2 * borders - gaps,
+                        cy + (d <= l ? d - 1 : d - l - 1) * ch / (d <= l ? l : r),
+                        cw,
+                        ch / (d <= l ? l : r) - borders);
     }
 }
 
