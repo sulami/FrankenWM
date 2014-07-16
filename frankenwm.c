@@ -439,6 +439,7 @@ void adjust_borders(const Arg *arg)
     if (arg->i > 0 || borders >= -arg->i)
         borders += arg->i;
     tile();
+    update_current(current);
 }
 
 /* change the size of the useless gaps on the fly and re-tile */
