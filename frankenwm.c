@@ -207,12 +207,12 @@ static void resize_x(const Arg *arg);
 static void resize_y(const Arg *arg);
 static void rotate(const Arg *arg);
 static void rotate_filled(const Arg *arg);
-static void showhide();
 static void run(void);
 static void save_desktop(int i);
 static void select_desktop(int i);
 static void setfullscreen(client *c, bool fullscrn);
 static int setup(int default_screen);
+static void showhide();
 static void sigchld();
 static void spawn(const Arg *arg);
 static void stack(int h, int y);
@@ -1774,6 +1774,24 @@ int setup(int default_screen)
     return 0;
 }
 
+/*
+ * toggle visibility of all windows in all desktops
+ */
+void showhide(void)
+{
+    if ((show = !show)) {
+        tile();
+        if (show)
+            for (client *c = desktops[current_desktop].head; c; c = c->next)
+                xcb_map_window(dis, c->win);
+        xcb_ewmh_set_showing_desktop(ewmh, default_screen, 1);
+    } else {
+        for (client *c = desktops[current_desktop].head; c; c = c->next)
+            xcb_move(dis, c->win, -2 * ww, 0);
+        xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
+    }
+}
+
 void sigchld()
 {
     if (signal(SIGCHLD, sigchld) == SIG_ERR)
@@ -1926,24 +1944,6 @@ void tile(void)
         return; /* nothing to arange */
     layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT),
                                 (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
-}
-
-/*
- * toggle visibility of all windows in all desktops
- */
-void showhide(void)
-{
-    if ((show = !show)) {
-        tile();
-        if (show)
-            for (client *c = desktops[current_desktop].head; c; c = c->next)
-                xcb_map_window(dis, c->win);
-        xcb_ewmh_set_showing_desktop(ewmh, default_screen, 1);
-    } else {
-        for (client *c = desktops[current_desktop].head; c; c = c->next)
-            xcb_move(dis, c->win, -2 * ww, 0);
-        xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
-    }
 }
 
 /* toggle visibility state of the panel */
