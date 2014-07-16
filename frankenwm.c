@@ -1870,7 +1870,8 @@ void tile(void)
 /*
  * toggle visibility of all windows in all desktops
  */
-void showhide(void) {
+void showhide(void)
+{
     if ((show = !show)) {
         tile();
         if (show)
