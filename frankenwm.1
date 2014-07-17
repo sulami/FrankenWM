@@ -41,24 +41,15 @@ All of
 .I frankenwm's
 commands can be customized by editing
 .I config.h
-and recompiling. The default key-bindings include:
-.TP
-.B Mod4\-Shift\-Return
-Start
-.BR xterm (1).
-.TP
-.B Mod4\-r
-Start
-.BR dmenu (1).
-.TP
-.B Mod4\-Control\-b
-Toggles the panel on and off.
+and recompiling.
+
+.SH DEFAULT SHORTCUTS
+
+.SS LAYOUTS
+
 .TP
 .B Mod4\-Shift\-t
-Sets tiled layout.
-.TP
-.B Mod4\-Shift\-m
-Sets monocle layout.
+Sets tiled layout
 .TP
 .B Mod4\-Shift\-b
 Sets bottom stack layout
@@ -72,98 +63,115 @@ Sets fibonacci layout
 .B Mod4\-Shift\-d
 Sets dualstack layout
 .TP
+.B Mod4\-Shift\-m
+Sets monocle layout
+
+.SS WINDOW SELECTION
+
+.TP
+.B Mod4\-{j,k}
+Focus next/previous window
+.TP
+.B Mod4\-Shift\-{j,k}
+Move the focussed window down/up the stack
+.TP
+.B Mod4\-Return
+Swaps the focused window to/from master area
+.TP
+.B Mod4\-w
+Toggle between master and previously selected stack window
+.TP
+.B Mod4\-Backspace
+Focus the window that raised an urgent hint. If no such window in current
+desktop, search other desktops, and focus the desktop and window that raised
+the urgent hint
+
+.SS COMMANDS
+
+.TP
+.B Mod4\-Shift\-Return
+Start
+.BR xterm (1)
+.TP
+.B Mod4\-r
+Start
+.BR dmenu (1)
+.TP
+.B Mod4\-Shift\-c
+Close the focused window
+.TP
+.B Mod4\-Shift\-{q}
+Quit frankenwm
+
+.SS SETTINGS
+
+.TP
+.B Mod4\-Control\-{l,h}
+Increase/decrease master area size
+.TP
 .B Mod4\-Shift\-i
 Toggles v-stack between left- and right-stacking
 .TP
-.B Mod4\-j
-Focus next window.
+.B Mod4\-Control\-{o,p}
+Decrease/increase useless gap size
 .TP
-.B Mod4\-k
-Focus previous window.
+.B Mod4\-Control\-{u,i}
+Decrease/increase the borders around windows
 .TP
-.B Mod4\-w
-Select the master window, or the previously focussed slave
+.B Mod4\-Control\-b
+Toggles the panel on and off
 .TP
-.B Mod4\-Shift\-j
-Move the focussed window down the stack
+.B Mod4\-Control\-s
+Toggle display of windows on all desktops
+
+.SS VIRTUAL DESKTOPS
+
 .TP
-.B Mod4\-Shift\-k
-Move the focussed window up the stack
+.B Mod4\-{1..n}
+Select the nth workspace. By default,
+.I frankenwm
+is configured with four workspaces
 .TP
-.B Mod4\-l
-Increase master area size.
+.B Mod4\-Shift\-F{1..n}
+Move the focused window to the nth workspace
 .TP
-.B Mod4\-h
-Decrease master area size.
+.B Mod4\-Shift\-{h,l}
+Switch to the next/previous desktop
+.TP
+.B Mod4\-Control\-{h,l}
+Switch to the next/previous desktop with windows
+.TP
+.B Mod4\-Tab
+Toggles to the last selected desktop
+
+.SS FLOATING WINDOWS
+
+.TP
+.B Mod4\-c
+Center the focussed window in floating mode on the screen
 .TP
 .B Mod4\-Mod1\-{h,j,k,l}
 Move floating windows around
 .TP
 .B Mod4\-Mod1\-Control\-{h,j,k,l}
 Resize floating windows
-.TP
-.B Mod4\-Shift\-p
-Decrease useless gap size.
-.TP
-.B Mod4\-Shift\-o
-Increase useless gap size.
-.TP
-.B Mod4\-Return
-Swaps the focused window to/from master area (tiled layouts only).
-.TP
-.B Mod4\-Backspace
-Focus the window that raised an urgent hint. If no such window in current
-desktop, search other desktops, and focus the desktop and window that raised
-the urgent hint.
-.TP
-.B Mod4\-Shift\-{h,l}
-Rotate to the next/previous desktop
-.TP
-.B Mod4\-Control\-{h,l}
-Rotate to the next/previous desktop with windows
-.TP
-.B Mod4\-Shift\-c
-Close focused window.
-.TP
-.B Mod4\-Shift\-s
-Toggle display of windows on all desktops
-.TP
-.B Mod4\-c
-Center the focussed window in floating mode on the screen
-.TP
-.B Mod4\-Tab
-Toggles to the last selected desktop.
-.TP
-.B Mod4\-Control\-{u,i}
-Resize the borders around windows
-.TP
-.B Mod4\-Control\-{o,p}
-Resize the useless gaps between the windows
-.TP
-.B Mod4\-Shift\-{r,q}
-Quit frankenwm, return {0,1}
-.TP
-.B Mod4\-{1..n}
-Move to the nth workspace. By default,
-.I frankenwm
-is configured with four workspaces.
-.TP
-.B Mod4\-Shift\-F{1..n}
-Move focused window to nth workspace.
+
+.SS MOUSE
+
 .TP
 .B Mod4\-Button1
 Dragging the mouse will move the selected window
 .TP
 .B Mod4\-Button3
 Dragging the mouse will resize the selected window
-.TP
+
 .SH CUSTOMIZATION
 .I frankenwm
 is customized by copying
 .I config.def.h
 to
 .I config.h
-and (re)compiling the source code.
+, customizing it and (re)compiling the source code.
 .SH SEE ALSO
 .BR dmenu (1)
 .SH BUGS
