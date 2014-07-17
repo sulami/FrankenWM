@@ -84,8 +84,10 @@ static key keys[] = {
     {  MOD4,             XK_Return,     swap_master,       {NULL}},
     /* move the current window to the center of the screen, floating */
     {  MOD4,             XK_c,          centerwindow,      {NULL}},
+    /* toggles v-stack between left- and right-stacking */
+    {  MOD4|SHIFT,       XK_i,          invertstack,       {NULL}},
     /* show/hide all windows on all desktops */
-    {  MOD4|SHIFT,       XK_s,          showhide,          {NULL}},
+    {  MOD4|CONTROL,     XK_s,          showhide,          {NULL}},
 
     /* move floating windows */
     {  MOD4|MOD1,        XK_j,          float_y,           {.i = +10}},
@@ -105,8 +107,6 @@ static key keys[] = {
     {  MOD4|SHIFT,       XK_g,          switch_mode,       {.i = GRID}},
     {  MOD4|SHIFT,       XK_f,          switch_mode,       {.i = FIBONACCI}},
     {  MOD4|SHIFT,       XK_d,          switch_mode,       {.i = DUALSTACK}},
-    /* toggles v-stack between left- and right-stacking */
-    {  MOD4|SHIFT,       XK_i,          invertstack,       {NULL}},
 
     /* spawn terminal, dmenu, w/e you want to */
     {  MOD4|SHIFT,       XK_Return,     spawn,             {.com = termcmd}},
@@ -143,8 +143,7 @@ static key keys[] = {
     /* toggle the panel space */
     {  MOD4|CONTROL,     XK_b,          togglepanel,       {NULL}},
 
-    /* exit with different return values */
-    {  MOD4|CONTROL,     XK_r,          quit,              {.i = 0}},
+    /* exit */
     {  MOD4|CONTROL,     XK_q,          quit,              {.i = 1}},
 };
 
