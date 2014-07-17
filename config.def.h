@@ -144,7 +144,7 @@ static key keys[] = {
     {  MOD4|CONTROL,     XK_b,          togglepanel,       {NULL}},
 
     /* exit */
-    {  MOD4|CONTROL,     XK_q,          quit,              {.i = 1}},
+    {  MOD4|CONTROL,     XK_q,          quit,              {.i = 0}},
 };
 
 /* EDIT THIS: mouse-based shortcuts */
