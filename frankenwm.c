@@ -746,7 +746,7 @@ void dualstack(int hh, int cy)
     xcb_move_resize(dis, c->win, (ww - ma) / 2 + borders + gaps,
                     cy + gaps,
                     n > 1 ? ma - 2 * (borders + gaps) - 2 * borders
-                          : ma + (ww - ma) / 2 - 2 * (borders + gaps) - borders,
+                          : ma + (ww - ma) / 2 - 3 * borders - 2 * gaps,
                     hh - 2 * (borders + gaps));
 
     int cx = gaps,
