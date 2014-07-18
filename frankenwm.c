@@ -191,6 +191,7 @@ static void keypress(xcb_generic_event_t *e);
 static void killclient();
 static void last_desktop();
 static void maprequest(xcb_generic_event_t *e);
+static void maximize();
 static void monocle(int h, int y);
 static void move_down();
 static void move_up();
@@ -1178,6 +1179,31 @@ void maprequest(xcb_generic_event_t *e)
 
     if (c->isfloating && AUTOCENTER)
         centerwindow();
+}
+
+/* maximize the current window, or if we are maximized, tile() */
+void maximize()
+{
+    xcb_get_geometry_reply_t *r;
+    int hh, cy;
+
+    hh = wh + (showpanel ? 0 : PANEL_HEIGHT);
+    cy = (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0);
+
+    /* TODO: save floating geo before maximizing to reinstate floating ? */
+    /* if we float, reinstate tiling layout to exit maximize */
+    if (current->isfloating)
+        switch_mode(&(Arg){.i = mode});
+
+    /* check if we are already maximized, using actual window size to check */
+    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    if (r->width == ww - 2 * gaps && r->height == hh - 2 * gaps) {
+        tile();
+        return;
+    }
+
+    xcb_move_resize(dis, current->win, gaps, cy + gaps,
+                    ww - 2 * gaps, hh - 2 * gaps);
 }
 
 /* grab the pointer and get it's current position

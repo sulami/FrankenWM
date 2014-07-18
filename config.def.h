@@ -82,6 +82,8 @@ static key keys[] = {
     {  MOD4|SHIFT,       XK_k,          move_up,           {NULL}},
     /* swap the current window to master */
     {  MOD4,             XK_Return,     swap_master,       {NULL}},
+    /* maximize the current window */
+    {  MOD4,             XK_m,          maximize,          {NULL}},
     /* move the current window to the center of the screen, floating */
     {  MOD4,             XK_c,          centerwindow,      {NULL}},
     /* toggles v-stack between left- and right-stacking */
