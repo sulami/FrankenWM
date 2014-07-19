@@ -10,26 +10,76 @@ based on XCB.
 .P
 .SH MODES
 There are currently seven base layouts:
+.P
 .I Vertical Stack (Tile)
 where the master window fill a large space either left or right and the rest of
 the windows is stacked on the other side,
+
+  ___________        ___________
+ |       | 1 |      | 1 |       |
+ |   M   |___|  or  |___|   M   |
+ |       | 2 |      | 2 |       |
+ |_______|___|      |___|_______|
+
 .I Dualstack
 where the master is in the center and the stack is divided onto both the left
 and right side,
+
+  ___________
+ | 1|     | 3|
+ |__|  M  |__|
+ | 2|     | 4|
+ |__|_____|__|
+
 .I Bottom stack
 where the master is on top and the stack is horizontally below it,
+
+  ___________
+ |           |
+ |     M     |
+ |___________|
+ |__1__|__2__|
+
 .I Grid mode
 where all the windows get sorted in a grid, giving each window roughly the same
 space on the screen,
+
+  ___________
+ |  M  |  2  |
+ |_____|_____|
+ |  1  |  3  |
+ |_____|_____|
+
 .I Fibonacci mode
 where the clients share 50% of the space of the client above them in the stack,
 getting smaller going down the stack,
+
+  ___________
+ |     |  1  |
+ |  M  |_____|
+ |     | 2| 3|
+ |_____|__|__|
+
 .I Monocle mode
 where the clients take up the entire workspace, and additional clients are
 hidden behind the current shown window,
+
+  ___________
+ |           |
+ |     M     |
+ |           |
+ |___________|
+
 .I Floating mode
 where, windows can move and be resized freely in the screen space. Windows
 retain their floating status until the user switches to a tiling mode.
+
+  ___________
+ ||     | 1| |
+ ||  M  |__| |
+ ||_____|    |
+ |___________|
+
 .SH OPTIONS
 .TP
 .B \-v
