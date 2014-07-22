@@ -1,11 +1,8 @@
 FrankenWM
 =========
 
-*"monsterwm's bastard child"*
-
-or
-
-*"not the wm your desktop needs, but the one it deserves"*
+*"monsterwm's bastard child"* or *"not the wm your desktop needs, but the one
+it deserves"*
 
 FrankenWM is a dynamic tiling WM (comparable to dwm or Awesome), featuring the
 v-stack, b-stack, grid, fibonacci, dualstack and monocle layouts out of the
