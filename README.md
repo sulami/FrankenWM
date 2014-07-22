@@ -1,11 +1,8 @@
 FrankenWM
 =========
 
-*"monsterwm's bastard child"*
-
-or
-
-*"not the wm your desktop needs, but the one it deserves"*
+*"monsterwm's bastard child"* or *"not the wm your desktop needs, but the one
+it deserves"*
 
 FrankenWM is a dynamic tiling WM (comparable to dwm or Awesome), featuring the
 v-stack, b-stack, grid, fibonacci, dualstack and monocle layouts out of the
@@ -36,6 +33,24 @@ suit your needs.  Build and install.
 
 The packages in Arch Linux needed for example would be
 `libxcb` `xcb-util` `xcb-util-wm` `xcb-util-keysym`
+
+Configuration
+-------------
+
+Configuration is done by editing `config.h` before compiling FrankenWM. If you
+want an advanced configuration example, you can have a look at [my personal
+config][config].
+
+  [config]: https://github.com/sulami/dotfiles/blob/master/frankenwm.config.h
+
+Usage
+-----
+
+I took the time to write a really nice and pretty manpage (man frankenwm, or
+man ./[frankenwm.1][man] if you want to read it before installing) covering the
+tiling modes and all of the default shortcuts.
+
+  [man]: https://github.com/sulami/frankenwm/blob/master/frankenwm.1
 
 Bugs
 ----
