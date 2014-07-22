@@ -1187,6 +1187,9 @@ void maximize()
     xcb_get_geometry_reply_t *r;
     int hh, cy;
 
+    if (!current)
+        return;
+
     hh = wh + (showpanel ? 0 : PANEL_HEIGHT);
     cy = (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0);
 
