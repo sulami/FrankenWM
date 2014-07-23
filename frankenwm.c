@@ -198,6 +198,7 @@ static void killclient();
 static void last_desktop();
 static void maprequest(xcb_generic_event_t *e);
 static void maximize();
+static void minimize();
 static void monocle(int h, int y);
 static void move_down();
 static void move_up();
@@ -1211,6 +1212,28 @@ void maximize()
 
     xcb_move_resize(dis, current->win, gaps, cy + gaps,
                     ww - 2 * gaps, hh - 2 * gaps);
+}
+
+/* push the current client down the miniq and minimize the window */
+void minimize()
+{
+    filo *tmp, *new;
+
+    if (!current)
+        return;
+
+    tmp = miniq[current_desktop];
+    while (tmp->next)
+        tmp = tmp->next;
+
+    new = malloc(sizeof(filo));
+    if (!new)
+        return;
+
+    new->c = current;
+    tmp->next = new;
+
+    xcb_move(dis, current->win, -2 * ww, 0);
 }
 
 /* grab the pointer and get it's current position
