@@ -73,7 +73,7 @@ enum { NET_SUPPORTED,
 #define LENGTH(x) (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
-#define ISFFT(c)        (c->isfullscrn || c->isfloating || c->istransient)
+#define ISFFTM(c)        (c->isfullscrn || c->isfloating || c->istransient || c->isminimized)
 #define USAGE           "usage: frankenwm [-h] [-v]"
 
 enum { RESIZE, MOVE };
@@ -129,7 +129,7 @@ typedef struct {
  */
 typedef struct client {
     struct client *next;
-    bool isurgent, istransient, isfullscrn, isfloating;
+    bool isurgent, istransient, isfullscrn, isfloating, isminimized;
     xcb_window_t win;
 } client;
 
@@ -148,6 +148,12 @@ typedef struct {
     client *head, *current, *prevfocus;
     bool showpanel, stackinvert;
 } desktop;
+
+/* filo for minimized clients */
+typedef struct filo {
+    client *c;
+    struct filo *next;
+} filo;
 
 /* define behavior of certain applications
  * configured in config.h
@@ -192,6 +198,7 @@ static void killclient();
 static void last_desktop();
 static void maprequest(xcb_generic_event_t *e);
 static void maximize();
+static void minimize();
 static void monocle(int h, int y);
 static void move_down();
 static void move_up();
@@ -206,6 +213,7 @@ static void resize_master(const Arg *arg);
 static void resize_stack(const Arg *arg);
 static void resize_x(const Arg *arg);
 static void resize_y(const Arg *arg);
+static void restore();
 static void rotate(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void run(void);
@@ -240,6 +248,7 @@ static client *head, *prevfocus, *current;
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
 static desktop desktops[DESKTOPS];
+static filo *miniq[DESKTOPS];
 
 /* events array
  * on receival of a new event, call the appropriate function to handle it
@@ -723,7 +732,7 @@ void dualstack(int hh, int cy)
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t = t->next) {
-        if (!ISFFT(t)) {
+        if (!ISFFTM(t)) {
             if (c)
                 ++n;
             else
@@ -758,7 +767,7 @@ void dualstack(int hh, int cy)
     /* tile the non-floating, non-fullscreen stack windows */
     for (c = c->next; c; c = c->next) {
         for (d = 0, t = head; t != c; t = t->next, d++);
-        if (ISFFT(c))
+        if (ISFFTM(c))
             continue;
         if (d == l + 1) /* we are on the right stack, reset cy */
             cy = cb + gaps;
@@ -799,12 +808,12 @@ void fibonacci(int h, int y)
         ch = h - 2 * gaps - 2 * borders;
 
     for (client *n, *c = head; c; c = c->next) {
-        if (ISFFT(c))
+        if (ISFFTM(c))
             continue;
         else
             j++;
         for (n = c->next; n; n = n->next)
-            if (!ISFFT(n))
+            if (!ISFFTM(n))
                 break;
 
         /* not the last window in stack ? -> half the client size */
@@ -970,7 +979,7 @@ void grid(int hh, int cy)
 {
     int n = 0, cols = 0, cn = 0, rn = 0, i = -1;
     for (client *c = head; c; c = c->next)
-        if (!ISFFT(c))
+        if (!ISFFTM(c))
             ++n;
     for (cols = 0; cols <= n / 2; cols++)
         if (cols * cols >= n)
@@ -982,7 +991,7 @@ void grid(int hh, int cy)
         ch = hh - gaps,
         cw = (ww - gaps) / (cols ? cols : 1);
     for (client *c = head; c; c = c->next) {
-        if (ISFFT(c))
+        if (ISFFTM(c))
             continue;
         else
             ++i;
@@ -1209,6 +1218,45 @@ void maximize()
                     ww - 2 * gaps, hh - 2 * gaps);
 }
 
+/* push the current client down the miniq and minimize the window */
+void minimize()
+{
+    filo *tmp, *new;
+
+    if (!current)
+        return;
+
+    tmp = miniq[current_desktop];
+    while (tmp->next)
+        tmp = tmp->next;
+
+    /* we always have have an empty filo at the end of the miniq */
+    new = calloc(1, sizeof(filo));
+    if (!new)
+        return;
+
+    tmp->c = current;
+    tmp->next = new;
+
+    tmp->c->isminimized = true;
+    xcb_move(dis, tmp->c->win, -2 * ww, 0);
+
+    client *t = head;
+    while (t->next) {
+        t = t->next;
+        if (!t->isminimized)
+            break;
+    }
+    if (t)
+        update_current(t);
+
+    /* if needed and possible, swap to a new master */
+    if (current == head && t)
+        swap_master();
+
+    tile();
+}
+
 /* grab the pointer and get it's current position
  * all pointer movement events will be reported until it's ungrabbed
  * until the mouse button has not been released,
@@ -1298,7 +1346,7 @@ void mousemotion(const Arg *arg)
 void monocle(int hh, int cy)
 {
     for (client *c = head; c; c = c->next)
-        if (!ISFFT(c))
+        if (!ISFFTM(c))
             xcb_move_resize(dis, c->win, gaps, cy + gaps,
                             ww - 2 * gaps, hh - 2 * gaps);
 }
@@ -1401,9 +1449,24 @@ void move_up()
  * if the window is the last on stack, focus head */
 void next_win()
 {
+    client *t = current;
+
     if (!current || !head->next)
         return;
-    update_current(current->next ? current->next : head);
+
+    while (1) {
+        if (!t->next)
+            t = head;
+        else
+            t = t->next;
+        if (!t->isminimized)
+            break;
+        if (t == current)
+            break;
+    }
+
+    prevfocus = current;
+    update_current(t);
 }
 
 /* get the previous client from the given
@@ -1421,9 +1484,21 @@ client *prev_client(client *c)
  * if the window is the head, focus the last stack window */
 void prev_win()
 {
+    client *t = current;
+
     if (!current || !head->next)
         return;
-    update_current(prev_client(prevfocus = current));
+
+    while (1) {
+        t = prev_client(t);
+        if (!t->isminimized)
+            break;
+        if (t == current)
+            break;
+    }
+
+    prevfocus = current;
+    update_current(t);
 }
 
 /* property notify is called when one of the window's properties
@@ -1553,6 +1628,29 @@ void resize_y(const Arg *arg)
     xcb_move_resize(dis, current->win, r->x, r->y, r->width, r->height);
 }
 
+/* get the last client from the current miniq and restore it */
+void restore()
+{
+    filo *tmp;
+
+    if (!miniq[current_desktop]->c)
+        return;
+
+    /* find the last occupied filo, before the free one */
+    tmp = miniq[current_desktop];
+    while (tmp->next) {
+        if (!tmp->next->next)
+            break;
+        tmp = tmp->next;
+    }
+
+    free(tmp->next);
+    tmp->next = NULL;
+    tmp->c->isminimized = false;
+    tmp->c = NULL;
+    tile();
+}
+
 /* jump and focus the next or previous desktop */
 void rotate(const Arg *arg)
 {
@@ -1644,7 +1742,7 @@ void setfullscreen(client *c, bool fullscrn)
     xcb_border_width(dis, c->win,
                      (!head->next ||
                       c->isfullscrn ||
-                      ( mode == MONOCLE && !ISFFT(c)  && !MONOCLE_BORDERS)
+                      ( mode == MONOCLE && !ISFFTM(c)  && !MONOCLE_BORDERS)
                      ) ? 0:borders);
     update_current(c);
 }
@@ -1705,6 +1803,9 @@ int setup(int default_screen)
     for (unsigned int i = 0; i < DESKTOPS; i++) {
         desktops[i].gaps = USELESSGAP;
         save_desktop(i);
+        miniq[i] = calloc(1, sizeof(struct filo));
+        if (!miniq[i])
+            err(EXIT_FAILURE, "error: cannot allocate miniq\n");
     }
 
     win_focus   = getcolor(FOCUS);
@@ -1849,7 +1950,7 @@ void stack(int hh, int cy)
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t = t->next) {
-        if (!ISFFT(t)) {
+        if (!ISFFTM(t)) {
             if (c)
                 ++n;
             else
@@ -1911,7 +2012,7 @@ void stack(int hh, int cy)
                         hh - 2 * (borders + gaps));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
-    for (c = c->next; c && ISFFT(c); c = c->next);
+    for (c = c->next; c && ISFFTM(c); c = c->next);
     int cx = b ? 0 : (stackinvert ? gaps : ma),
         cw = (b ? hh : ww) - 2 * borders - ma - gaps,
         ch = z - 2 * borders - gaps;
@@ -1923,7 +2024,7 @@ void stack(int hh, int cy)
     /* tile the rest of the non-floating, non-fullscreen stack windows */
     for (b ? (cx += z + d - gaps) : (cy += z + d - gaps),
          c = c->next; c; c = c->next) {
-        if (ISFFT(c))
+        if (ISFFTM(c))
             continue;
         if (b) {
             xcb_move_resize(dis, c->win, cx, cy, ch, cw); cx += z;
@@ -2025,20 +2126,20 @@ void update_current(client *c)
     /* num of n:all fl:fullscreen ft:floating/transient windows */
     int n = 0, fl = 0, ft = 0;
     for (c = head; c; c = c->next, ++n)
-        if (ISFFT(c)) {
+        if (ISFFTM(c)) {
             fl++;
             if (!c->isfullscrn)
                 ft++;
         }
     xcb_window_t w[n];
     w[(current->isfloating || current->istransient) ? 0 : ft] = current->win;
-    for (fl += !ISFFT(current) ? 1 : 0, c = head; c; c = c->next) {
+    for (fl += !ISFFTM(current) ? 1 : 0, c = head; c; c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
         xcb_border_width(dis, c->win,
                          (!head->next ||
                           c->isfullscrn ||
-                          ( mode == MONOCLE && !ISFFT(c) && !MONOCLE_BORDERS)
+                          ( mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
                           ) ? 0 : borders);
         /*
          * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
@@ -2047,7 +2148,7 @@ void update_current(client *c)
          *     XCB_BUTTON_MASK_ANY);
          */
         if (c != current)
-            w[c->isfullscrn ? --fl : ISFFT(c) ? --ft : --n] = c->win;
+            w[c->isfullscrn ? --fl : ISFFTM(c) ? --ft : --n] = c->win;
     }
 
     /* restack */
