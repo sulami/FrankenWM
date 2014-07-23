@@ -149,6 +149,12 @@ typedef struct {
     bool showpanel, stackinvert;
 } desktop;
 
+/* filo for minimized clients */
+typedef struct filo {
+    client *c;
+    struct filo *next;
+} filo;
+
 /* define behavior of certain applications
  * configured in config.h
  * class    - the class or name of the instance
@@ -240,6 +246,7 @@ static client *head, *prevfocus, *current;
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
 static desktop desktops[DESKTOPS];
+static filo *miniq[DESKTOPS];
 
 /* events array
  * on receival of a new event, call the appropriate function to handle it
@@ -1702,6 +1709,9 @@ int setup(int default_screen)
     for (unsigned int i = 0; i < DESKTOPS; i++) {
         desktops[i].gaps = USELESSGAP;
         save_desktop(i);
+        miniq[i] = malloc(sizeof(struct filo));
+        if (!miniq[i])
+            err(EXIT_FAILURE, "error: cannot allocate miniq\n");
     }
 
     win_focus   = getcolor(FOCUS);
