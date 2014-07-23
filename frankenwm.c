@@ -1446,9 +1446,23 @@ void move_up()
  * if the window is the last on stack, focus head */
 void next_win()
 {
+    client *t = current;
+
     if (!current || !head->next)
         return;
-    update_current(current->next ? current->next : head);
+
+    while (1) {
+        if (!t->next)
+            t = head;
+        else
+            t = t->next;
+        if (!t->isminimized)
+            break;
+        if (t == current)
+            break;
+    }
+
+    update_current(t);
 }
 
 /* get the previous client from the given
