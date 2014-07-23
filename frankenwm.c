@@ -1227,7 +1227,7 @@ void minimize()
         tmp = tmp->next;
 
     /* we always have have an empty filo at the end of the miniq */
-    new = malloc(sizeof(filo));
+    new = calloc(1, sizeof(filo));
     if (!new)
         return;
 
@@ -1735,7 +1735,7 @@ int setup(int default_screen)
     for (unsigned int i = 0; i < DESKTOPS; i++) {
         desktops[i].gaps = USELESSGAP;
         save_desktop(i);
-        miniq[i] = malloc(sizeof(struct filo));
+        miniq[i] = calloc(1, sizeof(struct filo));
         if (!miniq[i])
             err(EXIT_FAILURE, "error: cannot allocate miniq\n");
     }
