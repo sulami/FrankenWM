@@ -1235,8 +1235,22 @@ void minimize()
     tmp->c = current;
     tmp->next = new;
 
-    current->isminimized = true;
-    xcb_move(dis, current->win, -2 * ww, 0);
+    tmp->c->isminimized = true;
+    xcb_move(dis, tmp->c->win, -2 * ww, 0);
+
+    client *t = head;
+    while (t->next) {
+        t = t->next;
+        if (!t->isminimized)
+            break;
+    }
+    if (t)
+        update_current(t);
+
+    /* if needed and possible, swap to a new master */
+    if (current == head && t)
+        swap_master();
+
     tile();
 }
 
