@@ -1226,14 +1226,17 @@ void minimize()
     while (tmp->next)
         tmp = tmp->next;
 
+    /* we always have have an empty filo at the end of the miniq */
     new = malloc(sizeof(filo));
     if (!new)
         return;
 
-    new->c = current;
+    tmp->c = current;
     tmp->next = new;
 
+    current->isminimized = true;
     xcb_move(dis, current->win, -2 * ww, 0);
+    tile();
 }
 
 /* grab the pointer and get it's current position
