@@ -213,6 +213,7 @@ static void resize_master(const Arg *arg);
 static void resize_stack(const Arg *arg);
 static void resize_x(const Arg *arg);
 static void resize_y(const Arg *arg);
+static void restore();
 static void rotate(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void run(void);
@@ -1581,6 +1582,29 @@ void resize_y(const Arg *arg)
 
     r->height += arg->i;
     xcb_move_resize(dis, current->win, r->x, r->y, r->width, r->height);
+}
+
+/* get the last client from the current miniq and restore it */
+void restore()
+{
+    filo *tmp;
+
+    if (!miniq[current_desktop]->c)
+        return;
+
+    /* find the last occupied filo, before the free one */
+    tmp = miniq[current_desktop];
+    while (tmp->next) {
+        if (!tmp->next->next)
+            break;
+        tmp = tmp->next;
+    }
+
+    free(tmp->next);
+    tmp->next = NULL;
+    tmp->c->isminimized = false;
+    tmp->c = NULL;
+    tile();
 }
 
 /* jump and focus the next or previous desktop */
