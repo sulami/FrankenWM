@@ -1480,9 +1480,21 @@ client *prev_client(client *c)
  * if the window is the head, focus the last stack window */
 void prev_win()
 {
+    client *t = current;
+
     if (!current || !head->next)
         return;
-    update_current(prev_client(prevfocus = current));
+
+    while (1) {
+        t = prev_client(t);
+        if (!t->isminimized)
+            break;
+        if (t == current)
+            break;
+    }
+
+    prevfocus = current;
+    update_current(t);
 }
 
 /* property notify is called when one of the window's properties
