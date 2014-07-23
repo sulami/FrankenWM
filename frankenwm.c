@@ -1647,8 +1647,24 @@ void restore()
     free(tmp->next);
     tmp->next = NULL;
     tmp->c->isminimized = false;
-    tmp->c = NULL;
+
+    /*
+     * if our window is floating, center it to move it back onto the visible
+     * screen, TODO: save geometry in some way to restore it where it was
+     * before minimizing, TODO: fix it to use centerwindow() instead of copying
+     * half of it
+     */
+    if (tmp->c->isfloating) {
+        xcb_get_geometry_reply_t *wa;
+        wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, tmp->c->win),
+                                    NULL);
+        xcb_raise_window(dis, tmp->c->win);
+        xcb_move(dis, tmp->c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+    }
+
     tile();
+    update_current(tmp->c);
+    tmp->c = NULL;
 }
 
 /* jump and focus the next or previous desktop */
