@@ -73,7 +73,7 @@ enum { NET_SUPPORTED,
 #define LENGTH(x) (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
-#define ISFFT(c)        (c->isfullscrn || c->isfloating || c->istransient)
+#define ISFFTM(c)        (c->isfullscrn || c->isfloating || c->istransient || c->isminimized)
 #define USAGE           "usage: frankenwm [-h] [-v]"
 
 enum { RESIZE, MOVE };
@@ -129,7 +129,7 @@ typedef struct {
  */
 typedef struct client {
     struct client *next;
-    bool isurgent, istransient, isfullscrn, isfloating;
+    bool isurgent, istransient, isfullscrn, isfloating, isminimized;
     xcb_window_t win;
 } client;
 
@@ -731,7 +731,7 @@ void dualstack(int hh, int cy)
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t = t->next) {
-        if (!ISFFT(t)) {
+        if (!ISFFTM(t)) {
             if (c)
                 ++n;
             else
@@ -766,7 +766,7 @@ void dualstack(int hh, int cy)
     /* tile the non-floating, non-fullscreen stack windows */
     for (c = c->next; c; c = c->next) {
         for (d = 0, t = head; t != c; t = t->next, d++);
-        if (ISFFT(c))
+        if (ISFFTM(c))
             continue;
         if (d == l + 1) /* we are on the right stack, reset cy */
             cy = cb + gaps;
@@ -807,12 +807,12 @@ void fibonacci(int h, int y)
         ch = h - 2 * gaps - 2 * borders;
 
     for (client *n, *c = head; c; c = c->next) {
-        if (ISFFT(c))
+        if (ISFFTM(c))
             continue;
         else
             j++;
         for (n = c->next; n; n = n->next)
-            if (!ISFFT(n))
+            if (!ISFFTM(n))
                 break;
 
         /* not the last window in stack ? -> half the client size */
@@ -978,7 +978,7 @@ void grid(int hh, int cy)
 {
     int n = 0, cols = 0, cn = 0, rn = 0, i = -1;
     for (client *c = head; c; c = c->next)
-        if (!ISFFT(c))
+        if (!ISFFTM(c))
             ++n;
     for (cols = 0; cols <= n / 2; cols++)
         if (cols * cols >= n)
@@ -990,7 +990,7 @@ void grid(int hh, int cy)
         ch = hh - gaps,
         cw = (ww - gaps) / (cols ? cols : 1);
     for (client *c = head; c; c = c->next) {
-        if (ISFFT(c))
+        if (ISFFTM(c))
             continue;
         else
             ++i;
@@ -1325,7 +1325,7 @@ void mousemotion(const Arg *arg)
 void monocle(int hh, int cy)
 {
     for (client *c = head; c; c = c->next)
-        if (!ISFFT(c))
+        if (!ISFFTM(c))
             xcb_move_resize(dis, c->win, gaps, cy + gaps,
                             ww - 2 * gaps, hh - 2 * gaps);
 }
@@ -1671,7 +1671,7 @@ void setfullscreen(client *c, bool fullscrn)
     xcb_border_width(dis, c->win,
                      (!head->next ||
                       c->isfullscrn ||
-                      ( mode == MONOCLE && !ISFFT(c)  && !MONOCLE_BORDERS)
+                      ( mode == MONOCLE && !ISFFTM(c)  && !MONOCLE_BORDERS)
                      ) ? 0:borders);
     update_current(c);
 }
@@ -1879,7 +1879,7 @@ void stack(int hh, int cy)
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t = t->next) {
-        if (!ISFFT(t)) {
+        if (!ISFFTM(t)) {
             if (c)
                 ++n;
             else
@@ -1941,7 +1941,7 @@ void stack(int hh, int cy)
                         hh - 2 * (borders + gaps));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
-    for (c = c->next; c && ISFFT(c); c = c->next);
+    for (c = c->next; c && ISFFTM(c); c = c->next);
     int cx = b ? 0 : (stackinvert ? gaps : ma),
         cw = (b ? hh : ww) - 2 * borders - ma - gaps,
         ch = z - 2 * borders - gaps;
@@ -1953,7 +1953,7 @@ void stack(int hh, int cy)
     /* tile the rest of the non-floating, non-fullscreen stack windows */
     for (b ? (cx += z + d - gaps) : (cy += z + d - gaps),
          c = c->next; c; c = c->next) {
-        if (ISFFT(c))
+        if (ISFFTM(c))
             continue;
         if (b) {
             xcb_move_resize(dis, c->win, cx, cy, ch, cw); cx += z;
@@ -2055,20 +2055,20 @@ void update_current(client *c)
     /* num of n:all fl:fullscreen ft:floating/transient windows */
     int n = 0, fl = 0, ft = 0;
     for (c = head; c; c = c->next, ++n)
-        if (ISFFT(c)) {
+        if (ISFFTM(c)) {
             fl++;
             if (!c->isfullscrn)
                 ft++;
         }
     xcb_window_t w[n];
     w[(current->isfloating || current->istransient) ? 0 : ft] = current->win;
-    for (fl += !ISFFT(current) ? 1 : 0, c = head; c; c = c->next) {
+    for (fl += !ISFFTM(current) ? 1 : 0, c = head; c; c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
         xcb_border_width(dis, c->win,
                          (!head->next ||
                           c->isfullscrn ||
-                          ( mode == MONOCLE && !ISFFT(c) && !MONOCLE_BORDERS)
+                          ( mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
                           ) ? 0 : borders);
         /*
          * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
@@ -2077,7 +2077,7 @@ void update_current(client *c)
          *     XCB_BUTTON_MASK_ANY);
          */
         if (c != current)
-            w[c->isfullscrn ? --fl : ISFFT(c) ? --ft : --n] = c->win;
+            w[c->isfullscrn ? --fl : ISFFTM(c) ? --ft : --n] = c->win;
     }
 
     /* restack */
