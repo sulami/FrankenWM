@@ -1462,6 +1462,7 @@ void next_win()
             break;
     }
 
+    prevfocus = current;
     update_current(t);
 }
 
