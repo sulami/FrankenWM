@@ -104,6 +104,8 @@ static key keys[] = {
     {  MOD4|MOD1|CONTROL,XK_k,          resize_y,          {.i = -10}},
     {  MOD4|MOD1|CONTROL,XK_h,          resize_x,          {.i = -10}},
     {  MOD4|MOD1|CONTROL,XK_l,          resize_x,          {.i = +10}},
+    /* reset the selected floating window to tiling */
+    {  MOD4,             XK_t,          tilemize,          {NULL}},
 
     /* mode selection */
     {  MOD4|SHIFT,       XK_t,          switch_mode,       {.i = TILE}},

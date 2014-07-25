@@ -228,6 +228,7 @@ static void stack(int h, int y);
 static void swap_master();
 static void switch_mode(const Arg *arg);
 static void tile(void);
+static void tilemize();
 static void togglepanel();
 static void update_current(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
@@ -2090,6 +2091,15 @@ void tile(void)
         return; /* nothing to arange */
     layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT),
                                 (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
+}
+
+/* reset the active window from floating to tiling, if not already */
+void tilemize()
+{
+    if (!current->isfloating)
+        return;
+    current->isfloating = false;
+    update_current(current);
 }
 
 /* toggle visibility state of the panel */
