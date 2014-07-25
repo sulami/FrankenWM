@@ -981,6 +981,8 @@ void grid(int hh, int cy)
     for (client *c = head; c; c = c->next)
         if (!ISFFTM(c))
             ++n;
+    if (!n)
+        return;
     for (cols = 0; cols <= n / 2; cols++)
         if (cols * cols >= n)
             break; /* emulate square root */
