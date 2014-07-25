@@ -455,6 +455,10 @@ void adjust_borders(const Arg *arg)
     update_current(current);
 }
 
+/* define different desktops environments */
+for (unsigned i = 0; i < DESKTOPS; ++i)
+    DESKTOPCHANGE( XK_[i], [i-1])
+
 /* change the size of the useless gaps on the fly and re-tile */
 void adjust_gaps(const Arg *arg)
 {
