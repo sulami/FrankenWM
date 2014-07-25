@@ -32,7 +32,7 @@ suit your needs.  Build and install.
     # make clean install
 
 The packages in Arch Linux needed for example would be
-`libxcb` `xcb-util` `xcb-util-wm` `xcb-util-keysym`
+`libxcb` `xcb-util` `xcb-util-wm` `xcb-util-keysyms`
 
 Configuration
 -------------
