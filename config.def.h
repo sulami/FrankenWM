@@ -22,7 +22,7 @@
 #define BORDER_WIDTH    2         /* window border width */
 #define FOCUS           "#cccccc" /* focused window border color   */
 #define UNFOCUS         "#121212" /* unfocused window border color */
-#define DESKTOPS        4         /* number of desktops - edit DESKTOPCHANGE keys to suit */
+#define DESKTOPS        9         /* number of desktops */
 #define DEFAULT_DESKTOP 0         /* the desktop to focus on exec */
 #define MINWSZ          50        /* minimum window size in pixels */
 #define USELESSGAP      8         /* the size of the useless gap in pixels */
