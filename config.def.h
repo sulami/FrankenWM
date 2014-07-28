@@ -89,7 +89,7 @@ static key keys[] = {
     {  MOD4,             XK_n,          restore,           {NULL}},
     /* move the current window to the center of the screen, floating */
     {  MOD4,             XK_c,          centerwindow,      {NULL}},
-    /* toggles v-stack between left- and right-stacking */
+    /* toggles inverted stacking modes (left/top stack) */
     {  MOD4|SHIFT,       XK_i,          invertstack,       {NULL}},
     /* show/hide all windows on all desktops */
     {  MOD4|CONTROL,     XK_s,          showhide,          {NULL}},

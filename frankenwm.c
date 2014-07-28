@@ -2022,7 +2022,8 @@ void stack(int hh, int cy)
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
     if (b)
-        xcb_move_resize(dis, c->win, gaps, cy + gaps,
+        xcb_move_resize(dis, c->win, gaps,
+                        stackinvert ? (cy + hh - ma + gaps) : (cy + gaps),
                         ww - 2 * (borders + gaps),
                         ma - 2 * (borders + gaps));
     else
@@ -2037,7 +2038,8 @@ void stack(int hh, int cy)
         cw = (b ? hh : ww) - 2 * borders - ma - gaps,
         ch = z - 2 * borders - gaps;
     if (b)
-        xcb_move_resize(dis, c->win, cx += gaps, cy += ma, ch - gaps + d, cw);
+        xcb_move_resize(dis, c->win, cx += gaps, cy += stackinvert ? gaps : ma,
+                        ch - gaps + d, cw);
     else
         xcb_move_resize(dis, c->win, cx, cy += gaps, cw, ch - gaps + d);
 
