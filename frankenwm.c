@@ -754,11 +754,18 @@ void dualstack(int hh, int cy)
     }
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
-    xcb_move_resize(dis, c->win, (ww - ma) / 2 + borders + gaps,
-                    cy + gaps,
-                    n > 1 ? ma - 4 * borders - 2 * gaps
-                          : ma + (ww - ma) / 2 - 3 * borders - 2 * gaps,
-                    hh - 2 * (borders + gaps));
+    if (stackinvert)
+        xcb_move_resize(dis, c->win, gaps,
+                        cy + (hh - master_size) / 4 + gaps,
+                        ww - 2 * (borders + gaps),
+                        n > 1 ? ma - 2 * gaps - 4 * borders
+                              : ma + (hh - ma) / 2 - 3 * borders - 2 * gaps);
+    else
+        xcb_move_resize(dis, c->win, (ww - ma) / 2 + borders + gaps,
+                        cy + gaps,
+                        n > 1 ? ma - 4 * borders - 2 * gaps
+                              : ma + (ww - ma) / 2 - 3 * borders - 2 * gaps,
+                        hh - 2 * (borders + gaps));
 
     int cx = gaps,
         cw = (ww - ma) / 2 - borders - gaps,
