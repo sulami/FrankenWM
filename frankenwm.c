@@ -801,7 +801,8 @@ void enternotify(xcb_generic_event_t *e)
 /*
  * equal mode
  * tile the windows in rows or columns, givin each window an equal amount of
- * screen space TODO: rows
+ * screen space
+ * will use rows when inverted and columns otherwise
  */
 void equal(int h, int y)
 {
@@ -816,10 +817,16 @@ void equal(int h, int y)
     for (client *c = head; c; c = c->next, j++) {
         if (ISFFTM(c))
             continue;
-        xcb_move_resize(dis, c->win, ww / n * j + (c == head ? gaps : 0),
-                        y + gaps,
-                        ww / n - 2 * borders - (c == head ? 2 : 1) * gaps,
-                        h - 2 * borders - 2 * gaps);
+        if (invert)
+            xcb_move_resize(dis, c->win, gaps,
+                            y + h / n * j + (c == head ? gaps : 0),
+                            ww - 2 * borders - 2 * gaps,
+                            h / n - 2 * borders - (c == head ? 2 : 1) * gaps);
+        else
+            xcb_move_resize(dis, c->win, ww / n * j + (c == head ? gaps : 0),
+                            y + gaps,
+                            ww / n - 2 * borders - (c == head ? 2 : 1) * gaps,
+                            h - 2 * borders - 2 * gaps);
     }
 }
 
