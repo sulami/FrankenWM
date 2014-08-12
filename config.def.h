@@ -14,7 +14,7 @@
 #define SHOW_PANEL      False     /* show panel by default on exec */
 #define TOP_PANEL       True      /* False mean panel is on bottom */
 #define PANEL_HEIGHT    18        /* 0 for no space for panel, thus no panel */
-#define DEFAULT_MODE    TILE      /* TILE MONOCLE BSTACK GRID FIBONACCI */
+#define DEFAULT_MODE    TILE      /* TILE MONOCLE BSTACK GRID FIBONACCI EQUAL */
 #define ATTACH_ASIDE    True      /* False means new window is master */
 #define FOLLOW_MOUSE    False     /* Focus the window the mouse just entered */
 #define FOLLOW_WINDOW   False     /* Follow the window when moved to a different desktop */
@@ -114,6 +114,7 @@ static key keys[] = {
     {  MOD4|SHIFT,       XK_g,          switch_mode,       {.i = GRID}},
     {  MOD4|SHIFT,       XK_f,          switch_mode,       {.i = FIBONACCI}},
     {  MOD4|SHIFT,       XK_d,          switch_mode,       {.i = DUALSTACK}},
+    {  MOD4|SHIFT,       XK_e,          switch_mode,       {.i = EQUAL}},
 
     /* spawn terminal, dmenu, w/e you want to */
     {  MOD4|SHIFT,       XK_Return,     spawn,             {.com = termcmd}},

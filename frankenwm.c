@@ -77,7 +77,7 @@ enum { NET_SUPPORTED,
 #define USAGE           "usage: frankenwm [-h] [-v]"
 
 enum { RESIZE, MOVE };
-enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, DUALSTACK, MODES };
+enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, DUALSTACK, EQUAL, MODES };
 
 /* argument structure to be passed to function by config.h
  * com  - a command to run
@@ -183,6 +183,7 @@ static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
 static void dualstack(int hh, int cy);
 static void enternotify(xcb_generic_event_t *e);
+static void equal(int h, int y);
 static void fibonacci(int h, int y);
 static void float_x(const Arg *arg);
 static void float_y(const Arg *arg);
@@ -266,6 +267,7 @@ static void (*layout[MODES])(int h, int y) = {
     [MONOCLE] = monocle,
     [FIBONACCI] = fibonacci,
     [DUALSTACK] = dualstack,
+    [EQUAL] = equal,
 };
 
 /* get screen of display */
@@ -794,6 +796,31 @@ void enternotify(xcb_generic_event_t *e)
     if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL &&
         ev->detail != XCB_NOTIFY_DETAIL_INFERIOR)
         update_current(c);
+}
+
+/*
+ * equal mode
+ * tile the windows in rows or columns, givin each window an equal amount of
+ * screen space TODO: rows
+ */
+void equal(int h, int y)
+{
+    int n = 0, j = 0;
+
+    for (client *c = head; c; c = c->next) {
+        if (ISFFTM(c))
+            continue;
+        n++;
+    }
+
+    for (client *c = head; c; c = c->next, j++) {
+        if (ISFFTM(c))
+            continue;
+        xcb_move_resize(dis, c->win, ww / n * j + (c == head ? gaps : 0),
+                        y + gaps,
+                        ww / n - 2 * borders - (c == head ? 2 : 1) * gaps,
+                        h - 2 * borders - 2 * gaps);
+    }
 }
 
 /*
