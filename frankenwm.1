@@ -51,6 +51,16 @@ space on the screen,
  |  1  |  3  |
  |_____|_____|
 
+.I Equal mode
+where all the windows have exactly the same space on the screen, sorting them
+in either columns or rows, depending on the inverting status
+
+  ___________        ___________
+ |   |   |   |      |_____M_____|
+ | M | 1 | 2 |  or  |_____1_____|
+ |   |   |   |      |_____2_____|
+ |___|___|___|      |_____3_____|
+
 .I Fibonacci mode
 where the clients share 50% of the space of the client above them in the stack,
 getting smaller going down the stack,
@@ -146,7 +156,8 @@ Push windows to a minimize "stack"/pull them out. The stack is desktop-specific
 and the last window minimized gets restored first
 .TP
 .B Mod4\-Shift\-i
-Toggles v-stack between left- and right-stacking
+Toggle the inverting status, which enables alternate versions of existing
+layout modes
 .TP
 .B Mod4\-Backspace
 Focus the window that raised an urgent hint. If no such window in current
