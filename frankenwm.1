@@ -23,13 +23,13 @@ the windows is stacked on the other side,
 
 .I Dualstack
 where the master is in the center and the stack is divided onto both the left
-and right side,
+and right side, or the top and bottom if inverted,
 
-  ___________
- | 1|     | 3|
- |__|  M  |__|
- | 2|     | 4|
- |__|_____|__|
+  ___________        ___________
+ | 1|     | 3|      |__1__|__2__|
+ |__|  M  |__|  or  |     M     |
+ | 2|     | 4|      |___________|
+ |__|_____|__|      |__3__|__4__|
 
 .I Bottom stack
 where the master is on top and the stack is horizontally below it, or if
@@ -53,7 +53,7 @@ space on the screen,
 
 .I Equal mode
 where all the windows have exactly the same space on the screen, sorting them
-in either columns or rows, depending on the inverting status
+in either columns or rows, depending on the inverting status,
 
   ___________        ___________
  |   |   |   |      |_____M_____|
