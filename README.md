@@ -5,8 +5,8 @@ FrankenWM
 it deserves"*
 
 FrankenWM is a dynamic tiling WM (comparable to dwm or Awesome), featuring the
-v-stack, b-stack, grid, fibonacci, dualstack and monocle layouts out of the
-box. If you want to, you can add gaps between the windows as well.
+v-stack, b-stack, grid, fibonacci, dualstack, equal and monocle layouts out of
+the box. If you want to, you can add gaps between the windows as well.
 
 It was once based on monsterwm but has undergone many greater changes including
 adding pieces from other WMs (hence the name) and porting all sorts of stuff
