@@ -731,7 +731,7 @@ void dualstack(int hh, int cy)
 {
     client *c = NULL, *t = NULL;
     int n = 0, z = hh, d = 0, l = 0, r = 0, cb = cy,
-        ma = ww * MASTER_SIZE + master_size;
+        ma = (invert ? wh : ww) * MASTER_SIZE + master_size;
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t = t->next) {
@@ -756,12 +756,12 @@ void dualstack(int hh, int cy)
     }
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
-    if (stackinvert)
+    if (invert)
         xcb_move_resize(dis, c->win, gaps,
-                        cy + (hh - master_size) / 4 + gaps,
+                        cy + (hh - ma) / 2 + gaps,
                         ww - 2 * (borders + gaps),
-                        n > 1 ? ma - 2 * gaps - 4 * borders
-                              : ma + (hh - ma) / 2 - 3 * borders - 2 * gaps);
+                        n > 1 ? ma - 2 * gaps - 2 * borders
+                              : ma + (hh - ma) / 2 - 2 * borders - 2 * gaps);
     else
         xcb_move_resize(dis, c->win, (ww - ma) / 2 + borders + gaps,
                         cy + gaps,
@@ -779,13 +779,24 @@ void dualstack(int hh, int cy)
         for (d = 0, t = head; t != c; t = t->next, d++);
         if (ISFFTM(c))
             continue;
-        if (d == l + 1) /* we are on the right stack, reset cy */
-            cy = cb + gaps;
-        if (d > 1 && d != l + 1)
-            cy += (ch - gaps) / (d <= l ? l : r);
-        xcb_move_resize(dis, c->win,
+        if (invert) {
+            if (d == l + 1) /* we are on the -right- bottom stack, reset cy */
+                cx = gaps;
+            if (d > 1 && d != l + 1)
+                cx += (ww - gaps) / (d <= l ? l : r);
+            xcb_move_resize(dis, c->win,
+                        cx, (d <= l) ? cy : cy + (hh - ma) / 2 + ma - gaps,
+                        ww / (d <= l ? l : r) - 2 * borders - 2 * gaps,
+                        (hh - ma) / 2 - 2 * borders - gaps);
+        } else {
+            if (d == l + 1) /* we are on the right stack, reset cy */
+                cy = cb + gaps;
+            if (d > 1 && d != l + 1)
+                cy += (ch - gaps) / (d <= l ? l : r);
+            xcb_move_resize(dis, c->win,
                         d <= l ? cx : ww - cw - 2 * borders - gaps, cy, cw,
                         (ch - gaps) / (d <= l ? l : r) - 2 * borders - gaps);
+        }
     }
 }
 
