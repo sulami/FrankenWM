@@ -786,7 +786,7 @@ void dualstack(int hh, int cy)
                 cx += (ww - gaps) / (d <= l ? l : r);
             xcb_move_resize(dis, c->win,
                         cx, (d <= l) ? cy : cy + (hh - ma) / 2 + ma - gaps,
-                        ww / (d <= l ? l : r) - 2 * borders - 2 * gaps,
+                        (ww - gaps) / (d <= l ? l : r) - 2 * borders - gaps,
                         (hh - ma) / 2 - 2 * borders - gaps);
         } else {
             if (d == l + 1) /* we are on the right stack, reset cy */
