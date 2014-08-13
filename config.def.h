@@ -28,7 +28,7 @@
 #define USELESSGAP      8         /* the size of the useless gap in pixels */
 #define GLOBALGAPS      True      /* use the same gap size on all desktops */
 #define MONOCLE_BORDERS False     /* display borders in monocle mode */
-#define STACKINVERT     False     /* v-stack stacks left by default */
+#define INVERT          False     /* use alternative modes by default */
 #define AUTOCENTER      True      /* automatically center windows floating by default */
 
 /*

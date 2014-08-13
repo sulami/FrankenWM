@@ -239,7 +239,7 @@ static client *wintoclient(xcb_window_t w);
 
 /* variables */
 static bool running = true, showpanel = SHOW_PANEL, show = true,
-            invert = STACKINVERT;
+            invert = INVERT;
 static int default_screen, previous_desktop, current_desktop, retval;
 static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus;
