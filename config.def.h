@@ -22,7 +22,7 @@
 #define BORDER_WIDTH    2         /* window border width */
 #define FOCUS           "#cccccc" /* focused window border color   */
 #define UNFOCUS         "#121212" /* unfocused window border color */
-#define DESKTOPS        4         /* number of desktops - edit DESKTOPCHANGE keys to suit */
+#define DESKTOPS        10        /* number of desktops - edit DESKTOPCHANGE keys to suit */
 #define DEFAULT_DESKTOP 0         /* the desktop to focus on exec */
 #define MINWSZ          50        /* minimum window size in pixels */
 #define USELESSGAP      8         /* the size of the useless gap in pixels */
@@ -127,6 +127,12 @@ static key keys[] = {
        DESKTOPCHANGE(    XK_2,                             1)
        DESKTOPCHANGE(    XK_3,                             2)
        DESKTOPCHANGE(    XK_4,                             3)
+       DESKTOPCHANGE(    XK_5,                             4)
+       DESKTOPCHANGE(    XK_6,                             5)
+       DESKTOPCHANGE(    XK_7,                             6)
+       DESKTOPCHANGE(    XK_8,                             7)
+       DESKTOPCHANGE(    XK_9,                             8)
+       DESKTOPCHANGE(    XK_10,                            9)
     /* toggle to last desktop */
     {  MOD4,             XK_Tab,        last_desktop,      {NULL}},
     /* jump to the next/previous desktop */
