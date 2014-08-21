@@ -871,13 +871,13 @@ void fibonacci(int h, int y)
 
         /* not the last window in stack ? -> half the client size */
         if (n)
-            (j & 1) ? (ch = ch / 2 - borders - gaps / 2) :
-                      (cw = cw / 2 - borders - gaps / 2);
+            (j & 1) ? (ch = ch / 2 - borders - gaps / 2)
+                    : (cw = cw / 2 - borders - gaps / 2);
 
-        /* not the master client ? -> shift client right or down*/
+        /* not the master client ? -> shift client right or down (or up) */
         if (j)
-            (j & 1) ? (x = x + cw + 2 * borders + gaps) :
-                      (y = y + ch + 2 * borders + gaps);
+            (j & 1) ? (x = x + cw + 2 * borders + gaps)
+                    : (y = y + ch + 2 * borders + gaps);
 
         xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
     }
