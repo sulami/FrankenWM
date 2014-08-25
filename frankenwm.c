@@ -853,6 +853,7 @@ void equal(int h, int y)
  * tile the windows based on the fibonacci series pattern.
  * arrange windows in such a way that every new window shares
  * half the space of the space taken by the last window
+ * inverting changes between right/down and right/up
  */
 void fibonacci(int h, int y)
 {
@@ -871,13 +872,18 @@ void fibonacci(int h, int y)
 
         /* not the last window in stack ? -> half the client size */
         if (n)
-            (j & 1) ? (ch = ch / 2 - borders - gaps / 2) :
-                      (cw = cw / 2 - borders - gaps / 2);
+            (j & 1) ? (ch = ch / 2 - borders - gaps / 2)
+                    : (cw = cw / 2 - borders - gaps / 2);
 
-        /* not the master client ? -> shift client right or down*/
-        if (j)
-            (j & 1) ? (x = x + cw + 2 * borders + gaps) :
-                      (y = y + ch + 2 * borders + gaps);
+        /* not the master client ? -> shift client right or down (or up) */
+        if (j) {
+            (j & 1) ? (x = x + cw + 2 * borders + gaps)
+                    : (y = invert ? (y - ch - 2 * borders - gaps)
+                                  : (y + ch + 2 * borders + gaps));
+
+            if (j & 1 && n && invert)
+                y += ch + 2 * borders + gaps;
+        }
 
         xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
     }
