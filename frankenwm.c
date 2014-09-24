@@ -857,7 +857,7 @@ void equal(int h, int y)
  */
 void fibonacci(int h, int y)
 {
-    int j = -1, x = gaps,
+    int j = -1, x = gaps, tt = 0,
         cw = ww - 2 * gaps - 2 * borders,
         ch = h - 2 * gaps - 2 * borders;
 
@@ -870,10 +870,17 @@ void fibonacci(int h, int y)
             if (!ISFFTM(n))
                 break;
 
-        /* not the last window in stack ? -> half the client size */
-        if (n)
+        /*
+         * not the last window in stack ? -> half the client size, and also
+         * check if we have too many windows to keep them larger than MINWSZ
+         */
+        if (n
+            && ch > MINWSZ * 2 + borders + gaps
+            && cw > MINWSZ * 2 + borders + gaps) {
             (j & 1) ? (ch = ch / 2 - borders - gaps / 2)
                     : (cw = cw / 2 - borders - gaps / 2);
+            tt = j;
+        }
 
         /* not the master client ? -> shift client right or down (or up) */
         if (j) {
@@ -885,7 +892,9 @@ void fibonacci(int h, int y)
                 y += ch + 2 * borders + gaps;
         }
 
-        xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
+        /* if the window does not fit in the stack, do not jam it in there */
+        if (j <= tt + 1)
+            xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
     }
 }
 
