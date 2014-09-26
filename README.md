@@ -14,11 +14,10 @@ from Xlib to XCB. Many of the original monsterwm patches have been ported as
 well.
 
 All settings must be set at compile time by editing `config.h` and it does not
-feature a status bar (but supports leaving preconfigured space for one). Refer
-to the [monsterwm docs][mwmdocs] for examples on how to parse the output to use
-it in a status bar.
+feature a status bar (but supports leaving preconfigured space for one). I
+prepared a few scripts for different bars [here][sb].
 
-  [mwmdocs]: https://github.com/c00kiemon5ter/monsterwm#panel---statusbar
+  [sb]: https://gist.github.com/sulami/d6a53179d6d7479e0709
 
 Installation
 ------------
