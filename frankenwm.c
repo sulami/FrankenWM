@@ -800,9 +800,11 @@ void dualstack(int hh, int cy)
     }
 }
 
-/* when the mouse enters a window's borders
+/*
+ * when the mouse enters a window's borders
  * the window, if notifying of such events (EnterWindowMask)
- * will notify the wm and will get focus */
+ * will notify the wm and will get focus
+ */
 void enternotify(xcb_generic_event_t *e)
 {
     xcb_enter_notify_event_t *ev = (xcb_enter_notify_event_t *)e;
@@ -811,9 +813,12 @@ void enternotify(xcb_generic_event_t *e)
         return;
     DEBUG("xcb: enter notify");
     client *c = wintoclient(ev->event);
-    if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL &&
-        ev->detail != XCB_NOTIFY_DETAIL_INFERIOR)
+
+    if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL
+        && current != c
+        && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) {
         update_current(c);
+    }
 }
 
 /*
@@ -2250,8 +2255,11 @@ void update_current(client *c)
     }
 
     /* restack */
-    for (ft = 0; ft <= n; ++ft)
-        xcb_raise_window(dis, w[n-ft]);
+    if (!current->isfloating)
+        for (ft = 0; ft <= n; ++ft)
+            xcb_raise_window(dis, w[n-ft]);
+    else
+        xcb_raise_window(dis, current->win);
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                         netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
