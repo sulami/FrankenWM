@@ -1186,9 +1186,9 @@ void maprequest(xcb_generic_event_t *e)
                                      xcb_icccm_get_wm_class(dis, ev->window),
                                      &ch, NULL)) { /* TODO: error handling */
         DEBUGP("class: %s instance: %s\n", ch.class_name, ch.instance_name);
-        for (unsigned int i = 0; i < LENGTH(rules); i++)
-            if (strstr(ch.class_name, rules[i].class) ||
-                strstr(ch.instance_name, rules[i].class)) {
+        for (unsigned int i = 0; i < LENGTH(appruleregex); i++)
+            if (!regexec(&appruleregex[i], ch.class_name, 0, NULL, 0)
+                || !regexec(&appruleregex[i], ch.instance_name, 0, NULL, 0)) {
                 follow = rules[i].follow;
                 newdsk = (rules[i].desktop < 0 ||
                           rules[i].desktop >= DESKTOPS) ? current_desktop
