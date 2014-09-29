@@ -1154,10 +1154,11 @@ void maprequest(xcb_generic_event_t *e)
     xcb_map_request_event_t            *ev = (xcb_map_request_event_t *)e;
     xcb_window_t                       windows[] = {ev->window}, transient = 0;
     xcb_get_window_attributes_reply_t  *attr[1];
-    xcb_icccm_get_wm_class_reply_t     ch;
     xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
     xcb_ewmh_get_atoms_reply_t         type;
+    xcb_get_property_cookie_t          cookie;
+    xcb_ewmh_get_utf8_strings_reply_t  wtitle;
     bool atom_success = false;
 
     xcb_get_attributes(windows, attr, 1);
@@ -1182,13 +1183,13 @@ void maprequest(xcb_generic_event_t *e)
 
     bool follow = false, floating = false;
     int cd = current_desktop, newdsk = current_desktop;
-    if (xcb_icccm_get_wm_class_reply(dis,
-                                     xcb_icccm_get_wm_class(dis, ev->window),
-                                     &ch, NULL)) { /* TODO: error handling */
-        DEBUGP("class: %s instance: %s\n", ch.class_name, ch.instance_name);
+
+    cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, ev->window);
+
+    if (xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0)) {
+        DEBUGP("EWMH window title: %s\n", wtitle.strings);
         for (unsigned int i = 0; i < LENGTH(appruleregex); i++)
-            if (!regexec(&appruleregex[i], ch.class_name, 0, NULL, 0)
-                || !regexec(&appruleregex[i], ch.instance_name, 0, NULL, 0)) {
+            if (!regexec(&appruleregex[i], &wtitle.strings[0], 0, NULL, 0)) {
                 follow = rules[i].follow;
                 newdsk = (rules[i].desktop < 0 ||
                           rules[i].desktop >= DESKTOPS) ? current_desktop
@@ -1196,7 +1197,6 @@ void maprequest(xcb_generic_event_t *e)
                 floating = rules[i].floating;
                 break;
             }
-        xcb_icccm_get_wm_class_reply_wipe(&ch);
     }
     if (atom_success) {
         for (unsigned int i = 0; i < type.atoms_len; i++) {

@@ -35,14 +35,14 @@
  * EDIT THIS: applicaton specific rules
  * Open applications to specified desktop with specified mode.
  * If desktop is negative, then current is assumed. Desktops are 0-indexed.
- * The matching is done via POSIX-regexes on both the window class and the
- * instance, see https://en.wikipedia.org/wiki/Regular_expression#POSIX_extended
+ * The matching is done via POSIX-regexes on the window title, see
+ * https://en.wikipedia.org/wiki/Regular_expression#POSIX_extended for syntax
  * Sadly, this can not be empty (for now), so enter something non-existent if
  * you do not wish to use this functionality.
  */
 static const AppRule rules[] = { \
     /*  class     desktop  follow  float */
-    { "Gimp",     -1,      False,  True },
+    { "GNU Image",-1,      False,  True },
     { "Skype",     3,      False,  True },
 };
 
