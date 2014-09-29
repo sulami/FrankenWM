@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
+#include <regex.h>
 #include <sys/wait.h>
 #include <X11/keysym.h>
 #include <xcb/xcb.h>
@@ -251,6 +252,7 @@ static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
 static desktop desktops[DESKTOPS];
 static filo *miniq[DESKTOPS];
+static regex_t appruleregex[LENGTH(rules)];
 
 /* events array
  * on receival of a new event, call the appropriate function to handle it
@@ -1914,6 +1916,11 @@ int setup(int default_screen)
     /* check if another wm is running */
     if (xcb_checkotherwm())
         err(EXIT_FAILURE, "error: other wm is running\n");
+
+    /* initialize apprule regexes */
+    for (unsigned int i = 0; i < LENGTH(rules); i++)
+        if (regcomp(&appruleregex[i], rules[i].class, 0))
+            err(EXIT_FAILURE, "error: failed to compile apprule regexes\n");
 
     /* initialize EWMH */
     ewmh = calloc(1, sizeof(xcb_ewmh_connection_t));
