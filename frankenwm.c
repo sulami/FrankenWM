@@ -718,7 +718,7 @@ void desktopinfo(void)
         fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, mode, current_desktop == cd,
                 urgent);
         if (d + 1 == DESKTOPS)
-            fprintf(stdout, "%s\n", wtitle.strings);
+            fprintf(stdout, "%s\n", wtitle.strings ? wtitle.strings : "");
     }
     fflush(stdout);
     if (cd != d - 1)
