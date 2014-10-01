@@ -2180,6 +2180,7 @@ void switch_mode(const Arg *arg)
 /* tile all windows of current desktop - call the handler tiling function */
 void tile(void)
 {
+    desktopinfo();
     if (!head)
         return; /* nothing to arange */
     layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT),
