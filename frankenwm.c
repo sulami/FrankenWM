@@ -683,7 +683,8 @@ void deletewindow(xcb_window_t w)
     xcb_send_event(dis, 0, w, XCB_EVENT_MASK_NO_EVENT, (char *)&ev);
 }
 
-/* output info about the desktops on standard output stream
+/*
+ * output info about the desktops on standard output stream
  *
  * the info is a list of ':' separated values for each desktop
  * desktop to desktop info is separated by ' ' single spaces
@@ -693,25 +694,35 @@ void deletewindow(xcb_window_t w)
  *   the desktop's tiling layout mode/id
  *   whether the desktop is the current focused (1) or not (0)
  *   whether any client in that desktop has received an urgent hint
+ *   and the current window's title
  *
- * once the info is collected, immediately flush the stream */
+ * once the info is collected, immediately flush the stream
+ */
 void desktopinfo(void)
 {
     bool urgent = false;
     int cd = current_desktop, n = 0, d = 0;
+    xcb_get_property_cookie_t cookie;
+    xcb_ewmh_get_utf8_strings_reply_t wtitle;
+
+    if (current) {
+        cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, current->win);
+        xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0);
+    }
 
     for (client *c; d < DESKTOPS; d++) {
         for (select_desktop(d), c = head, n = 0, urgent = false;
              c; c = c->next, ++n)
             if (c->isurgent)
                 urgent = true;
-        fprintf(stdout, "%d:%d:%d:%d:%d%c", d, n, mode, current_desktop == cd,
-                urgent, d + 1 == DESKTOPS ? '\n' : ' ');
+        fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, mode, current_desktop == cd,
+                urgent);
+        if (d + 1 == DESKTOPS)
+            fprintf(stdout, "%s\n", wtitle.strings);
     }
     fflush(stdout);
     if (cd != d - 1)
         select_desktop(cd);
-
 }
 
 /* a destroy notification is received when a window is being closed
