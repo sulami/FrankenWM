@@ -30,6 +30,7 @@
 #define MONOCLE_BORDERS False     /* display borders in monocle mode */
 #define INVERT          False     /* use alternative modes by default */
 #define AUTOCENTER      True      /* automatically center windows floating by default */
+#define OUTPUT_TITLE    False     /* output the title of the currently active window */
 
 /*
  * EDIT THIS: applicaton specific rules
