@@ -2014,7 +2014,7 @@ int setup(int default_screen)
 
     /* open the scratchpad terminal if enabled */
     if (USE_SCRATCHPAD)
-        spawn(&(Arg){.com = scratchpadcmd});
+        spawn(&(Arg){.com = scrpcmd});
 
     return 0;
 }
