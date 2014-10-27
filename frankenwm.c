@@ -1243,7 +1243,7 @@ void maprequest(xcb_generic_event_t *e)
     c->istransient = transient ? true : false;
     c->isfloating  = floating || c->istransient;
 
-    prop_reply  = xcb_get_property_reply(dis, xcb_get_property_unchecked(
+    prop_reply = xcb_get_property_reply(dis, xcb_get_property_unchecked(
                                     dis, 0, ev->window, netatoms[NET_WM_STATE],
                                     XCB_ATOM_ATOM, 0, 1), NULL);
                                     /* TODO: error handling */
