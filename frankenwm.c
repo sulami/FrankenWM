@@ -232,6 +232,7 @@ static void switch_mode(const Arg *arg);
 static void tile(void);
 static void tilemize();
 static void togglepanel();
+static void togglescratchpad();
 static void update_current(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
 static client *wintoclient(xcb_window_t w);
@@ -2010,6 +2011,11 @@ int setup(int default_screen)
 
     change_desktop(&(Arg){.i = DEFAULT_DESKTOP});
     switch_mode(&(Arg){.i = DEFAULT_MODE});
+
+    /* open the scratchpad terminal if enabled */
+    if (USE_SCRATCHPAD)
+        spawn(&(Arg){.com = scratchpadcmd});
+
     return 0;
 }
 
@@ -2202,6 +2208,15 @@ void togglepanel()
 {
     showpanel = !showpanel;
     tile();
+}
+
+/* toggle the scratchpad terminal */
+void togglescratchpad()
+{
+    if (!USE_SCRATCHPAD)
+        return;
+
+    printf("%s\n", "Works..");
 }
 
 /* windows that request to unmap should lose their
