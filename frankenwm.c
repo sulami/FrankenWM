@@ -175,6 +175,7 @@ static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
 static void centerwindow();
+static int check_scrpd(client *c);
 static void cleanup(void);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
@@ -548,6 +549,19 @@ void centerwindow(void)
     xcb_move(dis, d->current->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
 }
 
+/* check if the supplied client is a scratchpad window by matching titles,
+ * returns 0 if so */
+static int check_scrpd(client *c)
+{
+    xcb_get_property_cookie_t cookie;
+    xcb_ewmh_get_utf8_strings_reply_t wtitle;
+
+    cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, c->win);
+    xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0);
+
+    return strcmp(wtitle.strings, SCRPDNAME);
+}
+
 /* remove all windows in all desktops by sending a delete message */
 void cleanup(void)
 {
@@ -751,7 +765,7 @@ void dualstack(int hh, int cy)
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t = t->next) {
-        if (!ISFFTM(t)) {
+        if (!ISFFTM(t) && check_scrpd(t)) {
             if (c)
                 ++n;
             else
@@ -793,7 +807,7 @@ void dualstack(int hh, int cy)
     /* tile the non-floating, non-fullscreen stack windows */
     for (c = c->next; c; c = c->next) {
         for (d = 0, t = head; t != c; t = t->next, d++);
-        if (ISFFTM(c))
+        if (ISFFTM(c) || !check_scrpd(c))
             continue;
         if (invert) {
             if (d == l + 1) /* we are on the -right- bottom stack, reset cy */
@@ -848,13 +862,13 @@ void equal(int h, int y)
     int n = 0, j = 0;
 
     for (client *c = head; c; c = c->next) {
-        if (ISFFTM(c))
+        if (ISFFTM(c) || !check_scrpd(c))
             continue;
         n++;
     }
 
     for (client *c = head; c; c = c->next, j++) {
-        if (ISFFTM(c))
+        if (ISFFTM(c) || !check_scrpd(c))
             continue;
         if (invert)
             xcb_move_resize(dis, c->win, gaps,
@@ -883,12 +897,12 @@ void fibonacci(int h, int y)
         ch = h - 2 * gaps - 2 * borders;
 
     for (client *n, *c = head; c; c = c->next) {
-        if (ISFFTM(c))
+        if (ISFFTM(c) || !check_scrpd(c))
             continue;
         else
             j++;
         for (n = c->next; n; n = n->next)
-            if (!ISFFTM(n))
+            if (!ISFFTM(n) && !check_scrpd(n))
                 break;
 
         /*
@@ -1069,7 +1083,7 @@ void grid(int hh, int cy)
 {
     int n = 0, cols = 0, cn = 0, rn = 0, i = -1;
     for (client *c = head; c; c = c->next)
-        if (!ISFFTM(c))
+        if (!ISFFTM(c) && check_scrpd(c))
             ++n;
     if (!n)
         return;
@@ -1083,7 +1097,7 @@ void grid(int hh, int cy)
         ch = hh - gaps,
         cw = (ww - gaps) / (cols ? cols : 1);
     for (client *c = head; c; c = c->next) {
-        if (ISFFTM(c))
+        if (ISFFTM(c) || !check_scrpd(c))
             continue;
         else
             ++i;
@@ -1438,7 +1452,7 @@ void mousemotion(const Arg *arg)
 void monocle(int hh, int cy)
 {
     for (client *c = head; c; c = c->next)
-        if (!ISFFTM(c))
+        if (!ISFFTM(c) && check_scrpd(c))
             xcb_move_resize(dis, c->win, gaps, cy + gaps,
                             ww - 2 * gaps, hh - 2 * gaps);
 }
@@ -1850,7 +1864,7 @@ void setfullscreen(client *c, bool fullscrn)
     xcb_border_width(dis, c->win,
                      (!head->next ||
                       c->isfullscrn ||
-                      ( mode == MONOCLE && !ISFFTM(c)  && !MONOCLE_BORDERS)
+                      (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
                      ) ? 0:borders);
     update_current(c);
 }
@@ -2069,7 +2083,7 @@ void stack(int hh, int cy)
 
     /* count stack windows and grab first non-floating, non-fullscreen window */
     for (t = head; t; t = t->next) {
-        if (!ISFFTM(t)) {
+        if (!ISFFTM(t) && check_scrpd(t)) {
             if (c)
                 ++n;
             else
@@ -2132,7 +2146,7 @@ void stack(int hh, int cy)
                         hh - 2 * (borders + gaps));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
-    for (c = c->next; c && ISFFTM(c); c = c->next);
+    for (c = c->next; c && (ISFFTM(c) || check_scrpd(c)); c = c->next);
     int cx = b ? 0 : (invert ? gaps : ma),
         cw = (b ? hh : ww) - 2 * borders - ma - gaps,
         ch = z - 2 * borders - gaps;
@@ -2145,7 +2159,7 @@ void stack(int hh, int cy)
     /* tile the rest of the non-floating, non-fullscreen stack windows */
     for (b ? (cx += z + d - gaps) : (cy += z + d - gaps),
          c = c->next; c; c = c->next) {
-        if (ISFFTM(c))
+        if (ISFFTM(c) || !check_scrpd(c))
             continue;
         if (b) {
             xcb_move_resize(dis, c->win, cx, cy, ch, cw); cx += z;
@@ -2266,14 +2280,15 @@ void update_current(client *c)
     /* num of n:all fl:fullscreen ft:floating/transient windows */
     int n = 0, fl = 0, ft = 0;
     for (c = head; c; c = c->next, ++n)
-        if (ISFFTM(c)) {
+        if (ISFFTM(c) || !check_scrpd(c)) {
             fl++;
             if (!c->isfullscrn)
                 ft++;
         }
     xcb_window_t w[n];
     w[(current->isfloating || current->istransient) ? 0 : ft] = current->win;
-    for (fl += !ISFFTM(current) ? 1 : 0, c = head; c; c = c->next) {
+    for (fl += (!ISFFTM(current) && check_scrpd(current)) ? 1 : 0, c = head; c;
+         c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
         xcb_border_width(dis, c->win,
@@ -2288,7 +2303,8 @@ void update_current(client *c)
          *     XCB_BUTTON_MASK_ANY);
          */
         if (c != current)
-            w[c->isfullscrn ? --fl : ISFFTM(c) ? --ft : --n] = c->win;
+            w[c->isfullscrn ? --fl : (ISFFTM(c) || !check_scrpd(c)) ? --ft
+                                   : --n] = c->win;
     }
 
     /* restack */
