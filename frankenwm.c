@@ -242,13 +242,13 @@ static client *wintoclient(xcb_window_t w);
 
 /* variables */
 static bool running = true, showpanel = SHOW_PANEL, show = true,
-            invert = INVERT;
+            invert = INVERT, showscratchpad = false;
 static int default_screen, previous_desktop, current_desktop, retval;
 static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
-static client *head, *prevfocus, *current;
+static client *head, *prevfocus, *current, *scrpd;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -2031,6 +2031,12 @@ int setup(int default_screen)
     if (USE_SCRATCHPAD)
         spawn(&(Arg){.com = scrpcmd});
 
+    for (client *c = head; c; c = c->next)
+        if (!check_scrpd(c))
+            scrpd = c;
+    if (scrpd)
+        xcb_move(dis, scrpd->win, -2 * ww, 0);
+
     return 0;
 }
 
@@ -2229,10 +2235,31 @@ void togglepanel()
 /* toggle the scratchpad terminal */
 void togglescratchpad()
 {
-    if (!USE_SCRATCHPAD)
+    static client *old;
+
+    for (client *c = head; c; c = c->next)
+        if (!check_scrpd(c))
+            scrpd = c;
+
+    if (!USE_SCRATCHPAD || !scrpd)
         return;
 
-    printf("%s\n", "Works..");
+    showscratchpad = !showscratchpad;
+
+    if (showscratchpad) {
+        xcb_get_geometry_reply_t *wa;
+
+        wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, scrpd->win),
+                                    NULL);
+        xcb_move(dis, scrpd->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+        old = current;
+        update_current(scrpd);
+        xcb_raise_window(dis, scrpd->win);
+    } else {
+        xcb_move(dis, scrpd->win, -2 * ww, 0);
+        if (old)
+            update_current(old);
+    }
 }
 
 /* windows that request to unmap should lose their
