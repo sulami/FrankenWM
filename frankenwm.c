@@ -902,7 +902,7 @@ void fibonacci(int h, int y)
         else
             j++;
         for (n = c->next; n; n = n->next)
-            if (!ISFFTM(n) && !check_scrpd(n))
+            if (!ISFFTM(n) && check_scrpd(n))
                 break;
 
         /*
