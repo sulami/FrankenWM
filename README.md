@@ -54,9 +54,11 @@ tiling modes and all of the default shortcuts.
 Bugs
 ----
 
-Bugs can be reported here: [FrankenWM issues][bug]
+You can report bugs and request features here: [FrankenWM GitHub issues][gh] or
+[ArchLinux Forums][af]
 
-   [bug]: https://github.com/sulami/FrankenWM/issues
+   [gh]: https://github.com/sulami/FrankenWM/issues
+   [af]: https://bbs.archlinux.org/viewtopic.php?pid=1470320
 
 Thanks
 ------
