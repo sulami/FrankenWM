@@ -248,7 +248,6 @@ static unsigned int numlockmask, win_unfocus, win_focus;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
 static client *head, *prevfocus, *current;
-static pid_t scratchpadpid;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -2048,12 +2047,7 @@ void sigchld()
 /* execute a command, save the child pid if we start the scratchpad */
 void spawn(const Arg *arg)
 {
-    pid_t pid = fork();
-
-    if (pid) {
-        if (arg->com == scrpcmd)
-            scratchpadpid = pid;
-            DEBUGP("Changing scratchpadpid to %d\n", scratchpadpid);
+    if (fork()) {
         return;
     }
     if (dis)
