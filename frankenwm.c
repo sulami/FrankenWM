@@ -2146,7 +2146,7 @@ void stack(int hh, int cy)
                         hh - 2 * (borders + gaps));
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
-    for (c = c->next; c && (ISFFTM(c) || check_scrpd(c)); c = c->next);
+    for (c = c->next; c && (ISFFTM(c) || !check_scrpd(c)); c = c->next);
     int cx = b ? 0 : (invert ? gaps : ma),
         cw = (b ? hh : ww) - 2 * borders - ma - gaps,
         ch = z - 2 * borders - gaps;
