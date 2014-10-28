@@ -533,7 +533,8 @@ void change_desktop(const Arg *arg)
 /*
  * place the current window in the center of the screen floating
  */
-void centerwindow(void) {
+void centerwindow(void)
+{
     xcb_get_geometry_reply_t *wa;
     desktop *d = &desktops[current_desktop];
     wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
