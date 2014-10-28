@@ -32,6 +32,7 @@
 #define AUTOCENTER      True      /* automatically center windows floating by default */
 #define OUTPUT_TITLE    False     /* output the title of the currently active window */
 #define USE_SCRATCHPAD  True      /* enable the scratchpad functionality */
+#define SCRPDNAME       "scratchpad" /* the name of the scratchpad window */
 
 /*
  * EDIT THIS: applicaton specific rules
@@ -55,7 +56,10 @@ static const AppRule rules[] = { \
  * EDIT THIS: commands
  * Adjust and add these to the shortcuts below to launch anything you want by
  * pressing a key (combination). The last argument should ALWAYS be a null
- * pointer.
+ * pointer. scrpcmd needs to be defined and different from all other commands
+ * (like the example) so FrankenWM can tell when you want to open a scratchpad
+ * window. The title of the scratchpad window should also match SCRPDNAME from
+ * above
  */
 static const char *termcmd[] = { "xterm",     NULL };
 static const char *menucmd[] = { "dmenu_run", NULL };
