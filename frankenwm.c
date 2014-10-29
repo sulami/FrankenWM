@@ -2040,12 +2040,6 @@ int setup(int default_screen)
     if (USE_SCRATCHPAD)
         spawn(&(Arg){.com = scrpcmd});
 
-    for (client *c = head; c; c = c->next)
-        if (!check_scrpd(c))
-            scrpd = c;
-    if (scrpd)
-        xcb_move(dis, scrpd->win, -2 * ww, 0);
-
     return 0;
 }
 
@@ -2244,12 +2238,6 @@ void togglepanel()
 /* toggle the scratchpad terminal */
 void togglescratchpad()
 {
-    static client *old;
-
-    for (client *c = head; c; c = c->next)
-        if (!check_scrpd(c))
-            scrpd = c;
-
     if (!USE_SCRATCHPAD || !scrpd)
         return;
 
@@ -2261,13 +2249,10 @@ void togglescratchpad()
         wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, scrpd->win),
                                     NULL);
         xcb_move(dis, scrpd->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
-        old = current;
         update_current(scrpd);
         xcb_raise_window(dis, scrpd->win);
     } else {
         xcb_move(dis, scrpd->win, -2 * ww, 0);
-        if (old)
-            update_current(old);
     }
 }
 
