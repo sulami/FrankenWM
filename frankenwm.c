@@ -1222,7 +1222,15 @@ void maprequest(xcb_generic_event_t *e)
             if (!(c = (client *)calloc(1, sizeof(client))))
                 err(EXIT_FAILURE, "cannot allocate client");
 
+            unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
+                                      (FOLLOW_MOUSE
+                                      ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
+            xcb_change_window_attributes_checked(dis, (c->win = ev->window),
+                                                 XCB_CW_EVENT_MASK, values);
             scrpd = c;
+            xcb_map_window(dis, scrpd->win);
+            xcb_move(dis, scrpd->win, -2 * ww, 0);
+
             return;
         }
         for (unsigned int i = 0; i < LENGTH(appruleregex); i++)
