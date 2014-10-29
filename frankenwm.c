@@ -1216,6 +1216,15 @@ void maprequest(xcb_generic_event_t *e)
 
     if (xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0)) {
         DEBUGP("EWMH window title: %s\n", wtitle.strings);
+        if (!strcmp(wtitle.strings, SCRPDNAME)) {
+            client *c;
+
+            if (!(c = (client *)calloc(1, sizeof(client))))
+                err(EXIT_FAILURE, "cannot allocate client");
+
+            scrpd = c;
+            return;
+        }
         for (unsigned int i = 0; i < LENGTH(appruleregex); i++)
             if (!regexec(&appruleregex[i], &wtitle.strings[0], 0, NULL, 0)) {
                 follow = rules[i].follow;
