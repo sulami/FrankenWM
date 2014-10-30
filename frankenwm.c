@@ -132,6 +132,7 @@ typedef struct client {
     struct client *next;
     bool isurgent, istransient, isfullscrn, isfloating, isminimized;
     xcb_window_t win;
+    unsigned int dim[2];
 } client;
 
 /* properties of each desktop
@@ -186,6 +187,7 @@ static void dualstack(int hh, int cy);
 static void enternotify(xcb_generic_event_t *e);
 static void equal(int h, int y);
 static void fibonacci(int h, int y);
+static void float_client(client *c);
 static void float_x(const Arg *arg);
 static void float_y(const Arg *arg);
 static void focusmaster();
@@ -539,7 +541,7 @@ void centerwindow(void) {
     if (!d->current || !wa)
         return;
     if (!d->current->isfloating && !d->current->istransient) {
-        d->current->isfloating = true;
+        float_client(d->current);
         tile();
     }
     xcb_raise_window(dis, d->current->win);
@@ -917,6 +919,24 @@ void fibonacci(int h, int y)
     }
 }
 
+/* switch a client from tiling to float and manage everything involved */
+void float_client(client *c)
+{
+    if (!c)
+        return;
+
+    c->isfloating = true;
+
+    if (c->dim[0] && c->dim[1]) {
+        if (c->dim[0] < MINWSZ)
+            c->dim[0] = MINWSZ;
+        if (c->dim[1] < MINWSZ)
+            c->dim[1] = MINWSZ;
+
+        xcb_resize(dis, c->win, c->dim[0], c->dim[1]);
+    }
+}
+
 /*
  * handles x-movement of floating windows
  */
@@ -928,7 +948,7 @@ void float_x(const Arg *arg)
         return;
 
     if (!current->isfloating) {
-        current->isfloating = True;
+        float_client(current);
         tile();
     }
 
@@ -948,7 +968,7 @@ void float_y(const Arg *arg)
         return;
 
     if (!current->isfloating) {
-        current->isfloating = True;
+        float_client(current);
         tile();
     }
 
@@ -1394,7 +1414,7 @@ void mousemotion(const Arg *arg)
     if (current->isfullscrn)
         setfullscreen(current, False);
     if (!current->isfloating)
-        current->isfloating = True;
+        float_client(current);
     tile();
     update_current(current);
 
@@ -1681,7 +1701,7 @@ void resize_x(const Arg *arg)
         return;
 
     if (!current->isfloating) {
-        current->isfloating = True;
+        float_client(current);
         tile();
     }
 
@@ -1705,7 +1725,7 @@ void resize_y(const Arg *arg)
         return;
 
     if (!current->isfloating) {
-        current->isfloating = True;
+        float_client(current);
         tile();
     }
 
@@ -2171,7 +2191,7 @@ void switch_mode(const Arg *arg)
         showhide();
     if (mode == arg->i)
         for (client *c = head; c; c = c->next)
-            c->isfloating = False;
+            c->isfloating = false;
     mode = arg->i;
     tile();
     update_current(current);
