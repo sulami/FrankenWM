@@ -132,6 +132,7 @@ typedef struct client {
     struct client *next;
     bool isurgent, istransient, isfullscrn, isfloating, isminimized;
     xcb_window_t win;
+    unsigned int dim[2];
 } client;
 
 /* properties of each desktop
@@ -186,6 +187,7 @@ static void dualstack(int hh, int cy);
 static void enternotify(xcb_generic_event_t *e);
 static void equal(int h, int y);
 static void fibonacci(int h, int y);
+static void float_client(client *c);
 static void float_x(const Arg *arg);
 static void float_y(const Arg *arg);
 static void focusmaster();
@@ -232,6 +234,7 @@ static void switch_mode(const Arg *arg);
 static void tile(void);
 static void tilemize();
 static void togglepanel();
+static void unfloat_client(client *c);
 static void update_current(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
 static client *wintoclient(xcb_window_t w);
@@ -535,13 +538,20 @@ void change_desktop(const Arg *arg)
 void centerwindow(void) {
     xcb_get_geometry_reply_t *wa;
     desktop *d = &desktops[current_desktop];
-    wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
-    if (!d->current || !wa)
+
+    if (!d->current)
         return;
+
     if (!d->current->isfloating && !d->current->istransient) {
-        d->current->isfloating = true;
+        float_client(d->current);
         tile();
     }
+
+    wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    if (!wa)
+        /* TODO this is not particularly nice if we fail */
+        return;
+
     xcb_raise_window(dis, d->current->win);
     xcb_move(dis, d->current->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
 }
@@ -917,6 +927,24 @@ void fibonacci(int h, int y)
     }
 }
 
+/* switch a client from tiling to float and manage everything involved */
+void float_client(client *c)
+{
+    if (!c)
+        return;
+
+    c->isfloating = true;
+
+    if (c->dim[0] && c->dim[1]) {
+        if (c->dim[0] < MINWSZ)
+            c->dim[0] = MINWSZ;
+        if (c->dim[1] < MINWSZ)
+            c->dim[1] = MINWSZ;
+
+        xcb_resize(dis, c->win, c->dim[0], c->dim[1]);
+    }
+}
+
 /*
  * handles x-movement of floating windows
  */
@@ -928,7 +956,7 @@ void float_x(const Arg *arg)
         return;
 
     if (!current->isfloating) {
-        current->isfloating = True;
+        float_client(current);
         tile();
     }
 
@@ -948,7 +976,7 @@ void float_y(const Arg *arg)
         return;
 
     if (!current->isfloating) {
-        current->isfloating = True;
+        float_client(current);
         tile();
     }
 
@@ -1394,7 +1422,7 @@ void mousemotion(const Arg *arg)
     if (current->isfullscrn)
         setfullscreen(current, False);
     if (!current->isfloating)
-        current->isfloating = True;
+        float_client(current);
     tile();
     update_current(current);
 
@@ -1681,7 +1709,7 @@ void resize_x(const Arg *arg)
         return;
 
     if (!current->isfloating) {
-        current->isfloating = True;
+        float_client(current);
         tile();
     }
 
@@ -1705,7 +1733,7 @@ void resize_y(const Arg *arg)
         return;
 
     if (!current->isfloating) {
-        current->isfloating = True;
+        float_client(current);
         tile();
     }
 
@@ -2171,7 +2199,7 @@ void switch_mode(const Arg *arg)
         showhide();
     if (mode == arg->i)
         for (client *c = head; c; c = c->next)
-            c->isfloating = False;
+            unfloat_client(c);
     mode = arg->i;
     tile();
     update_current(current);
@@ -2193,7 +2221,7 @@ void tilemize()
 {
     if (!current->isfloating)
         return;
-    current->isfloating = false;
+    unfloat_client(current);
     update_current(current);
 }
 
@@ -2202,6 +2230,21 @@ void togglepanel()
 {
     showpanel = !showpanel;
     tile();
+}
+
+/* tile a floating client and save its size for re-floating */
+void unfloat_client(client *c)
+{
+    xcb_get_geometry_reply_t *r;
+
+    if (!c)
+        return;
+
+    c->isfloating = false;
+
+    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, c->win), NULL);
+    c->dim[0] = r->width;
+    c->dim[1] = r->height;
 }
 
 /* windows that request to unmap should lose their
