@@ -234,6 +234,7 @@ static void switch_mode(const Arg *arg);
 static void tile(void);
 static void tilemize();
 static void togglepanel();
+static void unfloat_client(client *c);
 static void update_current(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
 static client *wintoclient(xcb_window_t w);
@@ -537,13 +538,20 @@ void change_desktop(const Arg *arg)
 void centerwindow(void) {
     xcb_get_geometry_reply_t *wa;
     desktop *d = &desktops[current_desktop];
-    wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
-    if (!d->current || !wa)
+
+    if (!d->current)
         return;
+
     if (!d->current->isfloating && !d->current->istransient) {
         float_client(d->current);
         tile();
     }
+
+    wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    if (!wa)
+        /* TODO this is not particularly nice if we fail */
+        return;
+
     xcb_raise_window(dis, d->current->win);
     xcb_move(dis, d->current->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
 }
@@ -2191,7 +2199,7 @@ void switch_mode(const Arg *arg)
         showhide();
     if (mode == arg->i)
         for (client *c = head; c; c = c->next)
-            c->isfloating = false;
+            unfloat_client(c);
     mode = arg->i;
     tile();
     update_current(current);
@@ -2213,7 +2221,7 @@ void tilemize()
 {
     if (!current->isfloating)
         return;
-    current->isfloating = false;
+    unfloat_client(current);
     update_current(current);
 }
 
@@ -2222,6 +2230,21 @@ void togglepanel()
 {
     showpanel = !showpanel;
     tile();
+}
+
+/* tile a floating client and save its size for re-floating */
+void unfloat_client(client *c)
+{
+    xcb_get_geometry_reply_t *r;
+
+    if (!c)
+        return;
+
+    c->isfloating = false;
+
+    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, c->win), NULL);
+    c->dim[0] = r->width;
+    c->dim[1] = r->height;
 }
 
 /* windows that request to unmap should lose their
