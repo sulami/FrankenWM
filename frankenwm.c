@@ -175,7 +175,6 @@ static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
 static void centerwindow();
-static int check_scrpd(xcb_window_t win);
 static void cleanup(void);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
@@ -555,19 +554,6 @@ void centerwindow(void)
     xcb_move(dis, d->current->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
 }
 
-/* check if the supplied client is a scratchpad window by matching titles,
- * returns 0 if so */
-static int check_scrpd(xcb_window_t win)
-{
-    xcb_get_property_cookie_t cookie;
-    xcb_ewmh_get_utf8_strings_reply_t wtitle;
-
-    cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, win);
-    xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0);
-
-    return strcmp(wtitle.strings, SCRPDNAME);
-}
-
 /* remove all windows in all desktops by sending a delete message */
 void cleanup(void)
 {
@@ -757,8 +743,13 @@ void destroynotify(xcb_generic_event_t *e)
     xcb_destroy_notify_event_t *ev = (xcb_destroy_notify_event_t *)e;
     client *c = wintoclient(ev->window);
 
-    if (c)
+    if (c) {
         removeclient(c);
+    } else if (USE_SCRATCHPAD && ev->window == scrpd->win) {
+        free(scrpd);
+        scrpd = NULL;
+        update_current(head);
+    }
     desktopinfo();
 }
 
@@ -2252,8 +2243,12 @@ void togglepanel()
 /* toggle the scratchpad terminal */
 void togglescratchpad()
 {
-    if (!USE_SCRATCHPAD || !scrpd)
+    if (!USE_SCRATCHPAD) {
         return;
+    } else if (!scrpd) {
+        scrpd = NULL;
+        return;
+    }
 
     showscratchpad = !showscratchpad;
 
