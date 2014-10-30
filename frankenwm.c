@@ -529,6 +529,12 @@ void change_desktop(const Arg *arg)
     update_current(current);
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
+
+    if (USE_SCRATCHPAD && scrpd && showscratchpad) {
+        xcb_map_window(dis, scrpd->win);
+        update_current(scrpd);
+        xcb_raise_window(dis, scrpd->win);
+    }
 }
 
 /*
