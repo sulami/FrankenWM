@@ -2343,6 +2343,9 @@ void update_current(client *c)
     else
         xcb_raise_window(dis, current->win);
 
+    if (USE_SCRATCHPAD && showscratchpad && scrpd)
+        xcb_raise_window(dis, scrpd->win);
+
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                         netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
                         &current->win);
