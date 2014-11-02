@@ -104,7 +104,7 @@ static key keys[] = {
     /* show/hide all windows on all desktops */
     {  MOD4|CONTROL,     XK_s,          showhide,          {NULL}},
     /* toggle the scratchpad terminal, if enabled */
-    {  MOD4|SHIFT,       XK_s,          togglescratchpad,  {NULL}},
+    {  MOD4,             XK_s,          togglescratchpad,  {NULL}},
 
     /* move floating windows */
     {  MOD4|MOD1,        XK_j,          float_y,           {.i = +10}},
