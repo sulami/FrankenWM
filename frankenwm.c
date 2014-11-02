@@ -235,6 +235,7 @@ static void tile(void);
 static void tilemize();
 static void togglepanel();
 static void unfloat_client(client *c);
+static void togglescratchpad();
 static void update_current(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
 static client *wintoclient(xcb_window_t w);
@@ -243,13 +244,13 @@ static client *wintoclient(xcb_window_t w);
 
 /* variables */
 static bool running = true, showpanel = SHOW_PANEL, show = true,
-            invert = INVERT;
+            invert = INVERT, showscratchpad = false;
 static int default_screen, previous_desktop, current_desktop, retval;
 static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
-static client *head, *prevfocus, *current;
+static client *head, *prevfocus, *current, *scrpd;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -530,12 +531,19 @@ void change_desktop(const Arg *arg)
     update_current(current);
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
+
+    if (USE_SCRATCHPAD && scrpd && showscratchpad) {
+        xcb_map_window(dis, scrpd->win);
+        update_current(scrpd);
+        xcb_raise_window(dis, scrpd->win);
+    }
 }
 
 /*
  * place the current window in the center of the screen floating
  */
-void centerwindow(void) {
+void centerwindow(void)
+{
     xcb_get_geometry_reply_t *wa;
     desktop *d = &desktops[current_desktop];
 
@@ -728,8 +736,8 @@ void desktopinfo(void)
         fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, mode, current_desktop == cd,
                 urgent);
         if (d + 1 == DESKTOPS)
-            fprintf(stdout,"%s\n", OUTPUT_TITLE && current && wtitle.strings_len
-                    ? wtitle.strings : "");
+            fprintf(stdout, "%s\n", current && OUTPUT_TITLE && wtitle.strings ?
+                    wtitle.strings : "");
     }
     fflush(stdout);
     if (cd != d - 1)
@@ -745,8 +753,13 @@ void destroynotify(xcb_generic_event_t *e)
     xcb_destroy_notify_event_t *ev = (xcb_destroy_notify_event_t *)e;
     client *c = wintoclient(ev->window);
 
-    if (c)
+    if (c) {
         removeclient(c);
+    } else if (USE_SCRATCHPAD && ev->window == scrpd->win) {
+        free(scrpd);
+        scrpd = NULL;
+        update_current(head);
+    }
     desktopinfo();
 }
 
@@ -1228,6 +1241,23 @@ void maprequest(xcb_generic_event_t *e)
 
     if (xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0)) {
         DEBUGP("EWMH window title: %s\n", wtitle.strings);
+        if (!strcmp(wtitle.strings, SCRPDNAME)) {
+            client *c;
+
+            if (!(c = (client *)calloc(1, sizeof(client))))
+                err(EXIT_FAILURE, "cannot allocate client");
+
+            unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
+                                      (FOLLOW_MOUSE
+                                      ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
+            xcb_change_window_attributes_checked(dis, (c->win = ev->window),
+                                                 XCB_CW_EVENT_MASK, values);
+            scrpd = c;
+            xcb_map_window(dis, scrpd->win);
+            xcb_move(dis, scrpd->win, -2 * ww, 0);
+
+            return;
+        }
         for (unsigned int i = 0; i < LENGTH(appruleregex); i++)
             if (!regexec(&appruleregex[i], &wtitle.strings[0], 0, NULL, 0)) {
                 follow = rules[i].follow;
@@ -1876,7 +1906,7 @@ void setfullscreen(client *c, bool fullscrn)
     xcb_border_width(dis, c->win,
                      (!head->next ||
                       c->isfullscrn ||
-                      ( mode == MONOCLE && !ISFFTM(c)  && !MONOCLE_BORDERS)
+                      (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
                      ) ? 0:borders);
     update_current(c);
 }
@@ -2038,6 +2068,11 @@ int setup(int default_screen)
 
     change_desktop(&(Arg){.i = DEFAULT_DESKTOP});
     switch_mode(&(Arg){.i = DEFAULT_MODE});
+
+    /* open the scratchpad terminal if enabled */
+    if (USE_SCRATCHPAD)
+        spawn(&(Arg){.com = scrpcmd});
+
     return 0;
 }
 
@@ -2066,7 +2101,7 @@ void sigchld()
     while (0 < waitpid(-1, NULL, WNOHANG));
 }
 
-/* execute a command */
+/* execute a command, save the child pid if we start the scratchpad */
 void spawn(const Arg *arg)
 {
     if (fork())
@@ -2232,6 +2267,32 @@ void togglepanel()
     tile();
 }
 
+/* toggle the scratchpad terminal */
+void togglescratchpad()
+{
+    if (!USE_SCRATCHPAD) {
+        return;
+    } else if (!scrpd) {
+        scrpd = NULL;
+        return;
+    }
+
+    showscratchpad = !showscratchpad;
+
+    if (showscratchpad) {
+        xcb_get_geometry_reply_t *wa;
+
+        wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, scrpd->win),
+                                    NULL);
+        xcb_move(dis, scrpd->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+        update_current(scrpd);
+        xcb_raise_window(dis, scrpd->win);
+    } else {
+        xcb_move(dis, scrpd->win, -2 * ww, 0);
+        update_current(head);
+    }
+}
+
 /* tile a floating client and save its size for re-floating */
 void unfloat_client(client *c)
 {
@@ -2323,6 +2384,9 @@ void update_current(client *c)
             xcb_raise_window(dis, w[n-ft]);
     else
         xcb_raise_window(dis, current->win);
+
+    if (USE_SCRATCHPAD && showscratchpad && scrpd)
+        xcb_raise_window(dis, scrpd->win);
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                         netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,

@@ -31,6 +31,8 @@
 #define INVERT          False     /* use alternative modes by default */
 #define AUTOCENTER      True      /* automatically center windows floating by default */
 #define OUTPUT_TITLE    False     /* output the title of the currently active window */
+#define USE_SCRATCHPAD  True      /* enable the scratchpad functionality */
+#define SCRPDNAME       "scratchpad" /* the name of the scratchpad window */
 
 /*
  * EDIT THIS: applicaton specific rules
@@ -54,10 +56,15 @@ static const AppRule rules[] = { \
  * EDIT THIS: commands
  * Adjust and add these to the shortcuts below to launch anything you want by
  * pressing a key (combination). The last argument should ALWAYS be a null
- * pointer.
+ * pointer. scrpcmd needs to be defined and different from all other commands
+ * (like the example) so FrankenWM can tell when you want to open a scratchpad
+ * window. The title of the scratchpad window should also match SCRPDNAME from
+ * above
  */
 static const char *termcmd[] = { "xterm",     NULL };
 static const char *menucmd[] = { "dmenu_run", NULL };
+static const char *scrpcmd[] = { "xterm", "-T", "scratchpad", NULL };
+/* static const char *scrpcmd[] = { "urxvt", "-name", "scratchpad",  NULL }; */
 
 #define DESKTOPCHANGE(K,N) \
     {  MOD4,             K,              change_desktop, {.i = N}}, \
@@ -96,6 +103,8 @@ static key keys[] = {
     {  MOD4|SHIFT,       XK_i,          invertstack,       {NULL}},
     /* show/hide all windows on all desktops */
     {  MOD4|CONTROL,     XK_s,          showhide,          {NULL}},
+    /* toggle the scratchpad terminal, if enabled */
+    {  MOD4,             XK_s,          togglescratchpad,  {NULL}},
 
     /* move floating windows */
     {  MOD4|MOD1,        XK_j,          float_y,           {.i = +10}},

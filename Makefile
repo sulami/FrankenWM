@@ -1,5 +1,3 @@
-# Makefile for monsterwm - see LICENSE for license and copyright information
-
 VERSION = master
 WMNAME  = frankenwm
 
