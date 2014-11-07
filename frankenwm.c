@@ -2254,7 +2254,7 @@ void tile(void)
 /* reset the active window from floating to tiling, if not already */
 void tilemize()
 {
-    if (!current->isfloating)
+    if (!current || !current->isfloating)
         return;
     unfloat_client(current);
     update_current(current);
