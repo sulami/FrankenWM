@@ -1378,7 +1378,7 @@ void minimize()
     while (tmp->next)
         tmp = tmp->next;
 
-    /* we always have have an empty filo at the end of the miniq */
+    /* we always have an empty filo at the end of the miniq */
     new = calloc(1, sizeof(filo));
     if (!new)
         return;
@@ -1390,17 +1390,13 @@ void minimize()
     xcb_move(dis, tmp->c->win, -2 * ww, 0);
 
     client *t = head;
-    while (t->next) {
-        t = t->next;
-        if (!t->isminimized)
+    while (t) {
+        if (t && !t->isminimized)
             break;
+        t = t->next;
     }
     if (t)
         update_current(t);
-
-    /* if needed and possible, swap to a new master */
-    if (current == head && t)
-        swap_master();
 
     tile();
 }
