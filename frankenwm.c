@@ -1489,10 +1489,12 @@ void mousemotion(const Arg *arg)
 /* each window should cover all the available screen space */
 void monocle(int hh, int cy)
 {
+    unsigned int b = MONOCLE_BORDERS ? 2 * borders : 0;
+
     for (client *c = head; c; c = c->next)
         if (!ISFFTM(c))
             xcb_move_resize(dis, c->win, gaps, cy + gaps,
-                            ww - 2 * gaps, hh - 2 * gaps);
+                            ww - 2 * gaps - b, hh - 2 * gaps - b);
 }
 
 /* move the current client, to current->next
@@ -2361,9 +2363,9 @@ void update_current(client *c)
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
         xcb_border_width(dis, c->win,
-                         (!head->next ||
-                          c->isfullscrn ||
-                          ( mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
+                         (c->isfullscrn ||
+                          (!MONOCLE_BORDERS && !head->next) ||
+                          (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
                           ) ? 0 : borders);
         /*
          * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
