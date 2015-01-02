@@ -744,7 +744,8 @@ void desktopinfo(void)
         select_desktop(cd);
 }
 
-/* a destroy notification is received when a window is being closed
+/*
+ * a destroy notification is received when a window is being closed
  * on receival, remove the appropriate client that held that window
  */
 void destroynotify(xcb_generic_event_t *e)
@@ -755,7 +756,7 @@ void destroynotify(xcb_generic_event_t *e)
 
     if (c) {
         removeclient(c);
-    } else if (USE_SCRATCHPAD && ev->window == scrpd->win) {
+    } else if (USE_SCRATCHPAD && scrpd && ev->window == scrpd->win) {
         free(scrpd);
         scrpd = NULL;
         update_current(head);
