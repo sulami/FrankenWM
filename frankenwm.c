@@ -2266,14 +2266,19 @@ void togglepanel()
     tile();
 }
 
-/* toggle the scratchpad terminal */
+/*
+ * Toggle the scratchpad terminal, also attempt to reopen it if it is
+ * not present.
+ */
 void togglescratchpad()
 {
     if (!USE_SCRATCHPAD) {
         return;
     } else if (!scrpd) {
-        scrpd = NULL;
-        return;
+        spawn(&(Arg){.com = scrpcmd});
+        showscratchpad = false;
+        if (!scrpd)
+            return;
     }
 
     showscratchpad = !showscratchpad;
