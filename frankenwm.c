@@ -74,11 +74,10 @@ enum { NET_SUPPORTED,
 #define LENGTH(x) (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
-#define ISFFTM(c)        (c->isfullscrn || c->isfloating || c->istransient || c->isminimized)
+#define ISFFTM(c)        (c->isfullscrn || c->istransient || c->isminimized)
 #define USAGE           "usage: frankenwm [-h] [-v]"
 
 enum { RESIZE, MOVE };
-enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, DUALSTACK, EQUAL, MODES };
 
 /* argument structure to be passed to function by config.h
  * com  - a command to run
@@ -130,7 +129,7 @@ typedef struct {
  */
 typedef struct client {
     struct client *next;
-    bool isurgent, istransient, isfullscrn, isfloating, isminimized;
+    bool isurgent, istransient, isfullscrn, isminimized;
     xcb_window_t win;
     unsigned int dim[2];
 } client;
@@ -145,10 +144,7 @@ typedef struct client {
  * showpanel    - the visibility status of the panel
  */
 typedef struct {
-    int mode, growth, gaps;
-    float master_size;
     client *head, *current, *prevfocus;
-    bool showpanel, invert;
 } desktop;
 
 /* filo for minimized clients */
@@ -172,7 +168,6 @@ typedef struct {
  /* function prototypes sorted alphabetically */
 static client *addwindow(xcb_window_t w);
 static void adjust_borders(const Arg *arg);
-static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
 static void centerwindow();
@@ -183,29 +178,19 @@ static void configurerequest(xcb_generic_event_t *e);
 static void deletewindow(xcb_window_t w);
 static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
-static void dualstack(int hh, int cy);
 static void enternotify(xcb_generic_event_t *e);
-static void equal(int h, int y);
-static void fibonacci(int h, int y);
-static void float_client(client *c);
 static void float_x(const Arg *arg);
 static void float_y(const Arg *arg);
-static void focusmaster();
 static void focusurgent();
 static unsigned int getcolor(char *color);
 static void grabbuttons(client *c);
 static void grabkeys(void);
-static void grid(int h, int y);
-static void invertstack();
 static void keypress(xcb_generic_event_t *e);
 static void killclient();
 static void last_desktop();
 static void maprequest(xcb_generic_event_t *e);
 static void maximize();
 static void minimize();
-static void monocle(int h, int y);
-static void move_down();
-static void move_up();
 static void mousemotion(const Arg *arg);
 static void next_win();
 static client *prev_client();
@@ -213,8 +198,6 @@ static void prev_win();
 static void propertynotify(xcb_generic_event_t *e);
 static void quit(const Arg *arg);
 static void removeclient(client *c);
-static void resize_master(const Arg *arg);
-static void resize_stack(const Arg *arg);
 static void resize_x(const Arg *arg);
 static void resize_y(const Arg *arg);
 static void restore();
@@ -228,13 +211,6 @@ static int setup(int default_screen);
 static void showhide();
 static void sigchld();
 static void spawn(const Arg *arg);
-static void stack(int h, int y);
-static void swap_master();
-static void switch_mode(const Arg *arg);
-static void tile(void);
-static void tilemize();
-static void togglepanel();
-static void unfloat_client(client *c);
 static void togglescratchpad();
 static void update_current(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
@@ -243,10 +219,9 @@ static client *wintoclient(xcb_window_t w);
 #include "config.h"
 
 /* variables */
-static bool running = true, showpanel = SHOW_PANEL, show = true,
-            invert = INVERT, showscratchpad = false;
+static bool running = true, show = true, showscratchpad = false;
 static int default_screen, previous_desktop, current_desktop, retval;
-static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
+static int wh, ww, borders;
 static unsigned int numlockmask, win_unfocus, win_focus;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
@@ -262,19 +237,6 @@ static regex_t appruleregex[LENGTH(rules)];
  * on receival of a new event, call the appropriate function to handle it
  */
 static void (*events[XCB_NO_OPERATION])(xcb_generic_event_t *e);
-
-/* layout array - given the current layout mode, tile the windows
- * h (or hh) - avaible height that windows have to expand
- * y (or cy) - offset from top to place the windows (reserved by the panel) */
-static void (*layout[MODES])(int h, int y) = {
-    [TILE] = stack,
-    [BSTACK] = stack,
-    [GRID] = grid,
-    [MONOCLE] = monocle,
-    [FIBONACCI] = fibonacci,
-    [DUALSTACK] = dualstack,
-    [EQUAL] = equal,
-};
 
 /* get screen of display */
 static xcb_screen_t *xcb_screen_of_display(xcb_connection_t *con, int screen)
@@ -438,8 +400,6 @@ client *addwindow(xcb_window_t w)
 
     if (!head) {
         head = c;
-    } else if (!ATTACH_ASIDE) {
-        c->next = head; head = c;
     } else if (t) {
         t->next = c;
     } else {
@@ -459,22 +419,7 @@ void adjust_borders(const Arg *arg)
 {
     if (arg->i > 0 || borders >= -arg->i)
         borders += arg->i;
-    tile();
     update_current(current);
-}
-
-/* change the size of the useless gaps on the fly and re-tile */
-void adjust_gaps(const Arg *arg)
-{
-    if (arg->i > 0 || gaps >= -arg->i)
-        gaps += arg->i;
-
-    if (GLOBALGAPS)
-        for (int i = 0; i < DESKTOPS; i++)
-            desktops[i].gaps = gaps;
-    else
-        desktops[current_desktop].gaps = gaps;
-    tile();
 }
 
 /* on the press of a button check to see if there's a binded function to call */
@@ -527,7 +472,6 @@ void change_desktop(const Arg *arg)
     if (current)
         xcb_unmap_window(dis, current->win);
     select_desktop(arg->i);
-    tile();
     update_current(current);
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
@@ -549,11 +493,6 @@ void centerwindow(void)
 
     if (!d->current)
         return;
-
-    if (!d->current->isfloating && !d->current->istransient) {
-        float_client(d->current);
-        tile();
-    }
 
     wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
     if (!wa)
@@ -611,8 +550,6 @@ void client_to_desktop(const Arg *arg)
 
     if (FOLLOW_WINDOW)
         change_desktop(arg);
-    else
-        tile();
     desktopinfo();
 }
 
@@ -649,7 +586,6 @@ void clientmessage(xcb_generic_event_t *e)
         for (t = head; t && t != c; t = t->next);
     if (t)
         update_current(c);
-    tile();
 }
 
 /* a configure request means that the window requested changes in its geometry
@@ -670,7 +606,7 @@ void configurerequest(xcb_generic_event_t *e)
         if (ev->value_mask & XCB_CONFIG_WINDOW_X)
             v[i++] = ev->x;
         if (ev->value_mask & XCB_CONFIG_WINDOW_Y)
-            v[i++] = (ev->y + (showpanel && TOP_PANEL)) ? PANEL_HEIGHT : 0;
+            v[i++] = ev->y;
         if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
             v[i++] = (ev->width < ww - borders) ? ev->width : ww + borders;
         if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
@@ -683,7 +619,6 @@ void configurerequest(xcb_generic_event_t *e)
             v[i++] = ev->stack_mode;
         xcb_configure_window(dis, ev->window, ev->value_mask, v);
     }
-    tile();
 }
 
 /* close the window */
@@ -733,7 +668,7 @@ void desktopinfo(void)
              c; c = c->next, ++n)
             if (c->isurgent)
                 urgent = true;
-        fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, mode, current_desktop == cd,
+        fprintf(stdout, "%d:%d:%d:%d ", d, n, current_desktop == cd,
                 urgent);
         if (d + 1 == DESKTOPS)
             fprintf(stdout, "%s\n", current && OUTPUT_TITLE && wtitle.strings ?
@@ -764,80 +699,6 @@ void destroynotify(xcb_generic_event_t *e)
     desktopinfo();
 }
 
-/* dualstack layout (three-column-layout, tcl in dwm) */
-void dualstack(int hh, int cy)
-{
-    client *c = NULL, *t = NULL;
-    int n = 0, z = hh, d = 0, l = 0, r = 0, cb = cy,
-        ma = (invert ? wh : ww) * MASTER_SIZE + master_size;
-
-    /* count stack windows and grab first non-floating, non-fullscreen window */
-    for (t = head; t; t = t->next) {
-        if (!ISFFTM(t)) {
-            if (c)
-                ++n;
-            else
-                c = t;
-        }
-    }
-
-    l = (n - 1) / 2 + 1; /* left stack size */
-    r = n - l;          /* right stack size */
-
-    if (!c) {
-        return;
-    } else if (!n) {
-        xcb_move_resize(dis, c->win, gaps, cy + gaps,
-                        ww - 2 * (borders + gaps),
-                        hh - 2 * (borders + gaps));
-        return;
-    }
-
-    /* tile the first non-floating, non-fullscreen window to cover the master area */
-    if (invert)
-        xcb_move_resize(dis, c->win, gaps,
-                        cy + (hh - ma) / 2 + gaps,
-                        ww - 2 * (borders + gaps),
-                        n > 1 ? ma - 2 * gaps - 2 * borders
-                              : ma + (hh - ma) / 2 - 2 * borders - 2 * gaps);
-    else
-        xcb_move_resize(dis, c->win, (ww - ma) / 2 + borders + gaps,
-                        cy + gaps,
-                        n > 1 ? ma - 4 * borders - 2 * gaps
-                              : ma + (ww - ma) / 2 - 3 * borders - 2 * gaps,
-                        hh - 2 * (borders + gaps));
-
-    int cx = gaps,
-        cw = (ww - ma) / 2 - borders - gaps,
-        ch = z;
-        cy += gaps;
-
-    /* tile the non-floating, non-fullscreen stack windows */
-    for (c = c->next; c; c = c->next) {
-        for (d = 0, t = head; t != c; t = t->next, d++);
-        if (ISFFTM(c))
-            continue;
-        if (invert) {
-            if (d == l + 1) /* we are on the -right- bottom stack, reset cy */
-                cx = gaps;
-            if (d > 1 && d != l + 1)
-                cx += (ww - gaps) / (d <= l ? l : r);
-            xcb_move_resize(dis, c->win,
-                        cx, (d <= l) ? cy : cy + (hh - ma) / 2 + ma - gaps,
-                        (ww - gaps) / (d <= l ? l : r) - 2 * borders - gaps,
-                        (hh - ma) / 2 - 2 * borders - gaps);
-        } else {
-            if (d == l + 1) /* we are on the right stack, reset cy */
-                cy = cb + gaps;
-            if (d > 1 && d != l + 1)
-                cy += (ch - gaps) / (d <= l ? l : r);
-            xcb_move_resize(dis, c->win,
-                        d <= l ? cx : ww - cw - 2 * borders - gaps, cy, cw,
-                        (ch - gaps) / (d <= l ? l : r) - 2 * borders - gaps);
-        }
-    }
-}
-
 /*
  * when the mouse enters a window's borders
  * the window, if notifying of such events (EnterWindowMask)
@@ -860,106 +721,6 @@ void enternotify(xcb_generic_event_t *e)
 }
 
 /*
- * equal mode
- * tile the windows in rows or columns, givin each window an equal amount of
- * screen space
- * will use rows when inverted and columns otherwise
- */
-void equal(int h, int y)
-{
-    int n = 0, j = 0;
-
-    for (client *c = head; c; c = c->next) {
-        if (ISFFTM(c))
-            continue;
-        n++;
-    }
-
-    for (client *c = head; c; c = c->next, j++) {
-        if (ISFFTM(c))
-            continue;
-        if (invert)
-            xcb_move_resize(dis, c->win, gaps,
-                            y + h / n * j + (c == head ? gaps : 0),
-                            ww - 2 * borders - 2 * gaps,
-                            h / n - 2 * borders - (c == head ? 2 : 1) * gaps);
-        else
-            xcb_move_resize(dis, c->win, ww / n * j + (c == head ? gaps : 0),
-                            y + gaps,
-                            ww / n - 2 * borders - (c == head ? 2 : 1) * gaps,
-                            h - 2 * borders - 2 * gaps);
-    }
-}
-
-/*
- * fibonacci mode / fibonacci layout
- * tile the windows based on the fibonacci series pattern.
- * arrange windows in such a way that every new window shares
- * half the space of the space taken by the last window
- * inverting changes between right/down and right/up
- */
-void fibonacci(int h, int y)
-{
-    int j = -1, x = gaps, tt = 0,
-        cw = ww - 2 * gaps - 2 * borders,
-        ch = h - 2 * gaps - 2 * borders;
-
-    for (client *n, *c = head; c; c = c->next) {
-        if (ISFFTM(c))
-            continue;
-        else
-            j++;
-        for (n = c->next; n; n = n->next)
-            if (!ISFFTM(n))
-                break;
-
-        /*
-         * not the last window in stack ? -> half the client size, and also
-         * check if we have too many windows to keep them larger than MINWSZ
-         */
-        if (n
-            && ch > MINWSZ * 2 + borders + gaps
-            && cw > MINWSZ * 2 + borders + gaps) {
-            (j & 1) ? (ch = ch / 2 - borders - gaps / 2)
-                    : (cw = cw / 2 - borders - gaps / 2);
-            tt = j;
-        }
-
-        /* not the master client ? -> shift client right or down (or up) */
-        if (j) {
-            (j & 1) ? (x = x + cw + 2 * borders + gaps)
-                    : (y = invert ? (y - ch - 2 * borders - gaps)
-                                  : (y + ch + 2 * borders + gaps));
-
-            if (j & 1 && n && invert)
-                y += ch + 2 * borders + gaps;
-        }
-
-        /* if the window does not fit in the stack, do not jam it in there */
-        if (j <= tt + 1)
-            xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
-    }
-}
-
-/* switch a client from tiling to float and manage everything involved */
-void float_client(client *c)
-{
-    if (!c)
-        return;
-
-    c->isfloating = true;
-
-    if (c->dim[0] && c->dim[1]) {
-        if (c->dim[0] < MINWSZ)
-            c->dim[0] = MINWSZ;
-        if (c->dim[1] < MINWSZ)
-            c->dim[1] = MINWSZ;
-
-        xcb_resize(dis, c->win, c->dim[0], c->dim[1]);
-    }
-}
-
-/*
  * handles x-movement of floating windows
  */
 void float_x(const Arg *arg)
@@ -968,11 +729,6 @@ void float_x(const Arg *arg)
 
     if (!arg->i || !current)
         return;
-
-    if (!current->isfloating) {
-        float_client(current);
-        tile();
-    }
 
     r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
     r->x += arg->i;
@@ -988,11 +744,6 @@ void float_y(const Arg *arg)
 
     if (!arg->i || !current)
         return;
-
-    if (!current->isfloating) {
-        float_client(current);
-        tile();
-    }
 
     r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
     r->y += arg->i;
@@ -1104,50 +855,6 @@ void grabkeys(void)
     }
 }
 
-/* arrange windows in a grid */
-void grid(int hh, int cy)
-{
-    int n = 0, cols = 0, cn = 0, rn = 0, i = -1;
-    for (client *c = head; c; c = c->next)
-        if (!ISFFTM(c))
-            ++n;
-    if (!n)
-        return;
-    for (cols = 0; cols <= n / 2; cols++)
-        if (cols * cols >= n)
-            break; /* emulate square root */
-    if (n == 5)
-        cols = 2;
-
-    int rows = n / cols,
-        ch = hh - gaps,
-        cw = (ww - gaps) / (cols ? cols : 1);
-    for (client *c = head; c; c = c->next) {
-        if (ISFFTM(c))
-            continue;
-        else
-            ++i;
-        if (i / rows + 1 > cols - n % cols)
-            rows = n / cols + 1;
-        xcb_move_resize(dis, c->win, cn * cw + gaps,
-                        cy + rn * ch / rows + gaps,
-                        cw - 2 * borders - gaps,
-                        ch / rows - 2 * borders - gaps);
-        if (++rn >= rows) {
-            rn = 0;
-            cn++;
-        }
-    }
-}
-
-/* invert v-stack left-right */
-void invertstack()
-{
-    if ((invert = !invert))
-        desktops[current_desktop].invert = invert;
-    tile();
-}
-
 /* on the press of a key check to see if there's a binded function to call */
 void keypress(xcb_generic_event_t *e)
 {
@@ -1235,7 +942,7 @@ void maprequest(xcb_generic_event_t *e)
 
     DEBUG("xcb: map request");
 
-    bool follow = false, floating = false;
+    bool follow = false;
     int cd = current_desktop, newdsk = current_desktop;
 
     cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, ev->window);
@@ -1265,7 +972,6 @@ void maprequest(xcb_generic_event_t *e)
                 newdsk = (rules[i].desktop < 0 ||
                           rules[i].desktop >= DESKTOPS) ? current_desktop
                                                         : rules[i].desktop;
-                floating = rules[i].floating;
                 break;
             }
     }
@@ -1278,7 +984,6 @@ void maprequest(xcb_generic_event_t *e)
                 || a == ewmh->_NET_WM_WINDOW_TYPE_POPUP_MENU
                 || a == ewmh->_NET_WM_WINDOW_TYPE_TOOLTIP
                 || a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
-                floating = true;
             }
         }
     }
@@ -1300,7 +1005,6 @@ void maprequest(xcb_generic_event_t *e)
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
                     &transient, NULL); /* TODO: error handling */
     c->istransient = transient ? true : false;
-    c->isfloating  = floating || c->istransient;
 
     prop_reply = xcb_get_property_reply(dis, xcb_get_property_unchecked(
                                     dis, 0, ev->window, netatoms[NET_WM_STATE],
@@ -1318,12 +1022,10 @@ void maprequest(xcb_generic_event_t *e)
 
     /** information for stdout **/
     DEBUGP("transient: %d\n", c->istransient);
-    DEBUGP("floating:  %d\n", c->isfloating);
 
     if (cd != newdsk)
         select_desktop(cd);
     if (cd == newdsk) {
-        tile();
         if (show)
             xcb_map_window(dis, c->win);
         update_current(c);
@@ -1334,37 +1036,26 @@ void maprequest(xcb_generic_event_t *e)
     grabbuttons(c);
 
     desktopinfo();
-
-    if (c->isfloating && AUTOCENTER)
-        centerwindow();
 }
 
 /* maximize the current window, or if we are maximized, tile() */
 void maximize()
 {
     xcb_get_geometry_reply_t *r;
-    int hh, cy;
+    int hh;
 
     if (!current)
         return;
 
-    hh = wh + (showpanel ? 0 : PANEL_HEIGHT);
-    cy = (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0);
-
-    /* TODO: save floating geo before maximizing to reinstate floating ? */
-    /* if we float, reinstate tiling layout to exit maximize */
-    if (current->isfloating)
-        switch_mode(&(Arg){.i = mode});
+    hh = wh;
 
     /* check if we are already maximized, using actual window size to check */
     r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
-    if (r->width == ww - 2 * gaps && r->height == hh - 2 * gaps) {
-        tile();
+    if (r->width == ww && r->height == hh) {
         return;
     }
 
-    xcb_move_resize(dis, current->win, gaps, cy + gaps,
-                    ww - 2 * gaps, hh - 2 * gaps);
+    xcb_move_resize(dis, current->win, 0, 0, ww, hh);
 }
 
 /* push the current client down the miniq and minimize the window */
@@ -1398,8 +1089,6 @@ void minimize()
     }
     if (t)
         update_current(t);
-
-    tile();
 }
 
 /* grab the pointer and get it's current position
@@ -1448,9 +1137,6 @@ void mousemotion(const Arg *arg)
 
     if (current->isfullscrn)
         setfullscreen(current, False);
-    if (!current->isfloating)
-        float_client(current);
-    tile();
     update_current(current);
 
     xcb_generic_event_t *e = NULL;
@@ -1485,17 +1171,6 @@ void mousemotion(const Arg *arg)
     } while (!ungrab && current);
     DEBUG("xcb: ungrab");
     xcb_ungrab_pointer(dis, XCB_CURRENT_TIME);
-}
-
-/* each window should cover all the available screen space */
-void monocle(int hh, int cy)
-{
-    unsigned int b = MONOCLE_BORDERS ? 2 * borders : 0;
-
-    for (client *c = head; c; c = c->next)
-        if (!ISFFTM(c))
-            xcb_move_resize(dis, c->win, gaps, cy + gaps,
-                            ww - 2 * gaps - b, hh - 2 * gaps - b);
 }
 
 /* move the current client, to current->next
@@ -1541,7 +1216,6 @@ void move_down()
         n->next = current;
     else
         head = current;
-    tile();
 }
 
 /* move the current client, to the previous from current and
@@ -1589,7 +1263,6 @@ void move_up()
      *  ^head         ^last           ^head         ^last
      */
     current->next = (current->next == head) ? NULL : p;
-    tile();
 }
 
 /* cyclic focus the next window
@@ -1701,30 +1374,8 @@ void removeclient(client *c)
         update_current(prevfocus);
     free(c);
     c = NULL;
-    if (cd == nd - 1)
-        tile();
-    else
+    if (cd != nd - 1)
         select_desktop(cd);
-}
-
-/* resize the master window - check for boundary size limits
- * the size of a window can't be less than MINWSZ
- */
-void resize_master(const Arg *arg)
-{
-    int msz = (mode == BSTACK ? wh : ww) * MASTER_SIZE + master_size + arg->i;
-
-    if (msz < MINWSZ || (mode == BSTACK ? wh : ww) - msz < MINWSZ)
-        return;
-    master_size += arg->i;
-    tile();
-}
-
-/* resize the first stack window - no boundary checks */
-void resize_stack(const Arg *arg)
-{
-    growth += arg->i;
-    tile();
 }
 
 /*
@@ -1736,11 +1387,6 @@ void resize_x(const Arg *arg)
 
     if (!arg->i || !current)
         return;
-
-    if (!current->isfloating) {
-        float_client(current);
-        tile();
-    }
 
     r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
 
@@ -1760,11 +1406,6 @@ void resize_y(const Arg *arg)
 
     if (!arg->i || !current)
         return;
-
-    if (!current->isfloating) {
-        float_client(current);
-        tile();
-    }
 
     r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
 
@@ -1801,15 +1442,11 @@ void restore()
      * before minimizing, TODO: fix it to use centerwindow() instead of copying
      * half of it
      */
-    if (tmp->c->isfloating) {
-        xcb_get_geometry_reply_t *wa;
-        wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, tmp->c->win),
-                                    NULL);
-        xcb_raise_window(dis, tmp->c->win);
-        xcb_move(dis, tmp->c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
-    }
+    xcb_get_geometry_reply_t *wa;
+    wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, tmp->c->win), NULL);
+    xcb_raise_window(dis, tmp->c->win);
+    xcb_move(dis, tmp->c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
 
-    tile();
     update_current(tmp->c);
     tmp->c = NULL;
 }
@@ -1861,15 +1498,9 @@ void save_desktop(int i)
 {
     if (i < 0 || i >= DESKTOPS)
         return;
-    desktops[i].master_size = master_size;
-    desktops[i].mode        = mode;
-    desktops[i].growth      = growth;
     desktops[i].head        = head;
     desktops[i].current     = current;
-    desktops[i].showpanel   = showpanel;
     desktops[i].prevfocus   = prevfocus;
-    desktops[i].gaps        = gaps;
-    desktops[i].invert = invert;
 }
 
 /* set the specified desktop's properties */
@@ -1878,15 +1509,9 @@ void select_desktop(int i)
     if (i < 0 || i >= DESKTOPS)
         return;
     save_desktop(current_desktop);
-    master_size     = desktops[i].master_size;
-    mode            = desktops[i].mode;
-    growth          = desktops[i].growth;
     head            = desktops[i].head;
     current         = desktops[i].current;
-    showpanel       = desktops[i].showpanel;
     prevfocus       = desktops[i].prevfocus;
-    gaps            = desktops[i].gaps;
-    invert     = desktops[i].invert;
     current_desktop = i;
 }
 
@@ -1901,12 +1526,8 @@ void setfullscreen(client *c, bool fullscrn)
                             c->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 32,
                             fullscrn, data);
     if ((c->isfullscrn = fullscrn))
-        xcb_move_resize(dis, c->win, 0, 0, ww, wh + PANEL_HEIGHT);
-    xcb_border_width(dis, c->win,
-                     (!head->next ||
-                      c->isfullscrn ||
-                      (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
-                     ) ? 0:borders);
+        xcb_move_resize(dis, c->win, 0, 0, ww, wh);
+    xcb_border_width(dis, c->win, c->isfullscrn ? 0 : borders);
     update_current(c);
 }
 
@@ -1960,11 +1581,9 @@ int setup(int default_screen)
         err(EXIT_FAILURE, "error: cannot aquire screen\n");
 
     ww = screen->width_in_pixels;
-    wh = screen->height_in_pixels - PANEL_HEIGHT;
+    wh = screen->height_in_pixels;
     borders = BORDER_WIDTH;
-    gaps = USELESSGAP;
     for (unsigned int i = 0; i < DESKTOPS; i++) {
-        desktops[i].gaps = USELESSGAP;
         save_desktop(i);
         miniq[i] = calloc(1, sizeof(struct filo));
         if (!miniq[i])
@@ -2066,7 +1685,6 @@ int setup(int default_screen)
     }
 
     change_desktop(&(Arg){.i = DEFAULT_DESKTOP});
-    switch_mode(&(Arg){.i = DEFAULT_MODE});
 
     /* open the scratchpad terminal if enabled */
     if (USE_SCRATCHPAD)
@@ -2081,7 +1699,6 @@ int setup(int default_screen)
 void showhide(void)
 {
     if ((show = !show)) {
-        tile();
         if (show)
             for (client *c = desktops[current_desktop].head; c; c = c->next)
                 xcb_map_window(dis, c->win);
@@ -2114,158 +1731,6 @@ void spawn(const Arg *arg)
     exit(EXIT_SUCCESS);
 }
 
-/* arrange windows in normal or bottom stack tile */
-void stack(int hh, int cy)
-{
-    client *c = NULL, *t = NULL; bool b = mode == BSTACK;
-    int n = 0, d = 0, z = b ? ww : hh,
-        ma = (mode == BSTACK ? wh : ww) * MASTER_SIZE + master_size;
-
-    /* count stack windows and grab first non-floating, non-fullscreen window */
-    for (t = head; t; t = t->next) {
-        if (!ISFFTM(t)) {
-            if (c)
-                ++n;
-            else
-                c = t;
-        }
-    }
-
-    /*
-     * if there is only one window, it should cover the available screen space
-     * if there is only one stack window (n == 1) then we don't care about
-     * growth if more than one stack windows (n > 1) on screen then adjustments
-     * may be needed
-     *   - d is the num of pixels than remain when spliting
-     *   the available width/height to the number of windows
-     *   - z is the clients' height/width
-     *
-     *      ----------  -.    --------------------.
-     *      |   |----| --|--> growth               `}--> first client will get
-     *      |   |    |   |                          |    (z+d) height/width
-     *      |   |----|   }--> screen height - hh  --'
-     *      |   |    | }-|--> client height - z
-     *      ----------  -'
-     *
-     *     ->  piece of art by c00kiemon5ter o.O om nom nom nom nom
-     *
-     *     what we do is, remove the growth from the screen height   : (z -
-     *     growth) and then divide that space with the windows on the stack  :
-     *     (z - growth)/n so all windows have equal height/width (z)
-     *     : growth is left out and will later be added to the first's client
-     *     height/width before that, there will be cases when the num of
-     *     windows is not perfectly divided with then available screen
-     *     height/width (ie 100px scr. height, and 3 windows) so we get that
-     *     remaining space and merge growth to it (d) : (z - growth) % n +
-     *     growth finally we know each client's height, and how many pixels
-     *     should be added to the first stack window so that it satisfies
-     *     growth, and doesn't create gaps
-     *     on the bottom of the screen.
-     */
-    if (!c) {
-        return;
-    } else if (!n) {
-        xcb_move_resize(dis, c->win, gaps, cy + gaps,
-                        ww - 2 * (borders + gaps),
-                        hh - 2 * (borders + gaps));
-        return;
-    } else if (n > 1) {
-        d = (z - growth) % n + growth; z = (z - growth) / n;
-    }
-
-    /* tile the first non-floating, non-fullscreen window to cover the master area */
-    if (b)
-        xcb_move_resize(dis, c->win, gaps,
-                        invert ? (cy + hh - ma + gaps) : (cy + gaps),
-                        ww - 2 * (borders + gaps),
-                        ma - 2 * (borders + gaps));
-    else
-        xcb_move_resize(dis, c->win, invert ? (ww - ma + gaps) : gaps,
-                        cy + gaps,
-                        ma - 2 * (borders + gaps),
-                        hh - 2 * (borders + gaps));
-
-    /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
-    for (c = c->next; c && ISFFTM(c); c = c->next);
-    int cx = b ? 0 : (invert ? gaps : ma),
-        cw = (b ? hh : ww) - 2 * borders - ma - gaps,
-        ch = z - 2 * borders - gaps;
-    if (b)
-        xcb_move_resize(dis, c->win, cx += gaps, cy += invert ? gaps : ma,
-                        ch - gaps + d, cw);
-    else
-        xcb_move_resize(dis, c->win, cx, cy += gaps, cw, ch - gaps + d);
-
-    /* tile the rest of the non-floating, non-fullscreen stack windows */
-    for (b ? (cx += z + d - gaps) : (cy += z + d - gaps),
-         c = c->next; c; c = c->next) {
-        if (ISFFTM(c))
-            continue;
-        if (b) {
-            xcb_move_resize(dis, c->win, cx, cy, ch, cw); cx += z;
-        } else {
-            xcb_move_resize(dis, c->win, cx, cy, cw, ch); cy += z;
-        }
-    }
-}
-
-/* swap master window with current or
- * if current is head swap with next
- * if current is not head, then head
- * is behind us, so move_up until we
- * are the head */
-void swap_master()
-{
-    if (!current || !head->next)
-        return;
-    if (current == head)
-        move_down();
-    else
-        while (current != head)
-            move_up();
-    update_current(head);
-}
-
-/* switch the tiling mode and reset all floating windows */
-void switch_mode(const Arg *arg)
-{
-    if (!show)
-        showhide();
-    if (mode == arg->i)
-        for (client *c = head; c; c = c->next)
-            unfloat_client(c);
-    mode = arg->i;
-    tile();
-    update_current(current);
-    desktopinfo();
-}
-
-/* tile all windows of current desktop - call the handler tiling function */
-void tile(void)
-{
-    desktopinfo();
-    if (!head)
-        return; /* nothing to arange */
-    layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT),
-                                (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
-}
-
-/* reset the active window from floating to tiling, if not already */
-void tilemize()
-{
-    if (!current || !current->isfloating)
-        return;
-    unfloat_client(current);
-    update_current(current);
-}
-
-/* toggle visibility state of the panel */
-void togglepanel()
-{
-    showpanel = !showpanel;
-    tile();
-}
-
 /*
  * Toggle the scratchpad terminal, also attempt to reopen it if it is
  * not present.
@@ -2296,21 +1761,6 @@ void togglescratchpad()
         if (current == scrpd)
             update_current(prevfocus->isminimized ? head : prevfocus);
     }
-}
-
-/* tile a floating client and save its size for re-floating */
-void unfloat_client(client *c)
-{
-    xcb_get_geometry_reply_t *r;
-
-    if (!c)
-        return;
-
-    c->isfloating = false;
-
-    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, c->win), NULL);
-    c->dim[0] = r->width;
-    c->dim[1] = r->height;
 }
 
 /* windows that request to unmap should lose their
@@ -2364,15 +1814,11 @@ void update_current(client *c)
                 ft++;
         }
     xcb_window_t w[n];
-    w[(current->isfloating || current->istransient) ? 0 : ft] = current->win;
+    w[current->istransient ? 0 : ft] = current->win;
     for (fl += !ISFFTM(current) ? 1 : 0, c = head; c; c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
-        xcb_border_width(dis, c->win,
-                         (c->isfullscrn ||
-                          (!MONOCLE_BORDERS && !head->next) ||
-                          (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
-                          ) ? 0 : borders);
+        xcb_border_width(dis, c->win, c->isfullscrn ? 0 : borders);
         /*
          * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
          *     XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC,
@@ -2384,11 +1830,8 @@ void update_current(client *c)
     }
 
     /* restack */
-    if (!current->isfloating)
-        for (ft = 0; ft <= n; ++ft)
-            xcb_raise_window(dis, w[n-ft]);
-    else
-        xcb_raise_window(dis, current->win);
+    for (ft = 0; ft <= n; ++ft)
+        xcb_raise_window(dis, w[n-ft]);
 
     if (USE_SCRATCHPAD && showscratchpad && scrpd)
         xcb_raise_window(dis, scrpd->win);
@@ -2400,7 +1843,6 @@ void update_current(client *c)
                         XCB_CURRENT_TIME);
     /* if (CLICK_TO_FOCUS) xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, XCB_NONE,
     *                                        current->win); */
-    tile();
 }
 
 /* find to which client the given window belongs to */
