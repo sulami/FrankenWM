@@ -221,6 +221,7 @@ static void restore();
 static void rotate(const Arg *arg);
 static void rotate_client(const Arg *arg);
 static void rotate_filled(const Arg *arg);
+static void rotate_mode(const Arg *arg);
 static void run(void);
 static void save_desktop(int i);
 static void select_desktop(int i);
@@ -2247,6 +2248,18 @@ void switch_mode(const Arg *arg)
         for (client *c = head; c; c = c->next)
             unfloat_client(c);
     mode = arg->i;
+    tile();
+    update_current(current);
+    desktopinfo();
+}
+
+
+/* cycle the tiling mode and reset all floating windows */
+void rotate_mode(const Arg *arg)
+{
+    if (!show)
+        showhide();
+    mode = (mode + arg->i + MODES) % MODES;
     tile();
     update_current(current);
     desktopinfo();
