@@ -1827,7 +1827,6 @@ void rotate(const Arg *arg)
  * and take the current client with us. */
 void rotate_client(const Arg *arg)
 {
-    client *c = current;
     int i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS;
 
     client_to_desktop(&(Arg){.i = i});
