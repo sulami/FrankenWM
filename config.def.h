@@ -127,6 +127,8 @@ static key keys[] = {
     {  MOD4|SHIFT,       XK_f,          switch_mode,       {.i = FIBONACCI}},
     {  MOD4|SHIFT,       XK_d,          switch_mode,       {.i = DUALSTACK}},
     {  MOD4|SHIFT,       XK_e,          switch_mode,       {.i = EQUAL}},
+    {  MOD4|SHIFT,       XK_z,          rotate_mode,       {.i = -1}},
+    {  MOD4|SHIFT,       XK_x,          rotate_mode,       {.i = +1}},
 
     /* spawn terminal, dmenu, w/e you want to */
     {  MOD4|SHIFT,       XK_Return,     spawn,             {.com = termcmd}},
@@ -148,9 +150,12 @@ static key keys[] = {
     /* toggle to last desktop */
     {  MOD4,             XK_Tab,        last_desktop,      {NULL}},
     /* jump to the next/previous desktop */
-    {  MOD4|CONTROL,     XK_h,          rotate,            {.i = -1}},
-    {  MOD4|CONTROL,     XK_l,          rotate,            {.i = +1}},
-    /* jump to the next/previous desktop with windows */
+    {  MOD4|SHIFT,       XK_h,          rotate,            {.i = -1}},
+    {  MOD4|SHIFT,       XK_l,          rotate,            {.i = +1}},
+    /* jump to the next/previous desktop with just the current window */
+    {  MOD4|CONTROL,     XK_h,          rotate_client,     {.i = -1}},
+    {  MOD4|CONTROL,     XK_l,          rotate_client,     {.i = +1}},
+    /* jump to the next/previous desktop with all windows */
     {  MOD4|CONTROL|SHIFT, XK_h,        rotate_filled,     {.i = -1}},
     {  MOD4|CONTROL|SHIFT, XK_l,        rotate_filled,     {.i = +1}},
 
