@@ -219,7 +219,9 @@ static void resize_x(const Arg *arg);
 static void resize_y(const Arg *arg);
 static void restore();
 static void rotate(const Arg *arg);
+static void rotate_client(const Arg *arg);
 static void rotate_filled(const Arg *arg);
+static void rotate_mode(const Arg *arg);
 static void run(void);
 static void save_desktop(int i);
 static void select_desktop(int i);
@@ -1821,6 +1823,16 @@ void rotate(const Arg *arg)
                    {.i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS});
 }
 
+/* jump and focus the next or previous desktop
+ * and take the current client with us. */
+void rotate_client(const Arg *arg)
+{
+    int i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS;
+
+    client_to_desktop(&(Arg){.i = i});
+    change_desktop(&(Arg){.i = i});
+}
+
 /* jump and focus the next or previous desktop that has clients */
 void rotate_filled(const Arg *arg)
 {
@@ -2235,6 +2247,18 @@ void switch_mode(const Arg *arg)
         for (client *c = head; c; c = c->next)
             unfloat_client(c);
     mode = arg->i;
+    tile();
+    update_current(current);
+    desktopinfo();
+}
+
+
+/* cycle the tiling mode and reset all floating windows */
+void rotate_mode(const Arg *arg)
+{
+    if (!show)
+        showhide();
+    mode = (mode + arg->i + MODES) % MODES;
     tile();
     update_current(current);
     desktopinfo();
