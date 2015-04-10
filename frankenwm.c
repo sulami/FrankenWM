@@ -877,7 +877,7 @@ void equal(int h, int y)
         n++;
     }
 
-    for (client *c = head; c; c = c->next, j++) {
+    for (client *c = head; c; c = c->next) {
         if (ISFFTM(c))
             continue;
         if (invert)
@@ -890,6 +890,7 @@ void equal(int h, int y)
                             y + gaps,
                             ww / n - 2 * borders - (c == head ? 2 : 1) * gaps,
                             h - 2 * borders - 2 * gaps);
+        j++;
     }
 }
 
