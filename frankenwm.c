@@ -869,7 +869,7 @@ void enternotify(xcb_generic_event_t *e)
  */
 void equal(int h, int y)
 {
-    int n = 0, j = 0;
+    int n = 0, j = -1;
 
     for (client *c = head; c; c = c->next) {
         if (ISFFTM(c))
@@ -877,9 +877,11 @@ void equal(int h, int y)
         n++;
     }
 
-    for (client *c = head; c; c = c->next, j++) {
+    for (client *c = head; c; c = c->next) {
         if (ISFFTM(c))
             continue;
+        else
+            j++;
         if (invert)
             xcb_move_resize(dis, c->win, gaps,
                             y + h / n * j + (c == head ? gaps : 0),
