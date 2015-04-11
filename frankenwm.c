@@ -349,7 +349,7 @@ static xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode)
     return keysym;
 }
 
-/* wrapper to get xcb keycodes from keysymbol */
+/* wrapper to get xcb keycodes from keysymbol (caller must free) */
 static xcb_keycode_t *xcb_get_keycodes(xcb_keysym_t keysym)
 {
     xcb_key_symbols_t *keysyms;
@@ -564,6 +564,7 @@ void centerwindow(void)
 
     xcb_raise_window(dis, d->current->win);
     xcb_move(dis, d->current->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+    free(wa);
 }
 
 /* remove all windows in all desktops by sending a delete message */
@@ -585,6 +586,21 @@ void cleanup(void)
     xcb_ewmh_connection_wipe(ewmh);
     if (ewmh)
         free(ewmh);
+
+    for (unsigned int i = 0; i < LENGTH(rules); i++)
+        regfree(&appruleregex[i]);
+
+    for (unsigned int i = 0; i < DESKTOPS; i++) {
+        for (struct filo *tmp = miniq[i], *tmp_next; tmp; tmp = tmp_next) {
+            tmp_next = tmp->next;
+            free(tmp);
+        }
+
+        for (client *c = desktops[i].head, *c_next; c; c = c_next) {
+            c_next = c->next;
+            free(c);
+        }
+    }
 }
 
 /* move a client to another desktop
@@ -724,6 +740,7 @@ void desktopinfo(void)
     int cd = current_desktop, n = 0, d = 0;
     xcb_get_property_cookie_t cookie;
     xcb_ewmh_get_utf8_strings_reply_t wtitle;
+    wtitle.strings = NULL;
 
     if (current) {
         cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, current->win);
@@ -741,6 +758,11 @@ void desktopinfo(void)
             fprintf(stdout, "%s\n", current && OUTPUT_TITLE && wtitle.strings ?
                     wtitle.strings : "");
     }
+
+    if (wtitle.strings) {
+        xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
+    }
+
     fflush(stdout);
     if (cd != d - 1)
         select_desktop(cd);
@@ -1105,6 +1127,7 @@ void grabkeys(void)
                 xcb_grab_key(dis, 1, screen->root, keys[i].mod | modifiers[m],
                              keycode[k], XCB_GRAB_MODE_ASYNC,
                              XCB_GRAB_MODE_ASYNC);
+        free(keycode);
     }
 }
 
@@ -1220,8 +1243,13 @@ void maprequest(xcb_generic_event_t *e)
     bool atom_success = false;
 
     xcb_get_attributes(windows, attr, 1);
-    if (!attr[0] || attr[0]->override_redirect)
+    if (!attr[0] || attr[0]->override_redirect) {
+        free(attr[0]);
         return;
+    } else {
+        free(attr[0]);
+    }
+
     if (wintoclient(ev->window))
         return;
     if (xcb_ewmh_get_wm_window_type_reply(ewmh,
@@ -1231,9 +1259,11 @@ void maprequest(xcb_generic_event_t *e)
             xcb_atom_t a = type.atoms[i];
             if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLBAR
                 || a == ewmh->_NET_WM_WINDOW_TYPE_DOCK) {
+                xcb_ewmh_get_atoms_reply_wipe(&type);
                 return;
             }
         }
+        xcb_ewmh_get_atoms_reply_wipe(&type);
         atom_success = true;
     }
 
@@ -1260,6 +1290,7 @@ void maprequest(xcb_generic_event_t *e)
             scrpd = c;
             xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
+            xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
 
             return;
         }
@@ -1272,6 +1303,8 @@ void maprequest(xcb_generic_event_t *e)
                 floating = rules[i].floating;
                 break;
             }
+
+        xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
     }
     if (atom_success) {
         for (unsigned int i = 0; i < type.atoms_len; i++) {
@@ -1364,7 +1397,10 @@ void maximize()
     r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
     if (r->width == ww - 2 * gaps && r->height == hh - 2 * gaps) {
         tile();
+        free(r);
         return;
+    } else {
+        free(r);
     }
 
     xcb_move_resize(dis, current->win, gaps, cy + gaps,
@@ -1447,8 +1483,12 @@ void mousemotion(const Arg *arg)
         XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE,
         XCB_CURRENT_TIME), NULL);
 
-    if (!grab_reply || grab_reply->status != XCB_GRAB_STATUS_SUCCESS)
+    if (!grab_reply || grab_reply->status != XCB_GRAB_STATUS_SUCCESS) {
+        free(grab_reply);
         return;
+    } else {
+        free(grab_reply);
+    }
 
     if (current->isfullscrn)
         setfullscreen(current, False);
@@ -1461,9 +1501,7 @@ void mousemotion(const Arg *arg)
     xcb_motion_notify_event_t *ev = NULL;
     bool ungrab = false;
     do {
-        if (e)
-            free(e);
-            xcb_flush(dis);
+        xcb_flush(dis);
         while (!(e = xcb_wait_for_event(dis)))
             xcb_flush(dis);
         switch (e->response_type & ~0x80) {
@@ -1486,9 +1524,13 @@ void mousemotion(const Arg *arg)
             case XCB_BUTTON_RELEASE:
                 ungrab = true;
         }
+        if (e)
+            free(e);
     } while (!ungrab && current);
     DEBUG("xcb: ungrab");
     xcb_ungrab_pointer(dis, XCB_CURRENT_TIME);
+
+    free(pointer);
 }
 
 /* each window should cover all the available screen space */
@@ -1811,8 +1853,8 @@ void restore()
                                     NULL);
         xcb_raise_window(dis, tmp->c->win);
         xcb_move(dis, tmp->c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+        free(wa);
     }
-
     tile();
     update_current(tmp->c);
     tmp->c = NULL;
@@ -1938,8 +1980,10 @@ int setup_keyboard(void)
         return -1;
 
     modmap = xcb_get_modifier_mapping_keycodes(reply);
-    if (!modmap)
+    if (!modmap) {
+        free(reply);
         return -1;
+    }
 
     numlock = xcb_get_keycodes(XK_Num_Lock);
     for (unsigned int i = 0; i < 8; i++)
@@ -1955,6 +1999,8 @@ int setup_keyboard(void)
                     break;
                 }
         }
+    free(reply);
+    free(numlock);
 
     return 0;
 }
@@ -2076,7 +2122,9 @@ int setup(int default_screen)
                 addwindow(children[i]);
                 grabbuttons(wintoclient(children[i]));
             }
+            free(attr);
         }
+        free(reply);
     }
 
     change_desktop(&(Arg){.i = DEFAULT_DESKTOP});
@@ -2337,6 +2385,7 @@ void unfloat_client(client *c)
     r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, c->win), NULL);
     c->dim[0] = r->width;
     c->dim[1] = r->height;
+    free(r);
 }
 
 /* windows that request to unmap should lose their
