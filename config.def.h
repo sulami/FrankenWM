@@ -22,7 +22,7 @@
 #define MONOCLE_BORDERS False     /* display borders in monocle mode */
 #define AUTOCENTER      True      /* automatically center windows floating by default */
 #define OUTPUT_TITLE    False     /* output the title of the currently active window */
-#define USE_SCRATCHPAD  True     /* enable the scratchpad functionality */
+#define USE_SCRATCHPAD  False     /* enable the scratchpad functionality */
 #define SCRPDNAME       "scratchpad" /* the name of the scratchpad window */
 
 /*
@@ -110,9 +110,12 @@ static key keys[] = {
     /* toggle to last desktop */
     {  MOD4,             XK_Tab,        last_desktop,      {NULL}},
     /* jump to the next/previous desktop */
-    {  MOD4|CONTROL,     XK_h,          rotate,            {.i = -1}},
-    {  MOD4|CONTROL,     XK_l,          rotate,            {.i = +1}},
-    /* jump to the next/previous desktop with windows */
+    {  MOD4|SHIFT,       XK_h,          rotate,            {.i = -1}},
+    {  MOD4|SHIFT,       XK_l,          rotate,            {.i = +1}},
+    /* jump to the next/previous desktop with just the current window */
+    {  MOD4|CONTROL,     XK_h,          rotate_client,     {.i = -1}},
+    {  MOD4|CONTROL,     XK_l,          rotate_client,     {.i = +1}},
+    /* jump to the next/previous desktop with all windows */
     {  MOD4|CONTROL|SHIFT, XK_h,        rotate_filled,     {.i = -1}},
     {  MOD4|CONTROL|SHIFT, XK_l,        rotate_filled,     {.i = +1}},
 
