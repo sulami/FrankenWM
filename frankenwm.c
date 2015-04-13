@@ -2069,8 +2069,7 @@ int setup(int default_screen)
             if (!attr)
                 continue;
             /* ignore windows in override redirect mode as we won't see them */
-            if (!attr->override_redirect &&
-                attr->map_state == XCB_MAP_STATE_VIEWABLE) {
+            if (!attr->override_redirect) {
                 addwindow(children[i]);
                 grabbuttons(wintoclient(children[i]));
             }
