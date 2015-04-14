@@ -252,7 +252,7 @@ static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
-static client *head, *prevfocus, *current, *scrpd;
+static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -707,7 +707,7 @@ void configurerequest(xcb_generic_event_t *e)
 /* close the window */
 void deletewindow(xcb_window_t w)
 {
-    xcb_client_message_event_t ev;
+    xcb_client_message_event_t ev = {0};
 
     ev.response_type = XCB_CLIENT_MESSAGE;
     ev.window = w;
@@ -1263,7 +1263,6 @@ void maprequest(xcb_generic_event_t *e)
                 return;
             }
         }
-        xcb_ewmh_get_atoms_reply_wipe(&type);
         atom_success = true;
     }
 
@@ -1292,6 +1291,9 @@ void maprequest(xcb_generic_event_t *e)
             xcb_move(dis, scrpd->win, -2 * ww, 0);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
 
+            if (atom_success) {
+                xcb_ewmh_get_atoms_reply_wipe(&type);
+            }
             return;
         }
         for (unsigned int i = 0; i < LENGTH(appruleregex); i++)
@@ -1318,6 +1320,7 @@ void maprequest(xcb_generic_event_t *e)
                 floating = true;
             }
         }
+        xcb_ewmh_get_atoms_reply_wipe(&type);
     }
 
     /* might be useful in future */
@@ -2117,8 +2120,7 @@ int setup(int default_screen)
             if (!attr)
                 continue;
             /* ignore windows in override redirect mode as we won't see them */
-            if (!attr->override_redirect &&
-                attr->map_state == XCB_MAP_STATE_VIEWABLE) {
+            if (!attr->override_redirect) {
                 addwindow(children[i]);
                 grabbuttons(wintoclient(children[i]));
             }
