@@ -541,6 +541,7 @@ void change_desktop(const Arg *arg)
             for (unsigned int i = 0; i < type.atoms_len; i++) {
                 xcb_atom_t a = type.atoms[i];
                 if (a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
+                    xcb_map_window(dis, c->win);
                     xcb_raise_window(dis, c->win);
                 }
             }
