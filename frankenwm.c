@@ -534,6 +534,20 @@ void change_desktop(const Arg *arg)
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
 
+    for (client *c = head; c; c = c->next) {
+        xcb_ewmh_get_atoms_reply_t type;
+        if (xcb_ewmh_get_wm_window_type_reply(ewmh,
+                xcb_ewmh_get_wm_window_type(ewmh, c->win), &type, NULL) == 1) {
+            for (unsigned int i = 0; i < type.atoms_len; i++) {
+                xcb_atom_t a = type.atoms[i];
+                if (a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
+                    xcb_raise_window(dis, c->win);
+                }
+            }
+
+        }
+    }
+
     if (USE_SCRATCHPAD && scrpd && showscratchpad) {
         xcb_map_window(dis, scrpd->win);
         update_current(scrpd);
