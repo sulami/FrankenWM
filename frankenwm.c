@@ -1399,7 +1399,8 @@ void maximize()
 
     /* check if we are already maximized, using actual window size to check */
     r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
-    if (r->width == ww - 2 * gaps && r->height == hh - 2 * gaps) {
+    if (r->width == ww - 2 * gaps - 2 * borders
+        && r->height == hh - 2 * gaps - 2 * borders) {
         tile();
         free(r);
         return;
@@ -1408,7 +1409,7 @@ void maximize()
     }
 
     xcb_move_resize(dis, current->win, gaps, cy + gaps,
-                    ww - 2 * gaps, hh - 2 * gaps);
+                    ww - 2 * gaps - 2 * borders, hh - 2 * gaps - 2 * borders);
 }
 
 /* push the current client down the miniq and minimize the window */
