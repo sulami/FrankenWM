@@ -2119,8 +2119,10 @@ int setup(int default_screen)
                             xcb_get_window_attributes(dis, children[i]), NULL);
             if (!attr)
                 continue;
-            /* ignore windows in override redirect mode as we won't see them */
-            if (!attr->override_redirect) {
+            /* ignore windows in override redirect mode or with input only
+             * class as we won't see them */
+            if (!attr->override_redirect
+                && attr->_class != XCB_WINDOW_CLASS_INPUT_ONLY) {
                 addwindow(children[i]);
                 grabbuttons(wintoclient(children[i]));
             }

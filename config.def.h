@@ -12,7 +12,7 @@
 /* EDIT THIS: general settings */
 #define MASTER_SIZE     0.6       /* master-stack ratio */
 #define SHOW_PANEL      False     /* show panel by default on exec */
-#define TOP_PANEL       True      /* False mean panel is on bottom */
+#define TOP_PANEL       True      /* False means panel is on bottom */
 #define PANEL_HEIGHT    18        /* 0 for no space for panel, thus no panel */
 #define DEFAULT_MODE    TILE      /* TILE MONOCLE BSTACK GRID FIBONACCI EQUAL */
 #define ATTACH_ASIDE    True      /* False means new window is master */
@@ -44,9 +44,9 @@
  * you do not wish to use this functionality.
  */
 static const AppRule rules[] = { \
-    /*  class     desktop  follow  float */
-    { "GNU Image",-1,      False,  True },
-    { "Skype",     3,      False,  True },
+    /* title regex  desktop  follow  float */
+    { "GNU Image",  -1,      False,  True },
+    { "Skype",       3,      False,  True },
 };
 
 /* helper for spawning shell commands, usually you don't edit this */
