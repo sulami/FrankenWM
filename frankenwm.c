@@ -1543,6 +1543,14 @@ void monocle(int hh, int cy)
 {
     unsigned int b = MONOCLE_BORDERS ? 2 * borders : 0;
 
+    /*
+     * Resize the current client first so we don't get any flickering from the
+     * other windows that are moving behind it.
+     */
+    if (current)
+        xcb_move_resize(dis, current->win, gaps, cy + gaps, ww - 2 * gaps - b,
+                                                            hh - 2 * gaps - b);
+
     for (client *c = head; c; c = c->next)
         if (!ISFFTM(c))
             xcb_move_resize(dis, c->win, gaps, cy + gaps,
