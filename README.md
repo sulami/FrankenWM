@@ -22,7 +22,7 @@ prepared a few scripts for different bars [here][sb].
 Installation
 ------------
 
-Note: If you are on Arch Linux, you can use the [AUR][aur)].
+Note: If you are on Arch Linux, you can use the [AUR][aur].
 
 You need xcb and xcb-utils then, copy `config.def.h` as `config.h` and edit to
 suit your needs.  Build and install.
