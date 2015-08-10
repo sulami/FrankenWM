@@ -35,7 +35,7 @@ suit your needs.  Build and install.
 The packages in Arch Linux needed for example would be
 `libxcb` `xcb-util` `xcb-util-wm` `xcb-util-keysyms`
 
-  [aur]: https://aur4.archlinux.org/packages/frankenwm-git/
+  [aur]: https://aur.archlinux.org/packages/frankenwm-git/
 
 Configuration
 -------------
