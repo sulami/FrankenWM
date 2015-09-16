@@ -55,6 +55,7 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_WORKAREA",
                                   "_NET_SHOWING_DESKTOP",
                                   "_NET_CLOSE_WINDOW",
+                                  "_NET_WM_DESKTOP",
                                   "_NET_WM_WINDOW_TYPE" };
 enum { NET_SUPPORTED,
        NET_FULLSCREEN,
@@ -69,6 +70,7 @@ enum { NET_SUPPORTED,
        NET_SHOWING_DESKTOP,
        NET_CLOSE_WINDOW,
        NET_WM_WINDOW_TYPE,
+       NET_WM_DESKTOP,
        NET_COUNT };
 
 #define LENGTH(x) (sizeof(x)/sizeof(*x))
@@ -452,6 +454,7 @@ client *addwindow(xcb_window_t w)
                               (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
     xcb_change_window_attributes_checked(dis, (c->win = w), XCB_CW_EVENT_MASK,
                                          values);
+    xcb_ewmh_set_wm_desktop(ewmh, w, current_desktop);
 
     return c;
 }
@@ -626,6 +629,7 @@ void client_to_desktop(const Arg *arg)
     c->next = NULL;
     xcb_unmap_window(dis, c->win);
     update_current(prevfocus);
+    xcb_ewmh_set_wm_desktop(ewmh, c->win, arg->i);
 
     if (FOLLOW_WINDOW)
         change_desktop(arg);
@@ -665,6 +669,9 @@ void clientmessage(xcb_generic_event_t *e)
         removeclient(c);
     else if (c && ev->type == netatoms[NET_ACTIVE])
         for (t = head; t && t != c; t = t->next);
+    else if (c && ev->type == netatoms[NET_WM_DESKTOP]
+             && ev->data.data32[0] < DESKTOPS)
+        client_to_desktop(&(Arg){.i = ev->data.data32[0]});
     if (t)
         update_current(c);
     tile();
@@ -2076,6 +2083,7 @@ int setup(int default_screen)
                                ewmh->_NET_WORKAREA,
                                ewmh->_NET_SHOWING_DESKTOP,
                                ewmh->_NET_CLOSE_WINDOW,
+                               ewmh->_NET_WM_DESKTOP,
                                ewmh->_NET_WM_WINDOW_TYPE };
 
     xcb_ewmh_coordinates_t viewports[2] = {{ 0, 0 }};
@@ -2116,6 +2124,7 @@ int setup(int default_screen)
     if (reply) {
         int len = xcb_query_tree_children_length(reply);
         xcb_window_t *children = xcb_query_tree_children(reply);
+        int cd = current_desktop;
         for (int i = 0; i < len; i++) {
             attr = xcb_get_window_attributes_reply(dis,
                             xcb_get_window_attributes(dis, children[i]), NULL);
@@ -2125,8 +2134,17 @@ int setup(int default_screen)
              * class as we won't see them */
             if (!attr->override_redirect
                 && attr->_class != XCB_WINDOW_CLASS_INPUT_ONLY) {
+                uint32_t dsk = cd;
+                xcb_ewmh_get_wm_desktop_reply(ewmh,
+                    xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL);
+                if (cd != dsk)
+                    select_desktop(dsk);
                 addwindow(children[i]);
                 grabbuttons(wintoclient(children[i]));
+                if (cd != dsk) {
+                    xcb_unmap_window(dis, children[i]);
+                    select_desktop(cd);
+                }
             }
             free(attr);
         }
