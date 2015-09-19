@@ -2135,8 +2135,13 @@ int setup(int default_screen)
             if (!attr->override_redirect
                 && attr->_class != XCB_WINDOW_CLASS_INPUT_ONLY) {
                 uint32_t dsk = cd;
-                xcb_ewmh_get_wm_desktop_reply(ewmh,
+                int haddsk = xcb_ewmh_get_wm_desktop_reply(ewmh,
                     xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL);
+                if ((!haddsk || dsk == cd) && attr->map_state == XCB_MAP_STATE_UNMAPPED) {
+                    /* if a window is unmapped and not from different desktop,
+                     * it hasn't requested mapping */
+                    continue;
+                }
                 if (cd != dsk)
                     select_desktop(dsk);
                 addwindow(children[i]);
