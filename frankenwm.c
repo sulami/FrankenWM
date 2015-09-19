@@ -1560,6 +1560,8 @@ void monocle(int hh, int cy)
  * and current->next to current client's position */
 void move_down()
 {
+    if (!current)
+        return;
     /* p is previous, c is current, n is next, if current is head n is last */
     client *p = NULL, *n = (current->next) ? current->next : head;
     if (!(p = prev_client(current)))
