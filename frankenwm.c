@@ -242,6 +242,7 @@ static void unfloat_client(client *c);
 static void togglescratchpad();
 static void update_current(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
+static void xerror(xcb_generic_event_t *e);
 static client *wintoclient(xcb_window_t w);
 
 #include "config.h"
@@ -2101,6 +2102,7 @@ int setup(int default_screen)
     /* set events */
     for (unsigned int i = 0; i < XCB_NO_OPERATION; i++)
         events[i] = NULL;
+    events[0]                       = xerror;
     events[XCB_BUTTON_PRESS]        = buttonpress;
     events[XCB_CLIENT_MESSAGE]      = clientmessage;
     events[XCB_CONFIGURE_REQUEST]   = configurerequest;
@@ -2508,6 +2510,13 @@ client *wintoclient(xcb_window_t w)
     if (cd != d-1)
         select_desktop(cd);
     return c;
+}
+
+void xerror(xcb_generic_event_t *e) {
+    xcb_generic_error_t *error = (xcb_generic_error_t *)e;
+    DEBUGP("X error: %i, %i:%i [%i]\n", error->error_code,
+           (int)error->major_code, (int)error->minor_code,
+           (int)error->resource_id);
 }
 
 int main(int argc, char *argv[])
