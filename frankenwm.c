@@ -17,10 +17,10 @@
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xcb_ewmh.h>
 
-/* set this to 1 to enable debug prints */
-#if 0
-#  define DEBUG(x)      puts(x);
-#  define DEBUGP(x, ...) printf(x, ##__VA_ARGS__);
+/* compile with -DDEBUGGING for debugging output */
+#ifdef DEBUGGING
+#  define DEBUG(x)      fprintf(stderr, "%s\n", x);
+#  define DEBUGP(x, ...) fprintf(stderr, x, ##__VA_ARGS__);
 #else
 #  define DEBUG(x);
 #  define DEBUGP(x, ...);
@@ -431,7 +431,6 @@ static int xcb_checkotherwm(void)
 
     error = xcb_request_check(dis, xcb_change_window_attributes_checked(dis,
                                     screen->root, XCB_CW_EVENT_MASK, values));
-    xcb_flush(dis);
     if (error)
         return 1;
     return 0;
@@ -1365,7 +1364,6 @@ void maprequest(xcb_generic_event_t *e)
         free(prop_reply);
     }
 
-    /** information for stdout **/
     DEBUGP("transient: %d\n", c->istransient);
     DEBUGP("floating:  %d\n", c->isfloating);
 
@@ -2196,9 +2194,7 @@ void spawn(const Arg *arg)
         close(screen->root);
     setsid();
     execvp((char *)arg->com[0], (char **)arg->com);
-    fprintf(stderr, "error: execvp %s", (char *)arg->com[0]);
-    perror(" failed"); /* also prints the err msg */
-    exit(EXIT_SUCCESS);
+    err(EXIT_SUCCESS, "error: execvp %s", (char *)arg->com[0]);
 }
 
 /* arrange windows in normal or bottom stack tile */
@@ -2516,6 +2512,8 @@ client *wintoclient(xcb_window_t w)
 
 int main(int argc, char *argv[])
 {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IOLBF, 0);
     if (argc == 2 && argv[1][0] == '-') switch (argv[1][1]) {
         case 'v':
             errx(EXIT_SUCCESS,
@@ -2530,6 +2528,7 @@ int main(int argc, char *argv[])
     }
     if (xcb_connection_has_error((dis = xcb_connect(NULL, &default_screen))))
         errx(EXIT_FAILURE, "error: cannot open display\n");
+    DEBUG("connected to display");
     if (setup(default_screen) != -1) {
         desktopinfo(); /* zero out every desktop on (re)start */
         run();
