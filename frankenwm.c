@@ -389,13 +389,10 @@ static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count)
 
     for (unsigned int i = 0; i < count; i++) {
         reply = xcb_intern_atom_reply(dis, cookies[i], NULL);
-        /* TODO: Handle error */
-        if (reply) {
-            DEBUGP("%s : %d\n", names[i], reply->atom);
-            atoms[i] = reply->atom; free(reply);
-        } else {
-            puts("WARN: frankenwm failed to register %s atom.\nThings might not work right.");
-        }
+        if (!reply)
+            errx(EXIT_FAILURE, "failed to register %s atom", names[i]);
+        DEBUGP("%s : %d\n", names[i], reply->atom);
+        atoms[i] = reply->atom; free(reply);
     }
 }
 
