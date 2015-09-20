@@ -2426,7 +2426,7 @@ void unmapnotify(xcb_generic_event_t *e)
 {
     xcb_unmap_notify_event_t *ev = (xcb_unmap_notify_event_t *)e;
     client *c = wintoclient(ev->window);
-    if (c && ev->event != screen->root)
+    if (c)
         removeclient(c);
     desktopinfo();
 }
