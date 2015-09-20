@@ -2491,7 +2491,7 @@ void update_current(client *c)
 
     /* restack */
     if (!current->isfloating)
-        for (ft = 0; ft <= n; ++ft)
+        for (ft = 1; ft <= n; ++ft)
             xcb_raise_window(dis, w[n-ft]);
     else
         xcb_raise_window(dis, current->win);
