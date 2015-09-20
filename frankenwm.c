@@ -452,8 +452,7 @@ client *addwindow(xcb_window_t w)
 
     unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
                               (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
-    xcb_change_window_attributes_checked(dis, (c->win = w), XCB_CW_EVENT_MASK,
-                                         values);
+    xcb_change_window_attributes(dis, (c->win = w), XCB_CW_EVENT_MASK, values);
     xcb_ewmh_set_wm_desktop(ewmh, w, current_desktop);
 
     return c;
@@ -1292,8 +1291,8 @@ void maprequest(xcb_generic_event_t *e)
             unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
                                       (FOLLOW_MOUSE
                                       ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
-            xcb_change_window_attributes_checked(dis, (c->win = ev->window),
-                                                 XCB_CW_EVENT_MASK, values);
+            xcb_change_window_attributes(dis, (c->win = ev->window),
+                                         XCB_CW_EVENT_MASK, values);
             scrpd = c;
             xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
