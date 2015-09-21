@@ -261,6 +261,7 @@ static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
 static desktop desktops[DESKTOPS];
 static filo *miniq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
+static xcb_key_symbols_t *keysyms;
 
 /* events array
  * on receival of a new event, call the appropriate function to handle it
@@ -340,28 +341,16 @@ static inline void xcb_border_width(xcb_connection_t *con, xcb_window_t win,
 /* wrapper to get xcb keysymbol from keycode */
 static xcb_keysym_t xcb_get_keysym(xcb_keycode_t keycode)
 {
-    xcb_key_symbols_t *keysyms;
     xcb_keysym_t       keysym;
-
-    if (!(keysyms = xcb_key_symbols_alloc(dis)))
-        return 0;
     keysym = xcb_key_symbols_get_keysym(keysyms, keycode, 0);
-    xcb_key_symbols_free(keysyms);
-
     return keysym;
 }
 
 /* wrapper to get xcb keycodes from keysymbol (caller must free) */
 static xcb_keycode_t *xcb_get_keycodes(xcb_keysym_t keysym)
 {
-    xcb_key_symbols_t *keysyms;
     xcb_keycode_t     *keycode;
-
-    if (!(keysyms = xcb_key_symbols_alloc(dis)))
-        return NULL;
     keycode = xcb_key_symbols_get_keycode(keysyms, keysym);
-    xcb_key_symbols_free(keysyms);
-
     return keycode;
 }
 
@@ -575,6 +564,8 @@ void cleanup(void)
 {
     xcb_query_tree_reply_t *query;
     xcb_window_t *c;
+
+    xcb_key_symbols_free(keysyms);
 
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
     if ((query = xcb_query_tree_reply(dis,
@@ -1986,6 +1977,9 @@ int setup_keyboard(void)
     xcb_get_modifier_mapping_reply_t *reply;
     xcb_keycode_t                    *modmap;
     xcb_keycode_t                    *numlock;
+
+    if (!(keysyms = xcb_key_symbols_alloc(dis)))
+        return -1;
 
     reply = xcb_get_modifier_mapping_reply(dis,
                             xcb_get_modifier_mapping_unchecked(dis), NULL);
