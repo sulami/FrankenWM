@@ -2419,6 +2419,12 @@ void unfloat_client(client *c)
     free(r);
 }
 
+static inline bool on_current_desktop(client *c) {
+    client *p;
+    for (p = head; p && p != c; p = p->next) ;
+    return (p != NULL);
+}
+
 /* windows that request to unmap should lose their
  * client, so no invisible windows exist on screen
  */
@@ -2426,7 +2432,7 @@ void unmapnotify(xcb_generic_event_t *e)
 {
     xcb_unmap_notify_event_t *ev = (xcb_unmap_notify_event_t *)e;
     client *c = wintoclient(ev->window);
-    if (c && ev->event != screen->root)
+    if (c && on_current_desktop(c))
         removeclient(c);
     desktopinfo();
 }
