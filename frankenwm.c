@@ -17,10 +17,10 @@
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xcb_ewmh.h>
 
-/* set this to 1 to enable debug prints */
-#if 0
-#  define DEBUG(x)      puts(x);
-#  define DEBUGP(x, ...) printf(x, ##__VA_ARGS__);
+/* compile with -DDEBUGGING for debugging output */
+#ifdef DEBUGGING
+#  define DEBUG(x)      fprintf(stderr, "%s\n", x);
+#  define DEBUGP(x, ...) fprintf(stderr, x, ##__VA_ARGS__);
 #else
 #  define DEBUG(x);
 #  define DEBUGP(x, ...);
@@ -243,6 +243,7 @@ static void unfloat_client(client *c);
 static void togglescratchpad();
 static void update_current(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
+static void xerror(xcb_generic_event_t *e);
 static client *wintoclient(xcb_window_t w);
 
 #include "config.h"
@@ -379,13 +380,10 @@ static void xcb_get_atoms(char **names, xcb_atom_t *atoms, unsigned int count)
 
     for (unsigned int i = 0; i < count; i++) {
         reply = xcb_intern_atom_reply(dis, cookies[i], NULL);
-        /* TODO: Handle error */
-        if (reply) {
-            DEBUGP("%s : %d\n", names[i], reply->atom);
-            atoms[i] = reply->atom; free(reply);
-        } else {
-            puts("WARN: frankenwm failed to register %s atom.\nThings might not work right.");
-        }
+        if (!reply)
+            errx(EXIT_FAILURE, "failed to register %s atom", names[i]);
+        DEBUGP("%s : %d\n", names[i], reply->atom);
+        atoms[i] = reply->atom; free(reply);
     }
 }
 
@@ -403,6 +401,16 @@ static void xcb_get_attributes(xcb_window_t *windows,
         /* TODO: Handle error */
 }
 
+/* wrapper to get window geometry */
+static inline xcb_get_geometry_reply_t *get_geometry(xcb_window_t win)
+{
+    xcb_get_geometry_reply_t *r;
+    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, win), NULL);
+    if (!r)
+        errx(EXIT_FAILURE, "failed to get geometry for window %i", win);
+    return r;
+}
+
 /* check if other wm exists */
 static int xcb_checkotherwm(void)
 {
@@ -414,7 +422,6 @@ static int xcb_checkotherwm(void)
 
     error = xcb_request_check(dis, xcb_change_window_attributes_checked(dis,
                                     screen->root, XCB_CW_EVENT_MASK, values));
-    xcb_flush(dis);
     if (error)
         return 1;
     return 0;
@@ -442,8 +449,7 @@ client *addwindow(xcb_window_t w)
 
     unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
                               (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
-    xcb_change_window_attributes_checked(dis, (c->win = w), XCB_CW_EVENT_MASK,
-                                         values);
+    xcb_change_window_attributes(dis, (c->win = w), XCB_CW_EVENT_MASK, values);
     xcb_ewmh_set_wm_desktop(ewmh, w, current_desktop);
 
     return c;
@@ -550,11 +556,7 @@ void centerwindow(void)
         tile();
     }
 
-    wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
-    if (!wa)
-        /* TODO this is not particularly nice if we fail */
-        return;
-
+    wa = get_geometry(current->win);
     xcb_raise_window(dis, d->current->win);
     xcb_move(dis, d->current->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
     free(wa);
@@ -999,9 +1001,10 @@ void float_x(const Arg *arg)
         tile();
     }
 
-    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    r = get_geometry(current->win);
     r->x += arg->i;
     xcb_move(dis, current->win, r->x, r->y);
+    free(r);
 }
 
 /*
@@ -1019,9 +1022,10 @@ void float_y(const Arg *arg)
         tile();
     }
 
-    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    r = get_geometry(current->win);
     r->y += arg->i;
     xcb_move(dis, current->win, r->x, r->y);
+    free(r);
 }
 
 /*
@@ -1284,8 +1288,8 @@ void maprequest(xcb_generic_event_t *e)
             unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
                                       (FOLLOW_MOUSE
                                       ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
-            xcb_change_window_attributes_checked(dis, (c->win = ev->window),
-                                                 XCB_CW_EVENT_MASK, values);
+            xcb_change_window_attributes(dis, (c->win = ev->window),
+                                         XCB_CW_EVENT_MASK, values);
             scrpd = c;
             xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
@@ -1324,13 +1328,10 @@ void maprequest(xcb_generic_event_t *e)
     }
 
     /* might be useful in future */
-    if ((geometry = xcb_get_geometry_reply(dis,
-                                           xcb_get_geometry(dis, ev->window),
-                                           NULL))) { /* TODO: error handling */
-        DEBUGP("geom: %ux%u+%d+%d\n", geometry->width, geometry->height,
-                                      geometry->x,     geometry->y);
-        free(geometry);
-    }
+    geometry = get_geometry(ev->window);
+    DEBUGP("geom: %ux%u+%d+%d\n", geometry->width, geometry->height,
+                                  geometry->x,     geometry->y);
+    free(geometry);
 
     if (cd != newdsk)
         select_desktop(newdsk);
@@ -1356,7 +1357,6 @@ void maprequest(xcb_generic_event_t *e)
         free(prop_reply);
     }
 
-    /** information for stdout **/
     DEBUGP("transient: %d\n", c->istransient);
     DEBUGP("floating:  %d\n", c->isfloating);
 
@@ -1397,15 +1397,14 @@ void maximize()
         switch_mode(&(Arg){.i = mode});
 
     /* check if we are already maximized, using actual window size to check */
-    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
+    r = get_geometry(current->win);
     if (r->width == ww - 2 * gaps - 2 * borders
         && r->height == hh - 2 * gaps - 2 * borders) {
         tile();
         free(r);
         return;
-    } else {
-        free(r);
     }
+    free(r);
 
     xcb_move_resize(dis, current->win, gaps, cy + gaps,
                     ww - 2 * gaps - 2 * borders, hh - 2 * gaps - 2 * borders);
@@ -1464,15 +1463,10 @@ void mousemotion(const Arg *arg)
 
     if (!current)
         return;
-    geometry = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win),
-                                      NULL); /* TODO: error handling */
-    if (geometry) {
-        winx = geometry->x;     winy = geometry->y;
-        winw = geometry->width; winh = geometry->height;
-        free(geometry);
-    } else {
-        return;
-    }
+    geometry = get_geometry(current->win);
+    winx = geometry->x;     winy = geometry->y;
+    winw = geometry->width; winh = geometry->height;
+    free(geometry);
 
     pointer = xcb_query_pointer_reply(dis,
                                       xcb_query_pointer(dis, screen->root), 0);
@@ -1794,13 +1788,13 @@ void resize_x(const Arg *arg)
         tile();
     }
 
-    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
-
+    r = get_geometry(current->win);
     if (r->width + arg->i < MINWSZ || r->width + arg->i <= 0)
         return;
 
     r->width += arg->i;
     xcb_move_resize(dis, current->win, r->x, r->y, r->width, r->height);
+    free(r);
 }
 
 /*
@@ -1818,13 +1812,13 @@ void resize_y(const Arg *arg)
         tile();
     }
 
-    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, current->win), NULL);
-
+    r = get_geometry(current->win);
     if (r->height + arg->i < MINWSZ || r->height + arg->i <= 0)
         return;
 
     r->height += arg->i;
     xcb_move_resize(dis, current->win, r->x, r->y, r->width, r->height);
+    free(r);
 }
 
 /* get the last client from the current miniq and restore it */
@@ -1855,8 +1849,7 @@ void restore()
      */
     if (tmp->c->isfloating) {
         xcb_get_geometry_reply_t *wa;
-        wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, tmp->c->win),
-                                    NULL);
+        wa = get_geometry(tmp->c->win);
         xcb_raise_window(dis, tmp->c->win);
         xcb_move(dis, tmp->c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
         free(wa);
@@ -2111,6 +2104,7 @@ int setup(int default_screen)
     /* set events */
     for (unsigned int i = 0; i < XCB_NO_OPERATION; i++)
         events[i] = NULL;
+    events[0]                       = xerror;
     events[XCB_BUTTON_PRESS]        = buttonpress;
     events[XCB_CLIENT_MESSAGE]      = clientmessage;
     events[XCB_CONFIGURE_REQUEST]   = configurerequest;
@@ -2204,9 +2198,7 @@ void spawn(const Arg *arg)
         close(screen->root);
     setsid();
     execvp((char *)arg->com[0], (char **)arg->com);
-    fprintf(stderr, "error: execvp %s", (char *)arg->com[0]);
-    perror(" failed"); /* also prints the err msg */
-    exit(EXIT_SUCCESS);
+    err(EXIT_SUCCESS, "error: execvp %s", (char *)arg->com[0]);
 }
 
 /* arrange windows in normal or bottom stack tile */
@@ -2391,11 +2383,9 @@ void togglescratchpad()
     showscratchpad = !showscratchpad;
 
     if (showscratchpad) {
-        xcb_get_geometry_reply_t *wa;
-
-        wa = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, scrpd->win),
-                                    NULL);
+        xcb_get_geometry_reply_t *wa = get_geometry(scrpd->win);
         xcb_move(dis, scrpd->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+        free(wa);
         update_current(scrpd);
         xcb_raise_window(dis, scrpd->win);
     } else {
@@ -2415,7 +2405,7 @@ void unfloat_client(client *c)
 
     c->isfloating = false;
 
-    r = xcb_get_geometry_reply(dis, xcb_get_geometry(dis, c->win), NULL);
+    r = get_geometry(c->win);
     c->dim[0] = r->width;
     c->dim[1] = r->height;
     free(r);
@@ -2530,8 +2520,17 @@ client *wintoclient(xcb_window_t w)
     return c;
 }
 
+void xerror(xcb_generic_event_t *e) {
+    xcb_generic_error_t *error = (xcb_generic_error_t *)e;
+    DEBUGP("X error: %i, %i:%i [%i]\n", error->error_code,
+           (int)error->major_code, (int)error->minor_code,
+           (int)error->resource_id);
+}
+
 int main(int argc, char *argv[])
 {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IOLBF, 0);
     if (argc == 2 && argv[1][0] == '-') switch (argv[1][1]) {
         case 'v':
             errx(EXIT_SUCCESS,
@@ -2546,6 +2545,7 @@ int main(int argc, char *argv[])
     }
     if (xcb_connection_has_error((dis = xcb_connect(NULL, &default_screen))))
         errx(EXIT_FAILURE, "error: cannot open display\n");
+    DEBUG("connected to display");
     if (setup(default_screen) != -1) {
         desktopinfo(); /* zero out every desktop on (re)start */
         run();
