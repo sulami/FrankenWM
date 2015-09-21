@@ -40,6 +40,7 @@
 #define XCB_MOVE        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
 #define XCB_RESIZE      XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT
 
+static char *WM_NAME   = "FrankenWM";
 static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW" };
 enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_COUNT };
 
@@ -2092,8 +2093,15 @@ int setup(int default_screen)
     /* TODO: calculate workarea properly by substracting optional panel space */
     xcb_ewmh_geometry_t workarea[2] = {{ 0, 0, ww, wh }};
 
+    /* functionless window required by the EWMH standard */
+    uint32_t noevents = 0;
+    uint32_t checkwin = xcb_generate_id(dis);
+    xcb_create_window(dis, 0, checkwin, screen->root, 0, 0, 1, 1, 0,
+                      XCB_WINDOW_CLASS_INPUT_ONLY, 0, XCB_CW_EVENT_MASK, &noevents);
+    xcb_ewmh_set_wm_name(ewmh, checkwin, sizeof(WM_NAME)-1, WM_NAME);
+
     xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
-    xcb_ewmh_set_supporting_wm_check(ewmh, default_screen, screen->root);
+    xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, checkwin);
     xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
     xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
     xcb_ewmh_set_desktop_geometry(ewmh, default_screen, ww, wh);
