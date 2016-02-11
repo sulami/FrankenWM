@@ -525,19 +525,19 @@ void change_desktop(const Arg *arg)
     for (client *c = head; c; c = c->next)
         if (c != current)
             xcb_unmap_window(dis, c->win);
-    if (current)
-        xcb_unmap_window(dis, current->win);
+    if (current) {
+        if(current != scrpd)
+            xcb_unmap_window(dis, current->win);
+    }
     select_desktop(arg->i);
     tile();
-    update_current(current);
+
+    if(USE_SCRATCHPAD && !head && showscratchpad && scrpd)
+        update_current(scrpd);
+    else
+        update_current(current);
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
-
-    if (USE_SCRATCHPAD && scrpd && showscratchpad) {
-        xcb_map_window(dis, scrpd->win);
-        update_current(scrpd);
-        xcb_raise_window(dis, scrpd->win);
-    }
 }
 
 /*
@@ -875,12 +875,18 @@ void enternotify(xcb_generic_event_t *e)
     if (!FOLLOW_MOUSE)
         return;
     DEBUG("xcb: enter notify");
-    client *c = wintoclient(ev->event);
 
-    if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL
-        && current != c
-        && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) {
-        update_current(c);
+    if(USE_SCRATCHPAD && showscratchpad && scrpd && ev->event == scrpd->win) {
+        update_current(scrpd);
+    }
+    else {
+        client *c = wintoclient(ev->event);
+
+        if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL
+            && current != c
+            && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) {
+            update_current(c);
+        }
     }
 }
 
