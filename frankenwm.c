@@ -2390,8 +2390,12 @@ void togglescratchpad()
         xcb_raise_window(dis, scrpd->win);
     } else {
         xcb_move(dis, scrpd->win, -2 * ww, 0);
-        if (current == scrpd)
-            update_current(prevfocus->isminimized ? head : prevfocus);
+        if(current == scrpd) {
+            if(!prevfocus)
+                update_current(head);
+            else
+                update_current(prevfocus->isminimized ? head : prevfocus);
+        }
     }
 }
 
