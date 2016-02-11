@@ -1035,7 +1035,7 @@ void float_y(const Arg *arg)
 void focusmaster()
 {
     if (!head || !current || (current == head && !head->next)
-        || prevfocus->isminimized)
+        || !prevfocus || prevfocus->isminimized)
         return;
 
     /* fix for glitchy toggle behaviour between head and head->next */
@@ -2390,8 +2390,12 @@ void togglescratchpad()
         xcb_raise_window(dis, scrpd->win);
     } else {
         xcb_move(dis, scrpd->win, -2 * ww, 0);
-        if (current == scrpd)
-            update_current(prevfocus->isminimized ? head : prevfocus);
+        if(current == scrpd) {
+            if(!prevfocus)
+                update_current(head);
+            else
+                update_current(prevfocus->isminimized ? head : prevfocus);
+        }
     }
 }
 
