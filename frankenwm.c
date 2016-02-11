@@ -253,7 +253,7 @@ static bool running = true, showpanel = SHOW_PANEL, show = true,
             invert = INVERT, showscratchpad = false;
 static int default_screen, previous_desktop, current_desktop, retval;
 static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
-static unsigned int numlockmask, win_unfocus, win_focus;
+static unsigned int numlockmask, win_unfocus, win_focus, win_scratch;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
 static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
@@ -2035,6 +2035,7 @@ int setup(int default_screen)
 
     win_focus   = getcolor(FOCUS);
     win_unfocus = getcolor(UNFOCUS);
+    win_scratch = getcolor(SCRATCH);
 
     /* setup keyboard */
     if (setup_keyboard() == -1)
@@ -2485,6 +2486,13 @@ void update_current(client *c)
          */
         if (c != current)
             w[c->isfullscrn ? --fl : ISFFTM(c) ? --ft : --n] = c->win;
+    }
+
+    if (USE_SCRATCHPAD && SCRATCH_WIDTH && showscratchpad && scrpd) {
+        xcb_change_window_attributes(dis, scrpd->win, XCB_CW_BORDER_PIXEL,
+                            (current == scrpd ? &win_scratch : &win_unfocus));
+        xcb_border_width(dis, scrpd->win, SCRATCH_WIDTH);
+
     }
 
     /* restack */
