@@ -1035,7 +1035,7 @@ void float_y(const Arg *arg)
 void focusmaster()
 {
     if (!head || !current || (current == head && !head->next)
-        || prevfocus->isminimized)
+        || !prevfocus || prevfocus->isminimized)
         return;
 
     /* fix for glitchy toggle behaviour between head and head->next */
