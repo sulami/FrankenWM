@@ -3,4 +3,5 @@ frankenwm
 *.swp
 *~
 *.diff
+tags
 config.h
