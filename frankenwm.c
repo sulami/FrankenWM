@@ -2484,7 +2484,7 @@ void update_current(client *newfocus)   // newfocus may be NULL
         }
     }
 
-    if(!current && (USE_SCRATCHPAD && showscratchpad && scrpd))             // focus scratchpad, if visible
+    if(!current && (USE_SCRATCHPAD && showscratchpad && scrpd))     // focus scratchpad, if visible
         current = scrpd;
 
     if(!current) {  // there is really really really nothing to focus.
@@ -2492,6 +2492,8 @@ void update_current(client *newfocus)   // newfocus may be NULL
         return;
     }
 
+
+    client *c;
     /* num of n:all fl:fullscreen ft:floating/transient windows */
     int n = 0, fl = 0, ft = 0;
     for (c = head; c; c = c->next, ++n)
