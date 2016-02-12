@@ -20,8 +20,10 @@
 #define FOLLOW_WINDOW   False     /* Follow the window when moved to a different desktop */
 #define CLICK_TO_FOCUS  True      /* Focus an unfocused window when clicked */
 #define BORDER_WIDTH    2         /* window border width */
+#define SCRATCH_WIDTH   1         /* scratch window border width, 0 to disable */
 #define FOCUS           "#cccccc" /* focused window border color   */
 #define UNFOCUS         "#121212" /* unfocused window border color */
+#define SCRATCH         "#cc0000" /* scratchpad border color */
 #define DESKTOPS        10        /* number of desktops - edit DESKTOPCHANGE keys to suit */
 #define DEFAULT_DESKTOP 0         /* the desktop to focus on exec */
 #define MINWSZ          50        /* minimum window size in pixels */
