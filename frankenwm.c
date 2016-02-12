@@ -2453,16 +2453,43 @@ void unmapnotify(xcb_generic_event_t *e)
  *  - the mode is MONOCLE and the window is not floating or transient
  *    and MONOCLE_BORDERS is set to false
  */
-void update_current(client *c)
+static inline void nada(void)
 {
-    if (!head) {
         xcb_delete_property(dis, screen->root, netatoms[NET_ACTIVE]);
-        current = prevfocus = NULL;
+        xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root, XCB_CURRENT_TIME);
+        prevfocus = current = NULL;
+}
+void update_current(client *newfocus)   // newfocus may be NULL
+{
+    if(!head && USE_SCRATCHPAD && !showscratchpad) {                // empty desktop. no clients, no scratchpad.
+        nada();
         return;
-    } else if (c == prevfocus) {
-        prevfocus = prev_client(current = prevfocus ? prevfocus : head);
-    } else if (c != current) {
-        prevfocus = current; current = c;
+    }
+
+    if(!newfocus) {
+        if(prevfocus)
+            current = prevfocus;
+        else
+            current = head;
+        prevfocus = prev_client(current);           // get previous client in list, may be NULL
+    }
+    else {
+        if(newfocus == prevfocus) {
+            current = prevfocus;
+            prevfocus = prev_client(current);       // get previous client in list, may be NULL
+        }
+        else if (newfocus != current) {
+            prevfocus = current;
+            current = newfocus;
+        }
+    }
+
+    if(!current && (USE_SCRATCHPAD && showscratchpad && scrpd))             // focus scratchpad, if visible
+        current = scrpd;
+
+    if(!current) {  // there is really really really nothing to focus.
+        nada();
+        return;
     }
 
     /* num of n:all fl:fullscreen ft:floating/transient windows */
@@ -2503,14 +2530,15 @@ void update_current(client *c)
     if (USE_SCRATCHPAD && showscratchpad && scrpd)
         xcb_raise_window(dis, scrpd->win);
 
-    xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
-                        netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
-                        &current->win);
-    xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
-                        XCB_CURRENT_TIME);
-    /* if (CLICK_TO_FOCUS) xcb_ungrab_button(dis, XCB_BUTTON_INDEX_1, XCB_NONE,
-    *                                        current->win); */
     tile();
+
+    if(current) {
+        xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
+                            netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
+                            &current->win);
+        xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
+                            XCB_CURRENT_TIME);
+    }
 }
 
 /* find to which client the given window belongs to */
