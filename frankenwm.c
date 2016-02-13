@@ -591,8 +591,6 @@ void cleanup(void)
             deletewindow(c[i]);
         free(query);
     }
-    xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root,
-                        XCB_CURRENT_TIME);
     xcb_ewmh_connection_wipe(ewmh);
     if (ewmh)
         free(ewmh);
@@ -2588,6 +2586,23 @@ void xerror(xcb_generic_event_t *e) {
            (int)error->resource_id);
 }
 
+static void ungrab_focus(void)
+{
+#include <X11/Xlib.h>
+    Display * dpy;
+
+
+// if use xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root, XCB_CURRENT_TIME);
+// then the focus gets frozen to one window, and there's no way to set focus to different window.
+// if set focus to PointerRoot, then focus follows mouse after quitting the window manager. 
+// TODO: convert to xcb
+
+    if ((dpy = XOpenDisplay(0x0))) {
+        XSetInputFocus(dpy, PointerRoot, RevertToNone, CurrentTime);
+        XCloseDisplay(dpy);
+    }
+
+}
 int main(int argc, char *argv[])
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
@@ -2613,6 +2628,7 @@ int main(int argc, char *argv[])
     }
     cleanup();
     xcb_disconnect(dis);
+    ungrab_focus();
     return retval;
 }
 
