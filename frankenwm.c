@@ -256,6 +256,7 @@ static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
 static unsigned int numlockmask, win_unfocus, win_focus, win_scratch;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
+static uint32_t checkwin;
 static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
 
 static xcb_ewmh_connection_t *ewmh;
@@ -594,8 +595,10 @@ void cleanup(void)
     xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root,
                         XCB_CURRENT_TIME);
     xcb_ewmh_connection_wipe(ewmh);
-    if (ewmh)
-        free(ewmh);
+    free(ewmh);
+
+    xcb_delete_property(dis, screen->root, netatoms[NET_SUPPORTED]);
+    xcb_destroy_window(dis, checkwin);
 
     for (unsigned int i = 0; i < LENGTH(rules); i++)
         regfree(&appruleregex[i]);
@@ -2102,7 +2105,7 @@ int setup(int default_screen)
 
     /* functionless window required by the EWMH standard */
     uint32_t noevents = 0;
-    uint32_t checkwin = xcb_generate_id(dis);
+    checkwin = xcb_generate_id(dis);
     xcb_create_window(dis, 0, checkwin, screen->root, 0, 0, 1, 1, 0,
                       XCB_WINDOW_CLASS_INPUT_ONLY, 0, XCB_CW_EVENT_MASK, &noevents);
     xcb_ewmh_set_wm_name(ewmh, checkwin, sizeof(WM_NAME)-1, WM_NAME);
