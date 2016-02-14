@@ -92,15 +92,15 @@ typedef union {
     const int i;
 } Arg;
 
-/* Aliens are unmanaged & mapped windows, ie dunst notifications.
+/* notifications (aka notes) are unmanaged & mapped windows, ie dunst notifications.
  * They are always on top of all other windows.
  */
-struct alien {
-    struct alien *next;
-    struct alien *prev;
+struct note {
+    struct note *next;
+    struct note *prev;
     xcb_window_t win;
 };
-typedef struct alien alien;
+typedef struct note note;
 
 /* a key struct represents a combination of
  * mod      - a modifier mask
@@ -269,7 +269,7 @@ static xcb_connection_t *dis;
 static xcb_screen_t *screen;
 static uint32_t checkwin;
 static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
-static alien *alienhead = NULL, *alientail = NULL;
+static note *notehead = NULL, *notetail = NULL;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -300,57 +300,57 @@ static void (*layout[MODES])(int h, int y) = {
  * doubly linked list functions
  */
 
-static alien *newalien(xcb_window_t win)
+static note *newnote(xcb_window_t win)
 {
-    alien *a;
+    note *n;
 
-    if((a  = (alien *)calloc(1, sizeof(alien))))
-        a->win = win;
-    return a;
+    if((n  = (note *)calloc(1, sizeof(note))))
+        n->win = win;
+    return n;
 }
 
-static void removealien(alien *a)
+static void removenote(note *n)
 {
-    if (!a)
+    if (!n)
         return;
 
-// only 1 alien
-    if (a == alienhead) {
-        alienhead = alienhead->next;
-        if(alienhead)
-            alienhead->prev = NULL;
+// only 1 note
+    if (n == notehead) {
+        notehead = notehead->next;
+        if(notehead)
+            notehead->prev = NULL;
         else
-            alientail = NULL;
+            notetail = NULL;
     }
-    else if (a == alientail) {
-// at least 2 aliens
-        alientail = alientail->prev;
-        alientail->next = NULL;
+    else if (n == notetail) {
+// at least 2 notes
+        notetail = notetail->prev;
+        notetail->next = NULL;
             
     }
     else {
-        alien *prev, *next;
+        note *prev, *next;
 
-// more than 2 aliens
-        prev = a->prev;
-        next = a->next;
+// more than 2 notes
+        prev = n->prev;
+        next = n->next;
         prev->next = next;
         next->prev = prev;
     }
 
-    free(a);
+    free(n);
 }
 
-static alien *findalien(xcb_window_t win)
+static note *findnote(xcb_window_t win)
 {
-    alien *t;
+    note *n;
 
-    if (!win || !alienhead)
+    if (!win || !notehead)
         return NULL;
 
-    for (t=alienhead; t; t=t->next) {
-        if (t->win == win)
-            return t;
+    for (n=notehead; n; n=n->next) {
+        if (n->win == win)
+            return n;
     }
 
     return NULL;
@@ -359,35 +359,36 @@ static alien *findalien(xcb_window_t win)
 /*
  * not yet needed
  *
-static void newalienhead(xcb_window_t win)
+static void newnotehead(xcb_window_t win)
 {
-    alien *a = newalien(win);
+    note *n = newnote(win);
 
-    if (alienhead == NULL) {
-        alienhead = a;
-        alientail = a;
+    if (notehead == NULL) {
+        notehead = n;
+        notetail = n;
     }
     else {
-        head->prev = a;
-        a->next = alienhead; 
-        alienhead = a;
+        head->prev = n;
+        n->next = notehead; 
+        notehead = n;
 //      do not touch the tail
     }
 }
 */
 
-static void newalientail(xcb_window_t win) {
-    alien *a = newalien(win);
+static void newnotetail(xcb_window_t win)
+{
+    note *n = newnote(win);
 
-    if(alienhead == NULL) {
-        alienhead = a;
-        alientail = a;
+    if(notehead == NULL) {
+        notehead = n;
+        notetail = n;
     }
     else {
 //      do not touch the head
-        alientail->next = a;
-        a->prev = alientail;
-        alientail = a;
+        notetail->next = n;
+        n->prev = notetail;
+        notetail = n;
     }
 }
 
@@ -722,8 +723,8 @@ void cleanup(void)
         }
     }
 
-    while (alienhead)
-        removealien(alienhead);
+    while (notehead)
+        removenote(notehead);
 }
 
 /* move a client to another desktop
@@ -914,11 +915,11 @@ void destroynotify(xcb_generic_event_t *e)
         update_current(head);
     }
     else {
-        alien *a;
+        note *n;
 
-        if((a = findalien(ev->window))) {
-            removealien(a);
-            DEBUG("remove alien");
+        if((n = findnote(ev->window))) {
+            removenote(n);
+            DEBUG("remove note");
         }
     }
     desktopinfo();
@@ -1376,22 +1377,32 @@ void mapnotify(xcb_generic_event_t *e)
     else {
         xcb_window_t                        windows[] = {ev->window};
         xcb_get_window_attributes_reply_t   *attr[1];
+        xcb_ewmh_get_atoms_reply_t          type;
 
         xcb_get_attributes(windows, attr, 1);
         if (!attr[0] || attr[0]->override_redirect) {
-            alien *a;
+            if (xcb_ewmh_get_wm_window_type_reply(ewmh,
+                                              xcb_ewmh_get_wm_window_type(ewmh,
+                                              ev->window), &type, NULL) == 1) {
+                for (unsigned int i = 0; i < type.atoms_len; i++) {
+                    note *n;
+                    xcb_atom_t a = type.atoms[i];
+                    if (a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
+                        if(!(n = findnote(ev->window))) {
+                            DEBUG("caught a new note");
+                            newnotetail(ev->window);
+                        }
+                        else {
+                            DEBUG("note was already caught");
+                        }
+                        break;
+                    }
+                }
+                xcb_ewmh_get_atoms_reply_wipe(&type);
 
-            free(attr[0]);
-
-            if(!(a = findalien(ev->window))) {
-                DEBUG("caught a new alien");
-                newalientail(ev->window);
-                return;
             }
-            else
-                DEBUG("alien was already caught");
         }
-        else
+        if(attr[0])
             free(attr[0]);
     }
 }
@@ -2715,10 +2726,10 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     tile();
 
-    if(alienhead) {
-        alien *t;
+    if(notehead) {
+        note *t;
 
-        for(t=alienhead; t; t=t->next)
+        for(t=notehead; t; t=t->next)
             xcb_raise_window(dis, t->win);
     }
 
