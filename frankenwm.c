@@ -230,7 +230,7 @@ static void save_desktop(int i);
 static void select_desktop(int i);
 static void setfullscreen(client *c, bool fullscrn);
 static int setup(int default_screen);
-static void setwindowattr(xcb_window_t w);
+static void setwindefattr(xcb_window_t w);
 static void showhide();
 static void sigchld();
 static void spawn(const Arg *arg);
@@ -469,7 +469,7 @@ client *addwindow(xcb_window_t w)
         head->next = c;
     }
 
-    setwindowattr(c->win = w);
+    setwindefattr(c->win = w);
     return c;
 }
 
@@ -1320,7 +1320,7 @@ void maprequest(xcb_generic_event_t *e)
             if (!(scrpd = (client *)calloc(1, sizeof(client))))
                 err(EXIT_FAILURE, "cannot allocate client");
 
-            setwindowattr(scrpd->win = ev->window);
+            setwindefattr(scrpd->win = ev->window);
             xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
@@ -2190,7 +2190,7 @@ int setup(int default_screen)
                         free(prop_reply);
                         if (reply_type != XCB_NONE && (scrpd = (client *)calloc(1, sizeof(client)))) {
                             scrpd->win = children[i];
-                            setwindowattr(scrpd->win);
+                            setwindefattr(scrpd->win);
                             xcb_move(dis, scrpd->win, -2 * ww, 0);
                             showscratchpad = False;
                             continue;
@@ -2232,11 +2232,11 @@ int setup(int default_screen)
 /*
  * set default window attributes
  */
-static void setwindowattr(xcb_window_t w)
+static void setwindefattr(xcb_window_t w)
 {
     unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
                             (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
-    xcb_change_window_attributes(dis, w, XCB_CW_EVENT_MASK, values);
+    if (w) xcb_change_window_attributes(dis, w, XCB_CW_EVENT_MASK, values);
 }
 
 /*
