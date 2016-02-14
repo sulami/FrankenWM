@@ -92,6 +92,16 @@ typedef union {
     const int i;
 } Arg;
 
+/* Aliens are unmanaged & mapped windows, ie dunst notifications.
+ * They are always on top of all other windows.
+ */
+struct alien {
+    struct alien *next;
+    struct alien *prev;
+    xcb_window_t win;
+};
+typedef struct alien alien;
+
 /* a key struct represents a combination of
  * mod      - a modifier mask
  * keysym   - and the key pressed
@@ -203,6 +213,7 @@ static void invertstack();
 static void keypress(xcb_generic_event_t *e);
 static void killclient();
 static void last_desktop();
+static void mapnotify(xcb_generic_event_t *e);
 static void maprequest(xcb_generic_event_t *e);
 static void maximize();
 static void minimize();
@@ -258,6 +269,7 @@ static xcb_connection_t *dis;
 static xcb_screen_t *screen;
 static uint32_t checkwin;
 static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
+static alien *alienhead = NULL, *alientail = NULL;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -283,6 +295,103 @@ static void (*layout[MODES])(int h, int y) = {
     [DUALSTACK] = dualstack,
     [EQUAL] = equal,
 };
+
+/*
+ * doubly linked list functions
+ */
+
+static alien *newalien(xcb_window_t win)
+{
+    alien *a;
+
+    if((a  = (alien *)calloc(1, sizeof(alien))))
+        a->win = win;
+    return a;
+}
+
+static void removealien(alien *a)
+{
+    if (!a)
+        return;
+
+// only 1 alien
+    if (a == alienhead) {
+        alienhead = alienhead->next;
+        if(alienhead)
+            alienhead->prev = NULL;
+        else
+            alientail = NULL;
+    }
+    else if (a == alientail) {
+// at least 2 aliens
+        alientail = alientail->prev;
+        alientail->next = NULL;
+            
+    }
+    else {
+        alien *prev, *next;
+
+// more than 2 aliens
+        prev = a->prev;
+        next = a->next;
+        prev->next = next;
+        next->prev = prev;
+    }
+
+    free(a);
+}
+
+static alien *findalien(xcb_window_t win)
+{
+    alien *t;
+
+    if (!win || !alienhead)
+        return NULL;
+
+    for (t=alienhead; t; t=t->next) {
+        if (t->win == win)
+            return t;
+    }
+
+    return NULL;
+}
+
+/*
+ * not yet needed
+ *
+static void newalienhead(xcb_window_t win)
+{
+    alien *a = newalien(win);
+
+    if (alienhead == NULL) {
+        alienhead = a;
+        alientail = a;
+    }
+    else {
+        head->prev = a;
+        a->next = alienhead; 
+        alienhead = a;
+//      do not touch the tail
+    }
+}
+*/
+
+static void newalientail(xcb_window_t win) {
+    alien *a = newalien(win);
+
+    if(alienhead == NULL) {
+        alienhead = a;
+        alientail = a;
+    }
+    else {
+//      do not touch the head
+        alientail->next = a;
+        a->prev = alientail;
+        alientail = a;
+    }
+}
+
+
 
 /* get screen of display */
 static xcb_screen_t *xcb_screen_of_display(xcb_connection_t *con, int screen)
@@ -612,6 +721,9 @@ void cleanup(void)
             free(c);
         }
     }
+
+    while (alienhead)
+        removealien(alienhead);
 }
 
 /* move a client to another desktop
@@ -795,10 +907,19 @@ void destroynotify(xcb_generic_event_t *e)
 
     if (c) {
         removeclient(c);
-    } else if (USE_SCRATCHPAD && scrpd && ev->window == scrpd->win) {
+    }
+    else if (USE_SCRATCHPAD && scrpd && ev->window == scrpd->win) {
         free(scrpd);
         scrpd = NULL;
         update_current(head);
+    }
+    else {
+        alien *a;
+
+        if((a = findalien(ev->window))) {
+            removealien(a);
+            DEBUG("remove alien");
+        }
     }
     desktopinfo();
 }
@@ -1244,6 +1365,37 @@ void last_desktop()
     change_desktop(&(Arg){.i = previous_desktop});
 }
 
+void mapnotify(xcb_generic_event_t *e)
+{
+    xcb_map_notify_event_t *ev = (xcb_map_notify_event_t *)e;
+
+    DEBUG("xcb: map notify");
+
+    if (wintoclient(ev->window) || (scrpd && scrpd->win == ev->window))
+        return;
+    else {
+        xcb_window_t                        windows[] = {ev->window};
+        xcb_get_window_attributes_reply_t   *attr[1];
+
+        xcb_get_attributes(windows, attr, 1);
+        if (!attr[0] || attr[0]->override_redirect) {
+            alien *a;
+
+            free(attr[0]);
+
+            if(!(a = findalien(ev->window))) {
+                DEBUG("caught a new alien");
+                newalientail(ev->window);
+                return;
+            }
+            else
+                DEBUG("alien was already caught");
+        }
+        else
+            free(attr[0]);
+    }
+}
+
 /* a map request is received when a window wants to display itself
  * if the window has override_redirect flag set then it should not be handled
  * by the wm. if the window already has a client then there is nothing to do.
@@ -1270,7 +1422,8 @@ void maprequest(xcb_generic_event_t *e)
     if (!attr[0] || attr[0]->override_redirect) {
         free(attr[0]);
         return;
-    } else {
+    }
+    else {
         free(attr[0]);
     }
 
@@ -1523,7 +1676,8 @@ void mousemotion(const Arg *arg)
         while (!(e = xcb_wait_for_event(dis)))
             xcb_flush(dis);
         switch (e->response_type & ~0x80) {
-            case XCB_CONFIGURE_REQUEST: case XCB_MAP_REQUEST:
+            case XCB_CONFIGURE_REQUEST:
+            case XCB_MAP_REQUEST:
                 events[e->response_type & ~0x80](e);
                 break;
             case XCB_MOTION_NOTIFY:
@@ -2132,6 +2286,7 @@ int setup(int default_screen)
     events[XCB_DESTROY_NOTIFY]      = destroynotify;
     events[XCB_ENTER_NOTIFY]        = enternotify;
     events[XCB_KEY_PRESS]           = keypress;
+    events[XCB_MAP_NOTIFY]          = mapnotify;
     events[XCB_MAP_REQUEST]         = maprequest;
     events[XCB_PROPERTY_NOTIFY]     = propertynotify;
     events[XCB_UNMAP_NOTIFY]        = unmapnotify;
@@ -2559,6 +2714,13 @@ void update_current(client *newfocus)   // newfocus may be NULL
         xcb_raise_window(dis, scrpd->win);
 
     tile();
+
+    if(alienhead) {
+        alien *t;
+
+        for(t=alienhead; t; t=t->next)
+            xcb_raise_window(dis, t->win);
+    }
 
     if(current) {
         xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
