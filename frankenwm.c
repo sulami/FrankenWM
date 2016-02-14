@@ -2137,8 +2137,10 @@ int setup(int default_screen)
                         netatoms[NET_SUPPORTED], XCB_ATOM_ATOM, 32, NET_COUNT,
                         netatoms);
 
-    if (USE_SCRATCHPAD)
-        scrpd_atom = xcb_internatom(dis, SCRPDNAME, 0); // may be zero
+    if (USE_SCRATCHPAD && !CLOSE_SCRATCHPAD)
+        scrpd_atom = xcb_internatom(dis, SCRPDNAME, 0);
+    else
+        scrpd_atom = 0;
 
     grabkeys();
 
