@@ -664,6 +664,8 @@ void clientmessage(xcb_generic_event_t *e)
     xcb_client_message_event_t *ev = (xcb_client_message_event_t *)e;
     client *t = NULL, *c = wintoclient(ev->window);
 
+    DEBUG("xcb: client message");
+
     if (c && ev->type == netatoms[NET_WM_STATE]
           && ((unsigned)ev->data.data32[1] == netatoms[NET_FULLSCREEN]
            || (unsigned)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
@@ -682,7 +684,6 @@ void clientmessage(xcb_generic_event_t *e)
         client_to_desktop(&(Arg){.i = ev->data.data32[0]});
     if (t)
         update_current(c);
-    tile();
 }
 
 /* a configure request means that the window requested changes in its geometry
@@ -694,6 +695,8 @@ void configurerequest(xcb_generic_event_t *e)
 {
     xcb_configure_request_event_t *ev = (xcb_configure_request_event_t *)e;
     client *c = wintoclient(ev->window);
+
+    DEBUG("xcb: configure request");
 
     if (c && c->isfullscrn) {
         setfullscreen(c, true);
@@ -789,9 +792,10 @@ void desktopinfo(void)
  */
 void destroynotify(xcb_generic_event_t *e)
 {
-    DEBUG("xcb: destroy notify");
     xcb_destroy_notify_event_t *ev = (xcb_destroy_notify_event_t *)e;
     client *c = wintoclient(ev->window);
+
+    DEBUG("xcb: destroy notify");
 
     if (c) {
         removeclient(c);
@@ -886,9 +890,12 @@ void enternotify(xcb_generic_event_t *e)
 {
     xcb_enter_notify_event_t *ev = (xcb_enter_notify_event_t *)e;
 
+    DEBUG("xcb: enter notify");
+
     if (!FOLLOW_MOUSE)
         return;
-    DEBUG("xcb: enter notify");
+
+    DEBUG("event is valid");
 
     if(USE_SCRATCHPAD && showscratchpad && scrpd && ev->event == scrpd->win) {
         update_current(scrpd);
@@ -1266,6 +1273,8 @@ void maprequest(xcb_generic_event_t *e)
     xcb_ewmh_get_utf8_strings_reply_t  wtitle;
     bool atom_success = false;
 
+    DEBUG("xcb: map request");
+
     xcb_get_attributes(windows, attr, 1);
     if (!attr[0] || attr[0]->override_redirect) {
         free(attr[0]);
@@ -1290,7 +1299,7 @@ void maprequest(xcb_generic_event_t *e)
         atom_success = true;
     }
 
-    DEBUG("xcb: map request");
+    DEBUG("event is valid");
 
     bool follow = false, floating = false;
     int cd = current_desktop, newdsk = current_desktop;
@@ -1724,6 +1733,7 @@ void propertynotify(xcb_generic_event_t *e)
     client *c;
 
     DEBUG("xcb: property notify");
+
     c = wintoclient(ev->window);
     if (!c || ev->atom != XCB_ICCCM_WM_ALL_HINTS)
         return;
@@ -2449,9 +2459,13 @@ void unmapnotify(xcb_generic_event_t *e)
 {
     xcb_unmap_notify_event_t *ev = (xcb_unmap_notify_event_t *)e;
     client *c = wintoclient(ev->window);
-    if (c && on_current_desktop(c))
+
+    DEBUG("xcb: unmap notify");
+
+    if (c && on_current_desktop(c)) {
         removeclient(c);
-    desktopinfo();
+        desktopinfo();
+    }
 }
 
 /*
