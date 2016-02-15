@@ -2650,11 +2650,16 @@ client *wintoclient(xcb_window_t w)
     return c;
 }
 
-void xerror(xcb_generic_event_t *e) {
+void xerror(xcb_generic_event_t *e)
+{
+#ifdef DEBUGGING
     xcb_generic_error_t *error = (xcb_generic_error_t *)e;
     DEBUGP("X error: %i, %i:%i [%i]\n", error->error_code,
            (int)error->major_code, (int)error->minor_code,
            (int)error->resource_id);
+#else
+    if(e){;} /* silencing gcc warning */
+#endif /* DEBUGGING */
 }
 
 static void ungrab_focus(void)
