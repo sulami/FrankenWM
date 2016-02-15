@@ -2175,7 +2175,7 @@ int setup(int default_screen)
     if (reply) {
         int len = xcb_query_tree_children_length(reply);
         xcb_window_t *children = xcb_query_tree_children(reply);
-        int cd = current_desktop;
+        uint32_t cd = current_desktop;
         for (int i = 0; i < len; i++) {
             attr = xcb_get_window_attributes_reply(dis,
                             xcb_get_window_attributes(dis, children[i]), NULL);
