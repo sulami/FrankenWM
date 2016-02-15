@@ -230,6 +230,7 @@ static void save_desktop(int i);
 static void select_desktop(int i);
 static void setfullscreen(client *c, bool fullscrn);
 static int setup(int default_screen);
+static void setwindefattr(xcb_window_t w);
 static void showhide();
 static void sigchld();
 static void spawn(const Arg *arg);
@@ -257,6 +258,7 @@ static unsigned int numlockmask, win_unfocus, win_focus, win_scratch;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
 static uint32_t checkwin;
+static xcb_atom_t scrpd_atom;
 static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
 
 static xcb_ewmh_connection_t *ewmh;
@@ -295,6 +297,25 @@ static xcb_screen_t *xcb_screen_of_display(xcb_connection_t *con, int screen)
             return iter.data;
 
     return NULL;
+}
+
+/* wrapper to intern atom */
+static inline xcb_atom_t xcb_internatom(xcb_connection_t *con, char *name, uint8_t only_if_exists)
+{
+    xcb_atom_t atom;
+    xcb_intern_atom_cookie_t cookie;
+    xcb_intern_atom_reply_t *reply;
+
+    atom = 0;
+    cookie = xcb_intern_atom(con, only_if_exists, strlen(name), name);
+    reply = xcb_intern_atom_reply(con, cookie, NULL);
+    if (reply) {
+        atom = reply->atom;
+        free(reply);
+    }
+/* TODO: Handle error */
+
+    return atom; // may be zero
 }
 
 /* wrapper to move and resize window */
@@ -448,11 +469,7 @@ client *addwindow(xcb_window_t w)
         head->next = c;
     }
 
-    unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
-                              (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
-    xcb_change_window_attributes(dis, (c->win = w), XCB_CW_EVENT_MASK, values);
-    xcb_ewmh_set_wm_desktop(ewmh, w, current_desktop);
-
+    setwindefattr(c->win = w);
     return c;
 }
 
@@ -1300,17 +1317,10 @@ void maprequest(xcb_generic_event_t *e)
     if (xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0)) {
         DEBUGP("EWMH window title: %s\n", wtitle.strings);
         if (!strcmp(wtitle.strings, SCRPDNAME)) {
-            client *c;
-
-            if (!(c = (client *)calloc(1, sizeof(client))))
+            if (!(scrpd = (client *)calloc(1, sizeof(client))))
                 err(EXIT_FAILURE, "cannot allocate client");
 
-            unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
-                                      (FOLLOW_MOUSE
-                                      ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
-            xcb_change_window_attributes(dis, (c->win = ev->window),
-                                         XCB_CW_EVENT_MASK, values);
-            scrpd = c;
+            setwindefattr(scrpd->win = ev->window);
             xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
@@ -1318,8 +1328,14 @@ void maprequest(xcb_generic_event_t *e)
             if (atom_success) {
                 xcb_ewmh_get_atoms_reply_wipe(&type);
             }
+
+            if (scrpd_atom)
+                xcb_change_property(dis, XCB_PROP_MODE_REPLACE, scrpd->win, scrpd_atom,
+                                    XCB_ATOM_WINDOW, 32, 1, &scrpd->win);
+
             return;
         }
+
         for (unsigned int i = 0; i < LENGTH(appruleregex); i++)
             if (!regexec(&appruleregex[i], &wtitle.strings[0], 0, NULL, 0)) {
                 follow = rules[i].follow;
@@ -2120,6 +2136,12 @@ int setup(int default_screen)
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                         netatoms[NET_SUPPORTED], XCB_ATOM_ATOM, 32, NET_COUNT,
                         netatoms);
+
+    if (USE_SCRATCHPAD && !CLOSE_SCRATCHPAD)
+        scrpd_atom = xcb_internatom(dis, SCRPDNAME, 0);
+    else
+        scrpd_atom = 0;
+
     grabkeys();
 
     /* set events */
@@ -2154,8 +2176,30 @@ int setup(int default_screen)
             if (!attr->override_redirect
                 && attr->_class != XCB_WINDOW_CLASS_INPUT_ONLY) {
                 uint32_t dsk = cd;
-                int haddsk = xcb_ewmh_get_wm_desktop_reply(ewmh,
-                    xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL);
+                int haddsk;
+
+                if (scrpd_atom && !scrpd) {
+                    xcb_get_property_cookie_t prop_cookie;
+                    xcb_get_property_reply_t *prop_reply;
+
+                    prop_cookie = xcb_get_property(dis, 0, children[i], scrpd_atom,
+                                                    XCB_GET_PROPERTY_TYPE_ANY, 0, 0);
+                    prop_reply = xcb_get_property_reply(dis, prop_cookie, NULL);
+                    if (prop_reply) {
+                        xcb_atom_t reply_type = prop_reply->type;
+                        free(prop_reply);
+                        if (reply_type != XCB_NONE && (scrpd = (client *)calloc(1, sizeof(client)))) {
+                            scrpd->win = children[i];
+                            setwindefattr(scrpd->win);
+                            xcb_move(dis, scrpd->win, -2 * ww, 0);
+                            showscratchpad = False;
+                            continue;
+                        }
+                    }
+                 }
+
+                 haddsk = xcb_ewmh_get_wm_desktop_reply(ewmh,
+                                    xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL);
                 if ((!haddsk || dsk == cd) && attr->map_state == XCB_MAP_STATE_UNMAPPED) {
                     /* if a window is unmapped and not from different desktop,
                      * it hasn't requested mapping */
@@ -2179,10 +2223,20 @@ int setup(int default_screen)
     switch_mode(&(Arg){.i = DEFAULT_MODE});
 
     /* open the scratchpad terminal if enabled */
-    if (USE_SCRATCHPAD)
+    if (USE_SCRATCHPAD && !scrpd)
         spawn(&(Arg){.com = scrpcmd});
 
     return 0;
+}
+
+/*
+ * set default window attributes
+ */
+static void setwindefattr(xcb_window_t w)
+{
+    unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
+                            (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
+    if (w) xcb_change_window_attributes(dis, w, XCB_CW_EVENT_MASK, values);
 }
 
 /*
