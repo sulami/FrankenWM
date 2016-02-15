@@ -513,13 +513,15 @@ void buttonpress(xcb_generic_event_t *e)
     if (CLICK_TO_FOCUS && current != c && ev->detail == XCB_BUTTON_INDEX_1)
         update_current(c);
 
-    for (unsigned int i = 0; i < LENGTH(buttons); i++)
-        if (buttons[i].func && buttons[i].button == ev->detail &&
-            CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state)) {
-            if (current != c)
-                update_current(c);
-            buttons[i].func(&(buttons[i].arg));
-        }
+    if (c != scrpd) {
+        for (unsigned int i = 0; i < LENGTH(buttons); i++)
+            if (buttons[i].func && buttons[i].button == ev->detail &&
+                CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state)) {
+                if (current != c)
+                    update_current(c);
+                buttons[i].func(&(buttons[i].arg));
+            }
+    }
 
     if (CLICK_TO_FOCUS) {
         xcb_allow_events(dis, XCB_ALLOW_REPLAY_POINTER, ev->time);
