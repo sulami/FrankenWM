@@ -1983,7 +1983,7 @@ void run(void)
             if (events[ev->response_type & ~0x80]) {
                 events[ev->response_type & ~0x80](ev);
             } else {
-                DEBUGP("xcb: unimplented event: %s\n", xcb_event_str(ev));
+                DEBUGP("xcb: unimplemented event: %s\n", xcb_event_str(ev));
             }
             free(ev);
         }
