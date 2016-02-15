@@ -503,8 +503,13 @@ void buttonpress(xcb_generic_event_t *e)
     DEBUGP("xcb: button press: %d state: %d\n", ev->detail, ev->state);
 
     client *c = wintoclient(ev->event);
-    if (!c)
-        return;
+    if (!c) {
+        if(USE_SCRATCHPAD && showscratchpad && scrpd && ev->event == scrpd->win)
+            c = scrpd;
+        else
+            return;
+    }
+
     if (CLICK_TO_FOCUS && current != c && ev->detail == XCB_BUTTON_INDEX_1)
         update_current(c);
 
@@ -1140,23 +1145,36 @@ unsigned int getcolor(char *color)
 /* set the given client to listen to button events (presses / releases) */
 void grabbuttons(client *c)
 {
-    unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
-                                 numlockmask|XCB_MOD_MASK_LOCK };
+    if (!c)
+        return;
 
-    xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
-    for (unsigned int b = 0; b < LENGTH(buttons); b++)
-        for (unsigned int m = 0; m < LENGTH(modifiers); m++)
-            if (CLICK_TO_FOCUS)
-                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                                XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
-            else
-                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                                buttons[b].button,
-                                buttons[b].mask|modifiers[m]);
+    if (c == scrpd) {
+        if (CLICK_TO_FOCUS) {
+            xcb_grab_button(dis, 1, scrpd->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                            XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
+                            XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                            XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
+        }
+    }
+    else {
+        unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
+                                     numlockmask|XCB_MOD_MASK_LOCK };
+
+        xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
+        for (unsigned int b = 0; b < LENGTH(buttons); b++)
+            for (unsigned int m = 0; m < LENGTH(modifiers); m++)
+                if (CLICK_TO_FOCUS)
+                    xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                                    XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                                    XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                                    XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
+                else
+                    xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                                    XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                                    XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                                    buttons[b].button,
+                                    buttons[b].mask|modifiers[m]);
+    }
 }
 
 /* the wm should listen to key presses */
@@ -1330,6 +1348,7 @@ void maprequest(xcb_generic_event_t *e)
                 err(EXIT_FAILURE, "cannot allocate client");
 
             setwindefattr(scrpd->win = ev->window);
+            grabbuttons(scrpd);
             xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
@@ -2201,6 +2220,7 @@ int setup(int default_screen)
                         if (reply_type != XCB_NONE && (scrpd = (client *)calloc(1, sizeof(client)))) {
                             scrpd->win = children[i];
                             setwindefattr(scrpd->win);
+                            grabbuttons(scrpd);
                             xcb_move(dis, scrpd->win, -2 * ww, 0);
                             showscratchpad = False;
                             continue;
