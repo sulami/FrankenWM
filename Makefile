@@ -11,7 +11,7 @@ LIBS = -lc -lX11 `pkg-config --libs xcb xcb-icccm xcb-keysyms xcb-ewmh`
 CPPFLAGS += -DVERSION=\"${VERSION}\" -DWMNAME=\"${WMNAME}\"
 
 DEBUG 	 = 0
-CFLAGS   += -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS} -DVERSION=\"${VERSION}\" 
+CFLAGS   += -DDEBUGGING -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS} -DVERSION=\"${VERSION}\" 
 LDFLAGS  += ${LIBS}
 
 EXEC = ${WMNAME}
