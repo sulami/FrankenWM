@@ -92,6 +92,16 @@ typedef union {
     const int i;
 } Arg;
 
+/* notifications (aka notes) are unmanaged & mapped windows, ie dunst notifications.
+ * They are always on top of all other windows.
+ */
+struct note {
+    struct note *next;
+    struct note *prev;
+    xcb_window_t win;
+};
+typedef struct note note;
+
 /* a key struct represents a combination of
  * mod      - a modifier mask
  * keysym   - and the key pressed
@@ -203,6 +213,7 @@ static void invertstack();
 static void keypress(xcb_generic_event_t *e);
 static void killclient();
 static void last_desktop();
+static void mapnotify(xcb_generic_event_t *e);
 static void maprequest(xcb_generic_event_t *e);
 static void maximize();
 static void minimize();
@@ -260,6 +271,7 @@ static xcb_screen_t *screen;
 static uint32_t checkwin;
 static xcb_atom_t scrpd_atom;
 static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
+static note *notehead = NULL, *notetail = NULL;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -285,6 +297,104 @@ static void (*layout[MODES])(int h, int y) = {
     [DUALSTACK] = dualstack,
     [EQUAL] = equal,
 };
+
+/*
+ * doubly linked list functions
+ */
+
+static note *newnote(xcb_window_t win)
+{
+    note *n;
+
+    if((n  = (note *)calloc(1, sizeof(note))))
+        n->win = win;
+    return n;
+}
+
+static void removenote(note *n)
+{
+    if (!n)
+        return;
+
+// only 1 note
+    if (n == notehead) {
+        notehead = notehead->next;
+        if(notehead)
+            notehead->prev = NULL;
+        else
+            notetail = NULL;
+    }
+    else if (n == notetail) {
+// at least 2 notes
+        notetail = notetail->prev;
+        notetail->next = NULL;
+
+    }
+    else {
+        note *prev, *next;
+
+// more than 2 notes
+        prev = n->prev;
+        next = n->next;
+        prev->next = next;
+        next->prev = prev;
+    }
+
+    free(n);
+}
+
+static note *findnote(xcb_window_t win)
+{
+    note *n;
+
+    if (!win || !notehead)
+        return NULL;
+
+    for (n=notehead; n; n=n->next) {
+        if (n->win == win)
+            return n;
+    }
+
+    return NULL;
+}
+
+/*
+ * not yet needed
+ *
+static void newnotehead(xcb_window_t win)
+{
+    note *n = newnote(win);
+
+    if (notehead == NULL) {
+        notehead = n;
+        notetail = n;
+    }
+    else {
+        head->prev = n;
+        n->next = notehead;
+        notehead = n;
+//      do not touch the tail
+    }
+}
+*/
+
+static void newnotetail(xcb_window_t win)
+{
+    note *n = newnote(win);
+
+    if(notehead == NULL) {
+        notehead = n;
+        notetail = n;
+    }
+    else {
+//      do not touch the head
+        notetail->next = n;
+        n->prev = notetail;
+        notetail = n;
+    }
+}
+
+
 
 /* get screen of display */
 static xcb_screen_t *xcb_screen_of_display(xcb_connection_t *con, int screen)
@@ -629,6 +739,9 @@ void cleanup(void)
             free(c);
         }
     }
+
+    while (notehead)
+        removenote(notehead);
 }
 
 /* move a client to another desktop
@@ -816,10 +929,19 @@ void destroynotify(xcb_generic_event_t *e)
 
     if (c) {
         removeclient(c);
-    } else if (USE_SCRATCHPAD && scrpd && ev->window == scrpd->win) {
+    }
+    else if (USE_SCRATCHPAD && scrpd && ev->window == scrpd->win) {
         free(scrpd);
         scrpd = NULL;
         update_current(head);
+    }
+    else {
+        note *n;
+
+        if((n = findnote(ev->window))) {
+            removenote(n);
+            DEBUG("remove note");
+        }
     }
     desktopinfo();
 }
@@ -1268,6 +1390,47 @@ void last_desktop()
     change_desktop(&(Arg){.i = previous_desktop});
 }
 
+void mapnotify(xcb_generic_event_t *e)
+{
+    xcb_map_notify_event_t *ev = (xcb_map_notify_event_t *)e;
+
+    DEBUG("xcb: map notify");
+
+    if (wintoclient(ev->window) || (scrpd && scrpd->win == ev->window))
+        return;
+    else {
+        xcb_window_t                        windows[] = {ev->window};
+        xcb_get_window_attributes_reply_t   *attr[1];
+        xcb_ewmh_get_atoms_reply_t          type;
+
+        xcb_get_attributes(windows, attr, 1);
+        if (!attr[0] || attr[0]->override_redirect) {
+            if (xcb_ewmh_get_wm_window_type_reply(ewmh,
+                                              xcb_ewmh_get_wm_window_type(ewmh,
+                                              ev->window), &type, NULL) == 1) {
+                for (unsigned int i = 0; i < type.atoms_len; i++) {
+                    note *n;
+                    xcb_atom_t a = type.atoms[i];
+                    if (a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
+                        if(!(n = findnote(ev->window))) {
+                            DEBUG("caught a new note");
+                            newnotetail(ev->window);
+                        }
+                        else {
+                            DEBUG("note was already caught");
+                        }
+                        break;
+                    }
+                }
+                xcb_ewmh_get_atoms_reply_wipe(&type);
+
+            }
+        }
+        if(attr[0])
+            free(attr[0]);
+    }
+}
+
 /* a map request is received when a window wants to display itself
  * if the window has override_redirect flag set then it should not be handled
  * by the wm. if the window already has a client then there is nothing to do.
@@ -1296,7 +1459,8 @@ void maprequest(xcb_generic_event_t *e)
     if (!attr[0] || attr[0]->override_redirect) {
         free(attr[0]);
         return;
-    } else {
+    }
+    else {
         free(attr[0]);
     }
 
@@ -1548,7 +1712,8 @@ void mousemotion(const Arg *arg)
         while (!(e = xcb_wait_for_event(dis)))
             xcb_flush(dis);
         switch (e->response_type & ~0x80) {
-            case XCB_CONFIGURE_REQUEST: case XCB_MAP_REQUEST:
+            case XCB_CONFIGURE_REQUEST:
+            case XCB_MAP_REQUEST:
                 events[e->response_type & ~0x80](e);
                 break;
             case XCB_MOTION_NOTIFY:
@@ -2164,6 +2329,7 @@ int setup(int default_screen)
     events[XCB_DESTROY_NOTIFY]      = destroynotify;
     events[XCB_ENTER_NOTIFY]        = enternotify;
     events[XCB_KEY_PRESS]           = keypress;
+    events[XCB_MAP_NOTIFY]          = mapnotify;
     events[XCB_MAP_REQUEST]         = maprequest;
     events[XCB_PROPERTY_NOTIFY]     = propertynotify;
     events[XCB_UNMAP_NOTIFY]        = unmapnotify;
@@ -2628,6 +2794,13 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     tile();
 
+    if(notehead) {
+        note *t;
+
+        for(t=notehead; t; t=t->next)
+            xcb_raise_window(dis, t->win);
+    }
+
     if(current) {
         xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                             netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
@@ -2665,7 +2838,7 @@ static void ungrab_focus(void)
 
 // if use xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root, XCB_CURRENT_TIME);
 // then the focus gets frozen to one window, and there's no way to set focus to different window.
-// if set focus to PointerRoot, then focus follows mouse after quitting the window manager. 
+// if set focus to PointerRoot, then focus follows mouse after quitting the window manager.
 // TODO: convert to xcb
 
     if ((dpy = XOpenDisplay(0x0))) {
