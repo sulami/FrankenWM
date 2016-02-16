@@ -2341,7 +2341,7 @@ int setup(int default_screen)
     if (reply) {
         int len = xcb_query_tree_children_length(reply);
         xcb_window_t *children = xcb_query_tree_children(reply);
-        int cd = current_desktop;
+        uint32_t cd = current_desktop;
         for (int i = 0; i < len; i++) {
             attr = xcb_get_window_attributes_reply(dis,
                             xcb_get_window_attributes(dis, children[i]), NULL);
@@ -2823,11 +2823,16 @@ client *wintoclient(xcb_window_t w)
     return c;
 }
 
-void xerror(xcb_generic_event_t *e) {
+void xerror(xcb_generic_event_t *e)
+{
+#ifdef DEBUGGING
     xcb_generic_error_t *error = (xcb_generic_error_t *)e;
     DEBUGP("X error: %i, %i:%i [%i]\n", error->error_code,
            (int)error->major_code, (int)error->minor_code,
            (int)error->resource_id);
+#else
+    if(e){;} /* silencing gcc warning */
+#endif /* DEBUGGING */
 }
 
 static void ungrab_focus(void)
