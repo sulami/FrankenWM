@@ -2123,6 +2123,40 @@ void rotate_filled(const Arg *arg)
  * main event loop - on receival of an event call the appropriate event
  * handler
  */
+
+#ifdef DEBUGGING
+static char *xcb_event_str(xcb_generic_event_t *ev)
+{
+    switch(ev->response_type & ~0x80) {
+        case XCB_KEY_PRESS:         return "XCB_KEY_PRESS";
+        case XCB_KEY_RELEASE:       return "XCB_KEY_RELEASE";
+        case XCB_BUTTON_PRESS:      return "XCB_BUTTON_PRESS";
+        case XCB_BUTTON_RELEASE:    return "XCB_BUTTON_RELEASE";
+        case XCB_MOTION_NOTIFY:     return "XCB_MOTION_NOTIFY";
+        case XCB_ENTER_NOTIFY:      return "XCB_ENTER_NOTIFY";
+        case XCB_LEAVE_NOTIFY:      return "XCB_LEAVE_NOTIFY";
+        case XCB_FOCUS_IN:          return "XCB_FOCUS_IN";
+        case XCB_FOCUS_OUT:         return "XCB_FOCUS_OUT";
+        case XCB_KEYMAP_NOTIFY:     return "XCB_KEYMAP_NOTIFY";
+        case XCB_EXPOSE:            return "XCB_EXPOSE";
+        case XCB_GRAPHICS_EXPOSURE: return "XCB_GRAPHICS_EXPOSURE";
+        case XCB_NO_EXPOSURE:       return "XCB_NO_EXPOSURE";
+        case XCB_VISIBILITY_NOTIFY: return "XCB_VISIBILITY_NOTIFY";
+        case XCB_CREATE_NOTIFY:     return "XCB_CREATE_NOTIFY";
+        case XCB_DESTROY_NOTIFY:    return "XCB_DESTROY_NOTIFY";
+        case XCB_UNMAP_NOTIFY:      return "XCB_UNMAP_NOTIFY ";
+        case XCB_MAP_NOTIFY:        return "XCB_MAP_NOTIFY";
+        case XCB_MAP_REQUEST:       return "XCB_MAP_REQUEST ";
+        case XCB_REPARENT_NOTIFY:   return "XCB_REPARENT_NOTIFY";
+        case XCB_CONFIGURE_NOTIFY:  return "XCB_CONFIGURE_NOTIFY";
+        case XCB_CONFIGURE_REQUEST: return "XCB_CONFIGURE_REQUEST";
+        case XCB_GRAVITY_NOTIFY:    return "XCB_GRAVITY_NOTIFY";
+        case XCB_RESIZE_REQUEST:    return "XCB_RESIZE_REQUEST";
+        default: return "undefined event";
+    }
+}
+#endif /* DEBUGGING */
+
 void run(void)
 {
     xcb_generic_event_t *ev;
@@ -2135,8 +2169,7 @@ void run(void)
             if (events[ev->response_type & ~0x80]) {
                 events[ev->response_type & ~0x80](ev);
             } else {
-                DEBUGP("xcb: unimplented event: %d\n",
-                       ev->response_type & ~0x80);
+                DEBUGP("xcb: unimplemented event: %s\n", xcb_event_str(ev));
             }
             free(ev);
         }
