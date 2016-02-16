@@ -328,7 +328,7 @@ static void removenote(note *n)
 // at least 2 notes
         notetail = notetail->prev;
         notetail->next = NULL;
-            
+
     }
     else {
         note *prev, *next;
@@ -371,7 +371,7 @@ static void newnotehead(xcb_window_t win)
     }
     else {
         head->prev = n;
-        n->next = notehead; 
+        n->next = notehead;
         notehead = n;
 //      do not touch the tail
     }
@@ -2838,7 +2838,7 @@ static void ungrab_focus(void)
 
 // if use xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root, XCB_CURRENT_TIME);
 // then the focus gets frozen to one window, and there's no way to set focus to different window.
-// if set focus to PointerRoot, then focus follows mouse after quitting the window manager. 
+// if set focus to PointerRoot, then focus follows mouse after quitting the window manager.
 // TODO: convert to xcb
 
     if ((dpy = XOpenDisplay(0x0))) {
