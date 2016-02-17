@@ -634,7 +634,6 @@ void buttonpress(xcb_generic_event_t *e)
     }
 
     if (CLICK_TO_FOCUS) {
-        DEBUG("replay button event");
         xcb_allow_events(dis, XCB_ALLOW_REPLAY_POINTER, ev->time);
         xcb_flush(dis);
     }
