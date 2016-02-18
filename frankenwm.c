@@ -1274,30 +1274,31 @@ void grabbuttons(client *c)
 
     if (c == scrpd) {
         if (CLICK_TO_FOCUS) {
-            xcb_grab_button(dis, 1, scrpd->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                            XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
+            xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
+            xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                            XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
                             XCB_WINDOW_NONE, XCB_CURSOR_NONE,
                             XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
         }
     }
     else {
-        unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
-                                     numlockmask|XCB_MOD_MASK_LOCK };
-
         xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
-        for (unsigned int b = 0; b < LENGTH(buttons); b++)
-            for (unsigned int m = 0; m < LENGTH(modifiers); m++)
-                if (CLICK_TO_FOCUS)
+        if (CLICK_TO_FOCUS)
+            xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                            XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                            XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                            XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
+        else {
+            unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
+                                         numlockmask|XCB_MOD_MASK_LOCK };
+
+            for (unsigned int b = 0; b < LENGTH(buttons); b++)
+                for (unsigned int m = 0; m < LENGTH(modifiers); m++)
                     xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
                                     XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
                                     XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                                    XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
-                else
-                    xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                                    XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                                    XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                                    buttons[b].button,
-                                    buttons[b].mask|modifiers[m]);
+                                    buttons[b].button, buttons[b].mask|modifiers[m]);
+        }
     }
 }
 
