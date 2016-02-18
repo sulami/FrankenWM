@@ -1,4 +1,3 @@
-VERSION = master
 WMNAME  = frankenwm
 
 PREFIX ?= /usr/local
@@ -8,10 +7,8 @@ MANPREFIX = ${PREFIX}/share/man
 INCS = -I. -I${PREFIX}/include -I/usr/X11R6/include
 LIBS = -lc -lX11 `pkg-config --libs xcb xcb-icccm xcb-keysyms xcb-ewmh`
 
-CPPFLAGS += -DVERSION=\"${VERSION}\" -DWMNAME=\"${WMNAME}\"
-
 DEBUG 	 = 0
-CFLAGS   += -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS} -DVERSION=\"${VERSION}\" 
+CFLAGS   += -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS}
 LDFLAGS  += ${LIBS}
 
 EXEC = ${WMNAME}

@@ -2915,8 +2915,7 @@ int main(int argc, char *argv[])
     if (argc == 2 && argv[1][0] == '-') switch (argv[1][1]) {
         case 'v':
             errx(EXIT_SUCCESS,
-            "%s - by sulami (thanks to c00kiemon5ter and Cloudef)",
-            VERSION);
+            "FrankenWM - by sulami (thanks to c00kiemon5ter and Cloudef)");
         case 'h':
             errx(EXIT_SUCCESS, "%s", USAGE);
         default:
