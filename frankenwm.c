@@ -857,7 +857,7 @@ void configurerequest(xcb_generic_event_t *e)
     } else {
         unsigned int v[7];
         unsigned int i = 0;
-        int borders = client_borders(c);
+        int borders = c ? client_borders(c) : 0;
         if (ev->value_mask & XCB_CONFIG_WINDOW_X)
             v[i++] = ev->x;
         if (ev->value_mask & XCB_CONFIG_WINDOW_Y)
