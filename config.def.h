@@ -47,9 +47,9 @@
  * you do not wish to use this functionality.
  */
 static const AppRule rules[] = { \
-    /* title regex  desktop  follow  float border_with border_color */
-    { "GNU Image",  -1,      False,  True, 0,          "#cccc00" },
-    { "Skype",       3,      False,  True, -1,         "#12a5f4" },
+    /* title regex  desktop  follow  float border_with */
+    { "GNU Image",  -1,      False,  True, 0 },
+    { "Skype",       3,      False,  True, -1 },
 };
 
 /* helper for spawning shell commands, usually you don't edit this */

@@ -184,7 +184,6 @@ typedef struct {
     const int desktop;
     const bool follow, floating;
     const int border_width;
-    const char *border_color;
 } AppRule;
 
  /* function prototypes sorted alphabetically */
