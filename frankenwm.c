@@ -137,6 +137,8 @@ typedef struct {
  * isfullscrn  - set when the window is fullscreen
  * isfloating  - set when the window is floating
  * win         - the window this client is representing
+ * dim         - the window dimensions when floating
+ * borderwidth - the border width if not using the global one
  *
  * istransient is separate from isfloating as floating window can be reset
  * to their tiling positions, while the transients will always be floating
@@ -146,6 +148,7 @@ typedef struct client {
     bool isurgent, istransient, isfullscrn, isfloating, isminimized;
     xcb_window_t win;
     unsigned int dim[2];
+    int borderwidth;
 } client;
 
 /* properties of each desktop
@@ -1506,7 +1509,7 @@ void maprequest(xcb_generic_event_t *e)
     DEBUG("event is valid");
 
     bool follow = false, floating = false;
-    int cd = current_desktop, newdsk = current_desktop;
+    int cd = current_desktop, newdsk = current_desktop, border_width = -1;
 
     cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, ev->window);
 
@@ -1540,6 +1543,7 @@ void maprequest(xcb_generic_event_t *e)
                           rules[i].desktop >= DESKTOPS) ? current_desktop
                                                         : rules[i].desktop;
                 floating = rules[i].floating;
+                border_width = rules[i].border_width;
                 break;
             }
 
@@ -1575,6 +1579,7 @@ void maprequest(xcb_generic_event_t *e)
                     &transient, NULL); /* TODO: error handling */
     c->istransient = transient ? true : false;
     c->isfloating  = floating || c->istransient;
+    c->borderwidth = border_width;
 
     prop_reply = xcb_get_property_reply(dis, xcb_get_property_unchecked(
                                     dis, 0, ev->window, netatoms[NET_WM_STATE],
@@ -2822,7 +2827,8 @@ void update_current(client *newfocus)   // newfocus may be NULL
                          (c->isfullscrn ||
                           (!MONOCLE_BORDERS && !head->next) ||
                           (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
-                          ) ? 0 : borders);
+                          ) ? 0 : (c->borderwidth >= 0)
+                                  ? c->borderwidth : borders);
         /*
          * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
          *     XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC,
