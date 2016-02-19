@@ -195,6 +195,7 @@ static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
 static void centerwindow();
 static void cleanup(void);
+static int client_borders(const client *c);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
 static void configurerequest(xcb_generic_event_t *e);
@@ -756,6 +757,17 @@ void cleanup(void)
         removenote(notehead);
 }
 
+/*
+ * return the border width of a client for calculations
+ *
+ * this will just return the current global border width if this client does
+ * not use a custom one
+ */
+int client_borders(const client *c)
+{
+    return c->borderwidth >= 0 ? c->borderwidth : borders;
+}
+
 /* move a client to another desktop
  *
  * remove the current client from the current desktop's client list
@@ -845,6 +857,7 @@ void configurerequest(xcb_generic_event_t *e)
     } else {
         unsigned int v[7];
         unsigned int i = 0;
+        int borders = client_borders(c);
         if (ev->value_mask & XCB_CONFIG_WINDOW_X)
             v[i++] = ev->x;
         if (ev->value_mask & XCB_CONFIG_WINDOW_Y)
@@ -981,6 +994,7 @@ void dualstack(int hh, int cy)
     if (!c) {
         return;
     } else if (!n) {
+        int borders = client_borders(c);
         xcb_move_resize(dis, c->win, gaps, cy + gaps,
                         ww - 2 * (borders + gaps),
                         hh - 2 * (borders + gaps));
@@ -988,6 +1002,7 @@ void dualstack(int hh, int cy)
     }
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
+    int borders = client_borders(c);
     if (invert)
         xcb_move_resize(dis, c->win, gaps,
                         cy + (hh - ma) / 2 + gaps,
@@ -1011,6 +1026,7 @@ void dualstack(int hh, int cy)
         for (d = 0, t = head; t != c; t = t->next, d++);
         if (ISFFTM(c))
             continue;
+        int borders = client_borders(c);
         if (invert) {
             if (d == l + 1) /* we are on the -right- bottom stack, reset cy */
                 cx = gaps;
@@ -1079,6 +1095,7 @@ void equal(int h, int y)
     }
 
     for (client *c = head; c; c = c->next) {
+        int borders = client_borders(c);
         if (ISFFTM(c))
             continue;
         else
@@ -1105,11 +1122,16 @@ void equal(int h, int y)
  */
 void fibonacci(int h, int y)
 {
+    int borders = borders;
+    if (head)
+        borders = client_borders(head);
+
     int j = -1, x = gaps, tt = 0,
         cw = ww - 2 * gaps - 2 * borders,
         ch = h - 2 * gaps - 2 * borders;
 
     for (client *n, *c = head; c; c = c->next) {
+        int borders = client_borders(c);
         if (ISFFTM(c))
             continue;
         else
@@ -1345,6 +1367,7 @@ void grid(int hh, int cy)
         ch = hh - gaps,
         cw = (ww - gaps) / (cols ? cols : 1);
     for (client *c = head; c; c = c->next) {
+        int borders = client_borders(c);
         if (ISFFTM(c))
             continue;
         else
@@ -1636,6 +1659,7 @@ void maximize()
 
     /* check if we are already maximized, using actual window size to check */
     r = get_geometry(current->win);
+    int borders = client_borders(current);
     if (r->width == ww - 2 * gaps - 2 * borders
         && r->height == hh - 2 * gaps - 2 * borders) {
         tile();
@@ -1773,7 +1797,7 @@ void mousemotion(const Arg *arg)
 /* each window should cover all the available screen space */
 void monocle(int hh, int cy)
 {
-    unsigned int b = MONOCLE_BORDERS ? 2 * borders : 0;
+    unsigned int b = MONOCLE_BORDERS ? 2 * client_borders(current) : 0;
 
     for (client *c = head; c; c = c->next)
         if (!ISFFTM(c))
@@ -2234,7 +2258,7 @@ void setfullscreen(client *c, bool fullscrn)
                      (!head->next ||
                       c->isfullscrn ||
                       (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
-                     ) ? 0:borders);
+                     ) ? 0:client_borders(c));
     update_current(c);
 }
 
@@ -2566,6 +2590,7 @@ void stack(int hh, int cy)
     if (!c) {
         return;
     } else if (!n) {
+        int borders = client_borders(c);
         xcb_move_resize(dis, c->win, gaps, cy + gaps,
                         ww - 2 * (borders + gaps),
                         hh - 2 * (borders + gaps));
@@ -2575,6 +2600,7 @@ void stack(int hh, int cy)
     }
 
     /* tile the first non-floating, non-fullscreen window to cover the master area */
+    int borders = client_borders(c);
     if (b)
         xcb_move_resize(dis, c->win, gaps,
                         invert ? (cy + hh - ma + gaps) : (cy + gaps),
@@ -2588,6 +2614,7 @@ void stack(int hh, int cy)
 
     /* tile the next non-floating, non-fullscreen (first) stack window with growth|d */
     for (c = c->next; c && ISFFTM(c); c = c->next);
+    borders = client_borders(c);
     int cx = b ? 0 : (invert ? gaps : ma),
         cw = (b ? hh : ww) - 2 * borders - ma - gaps,
         ch = z - 2 * borders - gaps;
@@ -2827,8 +2854,7 @@ void update_current(client *newfocus)   // newfocus may be NULL
                          (c->isfullscrn ||
                           (!MONOCLE_BORDERS && !head->next) ||
                           (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
-                          ) ? 0 : (c->borderwidth >= 0)
-                                  ? c->borderwidth : borders);
+                          ) ? 0 : client_borders(c));
         /*
          * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
          *     XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC,
