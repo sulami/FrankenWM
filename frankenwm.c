@@ -2436,6 +2436,7 @@ int setup(int default_screen)
              * class as we won't see them */
             if (!attr->override_redirect
                 && attr->_class != XCB_WINDOW_CLASS_INPUT_ONLY) {
+                client *c;
                 uint32_t dsk = cd;
                 int haddsk;
 
@@ -2469,7 +2470,9 @@ int setup(int default_screen)
                 }
                 if (cd != dsk)
                     select_desktop(dsk);
-                addwindow(children[i]);
+                c = addwindow(children[i]);
+                if (c)
+                    c->borderwidth = -1;
                 grabbuttons(wintoclient(children[i]));
                 if (cd != dsk) {
                     xcb_unmap_window(dis, children[i]);
