@@ -735,7 +735,6 @@ void cleanup(void)
     xcb_query_tree_reply_t *query;
     xcb_window_t *c;
 */
-    client *c;
     
     if(USE_SCRATCHPAD && scrpd) {
         if(CLOSE_SCRATCHPAD) {
@@ -751,9 +750,6 @@ void cleanup(void)
         scrpd = NULL;
     }
 
-    xcb_key_symbols_free(keysyms);
-    xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
-
 /*
     if ((query = xcb_query_tree_reply(dis,
                                       xcb_query_tree(dis, screen->root), 0))) {
@@ -763,8 +759,6 @@ void cleanup(void)
         free(query);
     }
 */
-    for (c = head; c; c = c->next)
-        xcb_border_width(dis, c->win, 0);
 
     xcb_ewmh_connection_wipe(ewmh);
     free(ewmh);
@@ -783,6 +777,7 @@ void cleanup(void)
 
         for (client *c = desktops[i].head, *c_next; c; c = c_next) {
             c_next = c->next;
+            xcb_border_width(dis, c->win, 0);
             free(c);
         }
     }
@@ -3041,6 +3036,7 @@ int main(int argc, char *argv[])
         run();
     }
     cleanup();
+    xcb_flush(dis);
     xcb_disconnect(dis);
     ungrab_focus();
     return retval;
