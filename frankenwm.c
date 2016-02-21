@@ -151,7 +151,7 @@ typedef struct {
  * win           - the window this client is representing
  * dim           - the window dimensions when floating
  * borderwidth   - the border width if not using the global one
- * neverfocus    - True: send wm_take_focus, else focus directly
+ * setfocus      - True: focus directly, else send wm_take_focus
  *
  * istransient is separate from isfloating as floating window can be reset
  * to their tiling positions, while the transients will always be floating
@@ -162,7 +162,7 @@ typedef struct client {
     xcb_window_t win;
     unsigned int dim[2];
     int borderwidth;
-    bool neverfocus;
+    bool setfocus;
 } client;
 
 /* properties of each desktop
@@ -257,6 +257,7 @@ static void rotate_client(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void rotate_mode(const Arg *arg);
 static void run(void);
+static void sanedefaults(client *c, xcb_window_t win);
 static void save_desktop(int i);
 static void select_desktop(int i);
 static bool sendevent(xcb_window_t win, xcb_atom_t proto);
@@ -605,7 +606,8 @@ client *addwindow(xcb_window_t w)
         head->next = c;
     }
     DEBUG("client added");
-    setwindefattr(c->win = w);
+    sanedefaults(c, w);
+    setwindefattr(w);
     return c;
 }
 
@@ -1552,7 +1554,8 @@ void maprequest(xcb_generic_event_t *e)
             if (!(scrpd = (client *)calloc(1, sizeof(client))))
                 err(EXIT_FAILURE, "cannot allocate client");
 
-            setwindefattr(scrpd->win = ev->window);
+            sanedefaults(scrpd, ev->window);
+            setwindefattr(scrpd->win);
             grabbuttons(scrpd);
             xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
@@ -1607,10 +1610,6 @@ void maprequest(xcb_generic_event_t *e)
         select_desktop(newdsk);
     client *c = addwindow(ev->window);
 
-    xcb_icccm_wm_hints_t hints;
-    if (xcb_icccm_get_wm_hints_reply(dis,
-        xcb_icccm_get_wm_hints(dis, ev->window), &hints, NULL))
-        c->neverfocus = (hints.input) ? False : True;
 
     xcb_icccm_get_wm_transient_for_reply(dis,
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
@@ -2223,6 +2222,37 @@ void run(void)
     }
 }
 
+static void sanedefaults(client *c, xcb_window_t win)
+{
+    xcb_icccm_wm_hints_t hints;
+    if (!c)
+        return;
+
+    c->next = NULL;
+/*****/
+    c->isurgent = False;
+/*****/
+    c->istransient = False;
+/*****/
+    c->isfullscrn = False;
+/*****/
+    c->isfloating = False;
+/*****/
+    c->isminimized = False;
+/*****/
+    c->win = win;
+/*****/
+    c->dim[0] = c->dim[1] = 0;
+/*****/
+    c->borderwidth = -1;
+/*****/
+    c->setfocus = True;
+    if (xcb_icccm_get_wm_hints_reply(dis,
+        xcb_icccm_get_wm_hints(dis, win), &hints, NULL))
+        c->setfocus = (hints.input) ? True : False;
+/*****/
+}
+
 /* save specified desktop's properties */
 void save_desktop(int i)
 {
@@ -2489,7 +2519,7 @@ int setup(int default_screen)
                         xcb_atom_t reply_type = prop_reply->type;
                         free(prop_reply);
                         if (reply_type != XCB_NONE && (scrpd = (client *)calloc(1, sizeof(client)))) {
-                            scrpd->win = children[i];
+                            sanedefaults(scrpd, children[i]);
                             setwindefattr(scrpd->win);
                             grabbuttons(scrpd);
                             xcb_move(dis, scrpd->win, -2 * ww, 0);
@@ -2928,17 +2958,17 @@ void update_current(client *newfocus)   // newfocus may be NULL
     }
 
     if (current) {
-        if (current->neverfocus) {
-            sendevent(current->win, wmatoms[WM_TAKE_FOCUS]);
-            DEBUG("send WM_TAKE_FOCUS");
-        }
-        else {
+        if (current->setfocus) {
             xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                                 netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
                                 &current->win);
             xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
                                 XCB_CURRENT_TIME);
             DEBUG("xcb_set_input_focus();");
+        }
+        else {
+            sendevent(current->win, wmatoms[WM_TAKE_FOCUS]);
+            DEBUG("send WM_TAKE_FOCUS");
         }
     }
 }
