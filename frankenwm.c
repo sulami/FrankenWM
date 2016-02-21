@@ -56,8 +56,8 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_WORKAREA",
                                   "_NET_SHOWING_DESKTOP",
                                   "_NET_CLOSE_WINDOW",
-                                  "_NET_WM_DESKTOP",
-                                  "_NET_WM_WINDOW_TYPE" };
+                                  "_NET_WM_WINDOW_TYPE",
+                                  "_NET_WM_DESKTOP" };
 enum { NET_SUPPORTED,
        NET_FULLSCREEN,
        NET_WM_STATE,
@@ -92,15 +92,27 @@ typedef union {
     const int i;
 } Arg;
 
-/* notifications (aka notes) are unmanaged & mapped windows, ie dunst notifications.
+/* notifications (aka notes) are unmanaged & selfmapped windows, ie dunst notifications.
  * They are always on top of all other windows.
  */
-struct note {
-    struct note *next;
-    struct note *prev;
+struct list {
+	struct node *head;
+	struct node *tail;
+};
+typedef struct list list;
+
+struct node {
+    struct node *next;
+    struct node *prev;
+    struct list *parent;
+};
+typedef struct node node;
+
+struct alien {
+    node link;
     xcb_window_t win;
 };
-typedef struct note note;
+typedef struct alien alien;
 
 /* a key struct represents a combination of
  * mod      - a modifier mask
@@ -276,7 +288,7 @@ static xcb_screen_t *screen;
 static uint32_t checkwin;
 static xcb_atom_t scrpd_atom;
 static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
-static note *notehead = NULL, *notetail = NULL;
+static list alienlist;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -304,101 +316,106 @@ static void (*layout[MODES])(int h, int y) = {
 };
 
 /*
- * doubly linked list functions
+ * lowlevel doubly linked list functions
  */
 
-static note *newnote(xcb_window_t win)
+static void unlink_node(node *n)
 {
-    note *n;
-
-    if((n  = (note *)calloc(1, sizeof(note))))
-        n->win = win;
-    return n;
+	list *l;
+	
+    if (!n) return;
+	l = n->parent;
+    if (l) {
+		if (n == l->head) {
+			l->head = l->head->next;
+			if(l->head)
+				l->head->prev = NULL;
+			else
+				l->tail = NULL;
+		}
+		else if (n == l->tail) {
+			l->tail = l->tail->prev;
+			l->tail->next = NULL;
+		}
+		else {
+			n->prev->next = n->next;
+			n->next->prev = n->prev;
+		}
+	}
 }
 
-static void removenote(note *n)
+static void destroy_node(node *n)
 {
     if (!n)
         return;
 
-// only 1 note
-    if (n == notehead) {
-        notehead = notehead->next;
-        if(notehead)
-            notehead->prev = NULL;
-        else
-            notetail = NULL;
-    }
-    else if (n == notetail) {
-// at least 2 notes
-        notetail = notetail->prev;
-        notetail->next = NULL;
-
-    }
-    else {
-        note *prev, *next;
-
-// more than 2 notes
-        prev = n->prev;
-        next = n->next;
-        prev->next = next;
-        next->prev = prev;
-    }
-
+    unlink_node(n);
     free(n);
 }
 
-static note *findnote(xcb_window_t win)
+static void add_head(list *l, node *n)
 {
-    note *n;
-
-    if (!win || !notehead)
-        return NULL;
-
-    for (n=notehead; n; n=n->next) {
-        if (n->win == win)
-            return n;
+    if (l->head == NULL) {
+        l->head = n;
+        l->tail = n;
     }
+    else {
+        l->head->prev = n;
+        n->next = l->head;
+        l->head = n;
+    }
+    n->parent = l;
+}
 
-    return NULL;
+static void add_tail(list *l, node *n)
+{
+    if(l->head == NULL)
+        add_head(l, n);
+    else {
+        l->tail->next = n;
+        n->prev = l->tail;
+        l->tail = n;
+    }
+    n->parent = l;
 }
 
 /*
- * not yet needed
- *
-static void newnotehead(xcb_window_t win)
-{
-    note *n = newnote(win);
-
-    if (notehead == NULL) {
-        notehead = n;
-        notetail = n;
-    }
-    else {
-        head->prev = n;
-        n->next = notehead;
-        notehead = n;
-//      do not touch the tail
-    }
-}
+* glue functions for doubly linked stuff
 */
+static inline bool check_head(list *l) { return (l && l->head) ? True : False; }
+ 
+static inline node *get_head(list *l) { return (l) ? l->head : NULL; }
+ 
+static inline node *get_tail(list *l) { return (l) ? l->tail : NULL; }
+ 
+static inline node *get_node_head(node *n) { return (n && n->parent) ? n->parent->head : NULL; }
+ 
+static inline node *get_node_tail(node *n) { return (n && n->parent) ? n->parent->tail : NULL; }
+ 
+static inline node *get_next(node *n) { return (n) ? n->next : NULL; }
+ 
+static inline node *get_prev(node *n) { return (n) ? n->prev : NULL; }
 
-static void newnotetail(xcb_window_t win)
+static alien *wintoalien(list *l, xcb_window_t win)
 {
-    note *n = newnote(win);
-
-    if(notehead == NULL) {
-        notehead = n;
-        notetail = n;
+    alien *t;
+    if (!l || !win)
+        return NULL;
+ 
+    for (t=(alien *)get_head(l); t; t=(alien *)get_next((node *)t)) {
+        if (t->win == win)
+            break;
     }
-    else {
-//      do not touch the head
-        notetail->next = n;
-        n->prev = notetail;
-        notetail = n;
-    }
+    return t;
 }
-
+ 
+static inline alien *create_alien(xcb_window_t win)
+{
+    alien *a;
+    if((a = (alien *)calloc(1, sizeof(alien))))
+        a->win = win;
+    return(a);
+}
 
 
 /* get screen of display */
@@ -583,7 +600,7 @@ client *addwindow(xcb_window_t w)
     } else {
         head->next = c;
     }
-
+	DEBUG("client added");
     setwindefattr(c->win = w);
     return c;
 }
@@ -722,8 +739,8 @@ void cleanup(void)
     }
 
     xcb_key_symbols_free(keysyms);
-
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
+
     if ((query = xcb_query_tree_reply(dis,
                                       xcb_query_tree(dis, screen->root), 0))) {
         c = xcb_query_tree_children(query);
@@ -752,8 +769,9 @@ void cleanup(void)
         }
     }
 
-    while (notehead)
-        removenote(notehead);
+    while (check_head(&alienlist)) {
+        destroy_node(get_head(&alienlist));
+    }
 }
 
 /*
@@ -959,12 +977,12 @@ void destroynotify(xcb_generic_event_t *e)
         scrpd = NULL;
         update_current(head);
     }
-    else {
-        note *n;
+   else {
+        alien *a;
 
-        if((n = findnote(ev->window))) {
-            removenote(n);
-            DEBUG("remove note");
+        if((a = wintoalien(&alienlist, ev->window))) {
+            DEBUG("unlink selfmapped window");
+            destroy_node(&a->link);
         }
     }
     desktopinfo();
@@ -1298,32 +1316,25 @@ void grabbuttons(client *c)
     if (!c)
         return;
 
-    if (c == scrpd) {
-        if (CLICK_TO_FOCUS) {
-            xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
-            xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                            XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                            XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                            XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
-        }
-    }
+    xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
+    if (CLICK_TO_FOCUS)
+        xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                        XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                        XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                        (c == scrpd) ? XCB_BUTTON_INDEX_1 : XCB_BUTTON_INDEX_ANY,
+                        XCB_BUTTON_MASK_ANY);
     else {
-        xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
-        if (CLICK_TO_FOCUS)
-            xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                            XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                            XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                            XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
-        else {
-            unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
-                                         numlockmask|XCB_MOD_MASK_LOCK };
+        unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
+                                     numlockmask|XCB_MOD_MASK_LOCK };
 
-            for (unsigned int b = 0; b < LENGTH(buttons); b++)
-                for (unsigned int m = 0; m < LENGTH(modifiers); m++)
+        for (unsigned int b = 0; b < LENGTH(buttons); b++) {
+            for (unsigned int m = 0; m < LENGTH(modifiers); m++) {
                     xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
                                     XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
                                     XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                                    buttons[b].button, buttons[b].mask|modifiers[m]);
+                                    buttons[b].button,
+                                    buttons[b].mask|modifiers[m]);
+            }
         }
     }
 }
@@ -1447,31 +1458,21 @@ void mapnotify(xcb_generic_event_t *e)
     if (wintoclient(ev->window) || (scrpd && scrpd->win == ev->window))
         return;
     else {
-        xcb_window_t                        windows[] = {ev->window};
-        xcb_get_window_attributes_reply_t   *attr[1];
-        xcb_ewmh_get_atoms_reply_t          type;
+		xcb_window_t windows[] = {ev->window};
+        xcb_get_window_attributes_reply_t *attr[1];
 
         xcb_get_attributes(windows, attr, 1);
         if (!attr[0] || attr[0]->override_redirect) {
-            if (xcb_ewmh_get_wm_window_type_reply(ewmh,
-                                              xcb_ewmh_get_wm_window_type(ewmh,
-                                              ev->window), &type, NULL) == 1) {
-                for (unsigned int i = 0; i < type.atoms_len; i++) {
-                    note *n;
-                    xcb_atom_t a = type.atoms[i];
-                    if (a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
-                        if(!(n = findnote(ev->window))) {
-                            DEBUG("caught a new note");
-                            newnotetail(ev->window);
-                        }
-                        else {
-                            DEBUG("note was already caught");
-                        }
-                        break;
-                    }
-                }
-                xcb_ewmh_get_atoms_reply_wipe(&type);
+			if(!(wintoalien(&alienlist, ev->window))) {
+				alien *a;
 
+                DEBUG("caught a new selfmapping ABOVE window");
+				if((a = create_alien(ev->window))) {
+					add_tail(&alienlist, (node *)a);
+                }
+			}
+            else {
+				DEBUG("_NET_WM_STATE_ABOVE already in list");
             }
         }
         if(attr[0])
@@ -2329,6 +2330,9 @@ int setup(int default_screen)
             err(EXIT_FAILURE, "error: cannot allocate miniq\n");
     }
 
+    alienlist.head = NULL;
+    alienlist.tail = NULL;
+
     win_focus   = getcolor(FOCUS);
     win_unfocus = getcolor(UNFOCUS);
     win_scratch = getcolor(SCRATCH);
@@ -2421,8 +2425,9 @@ int setup(int default_screen)
 
     /* grab existing windows */
     xcb_get_window_attributes_reply_t *attr;
-    xcb_query_tree_reply_t *reply = xcb_query_tree_reply(dis,
-                                        xcb_query_tree(dis, screen->root), 0);
+    xcb_query_tree_reply_t *reply;
+    
+    reply = xcb_query_tree_reply(dis, xcb_query_tree(dis, screen->root), 0);
     if (reply) {
         int len = xcb_query_tree_children_length(reply);
         xcb_window_t *children = xcb_query_tree_children(reply);
@@ -2849,8 +2854,7 @@ void update_current(client *newfocus)   // newfocus may be NULL
     for (fl += !ISFFTM(current) ? 1 : 0, c = head; c; c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
-        xcb_border_width(dis, c->win,
-                         (c->isfullscrn ||
+        xcb_border_width(dis, c->win, (c->isfullscrn ||
                           (!MONOCLE_BORDERS && !head->next) ||
                           (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
                           ) ? 0 : client_borders(c));
@@ -2883,11 +2887,11 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     tile();
 
-    if(notehead) {
-        note *t;
+    if (check_head(&alienlist)) {
+        alien *a;
 
-        for(t=notehead; t; t=t->next)
-            xcb_raise_window(dis, t->win);
+        for(a=(alien *)get_head(&alienlist); a; a=(alien *)get_next((node *)a))
+            xcb_raise_window(dis, a->win);
     }
 
     if(current) {
