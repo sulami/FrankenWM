@@ -156,6 +156,9 @@ typedef struct {
  * istransient is separate from isfloating as floating window can be reset
  * to their tiling positions, while the transients will always be floating
  */
+/*
+ * Developer reminder: do not forget to update sanedefaults();
+ */
 typedef struct client {
     struct client *next;
     bool isurgent, istransient, isfullscrn, isfloating, isminimized;
