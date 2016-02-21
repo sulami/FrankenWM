@@ -1417,14 +1417,15 @@ void keypress(xcb_generic_event_t *e)
 void killclient()
 {
     if (!deletewindow(current->win)) {
-        DEBUG("client killed");
         xcb_kill_client(dis, current->win);
-        removeclient(current);
+        DEBUG("client killed");
     }
     else {
         DEBUG("client deleted");
     }
+    removeclient(current);
 }
+
 static bool check_wmproto(xcb_window_t win, xcb_atom_t proto)
 {
     xcb_icccm_get_wm_protocols_reply_t reply;
