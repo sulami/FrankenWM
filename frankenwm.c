@@ -41,8 +41,8 @@
 #define XCB_RESIZE      XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT
 
 static char *WM_NAME   = "FrankenWM";
-static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW" };
-enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_COUNT };
+static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "WM_STATE", "WM_TAKE_FOCUS" };
+enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_STATE, WM_TAKE_FOCUS, WM_COUNT };
 
 static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_WM_STATE_FULLSCREEN",
@@ -96,8 +96,8 @@ typedef union {
  * They are always on top of all other windows.
  */
 struct list {
-	struct node *head;
-	struct node *tail;
+    struct node *head;
+    struct node *tail;
 };
 typedef struct list list;
 
@@ -151,6 +151,7 @@ typedef struct {
  * win         - the window this client is representing
  * dim         - the window dimensions when floating
  * borderwidth - the border width if not using the global one
+ * setfocus    - False: send wm_take_focus, else focus directly
  *
  * istransient is separate from isfloating as floating window can be reset
  * to their tiling positions, while the transients will always be floating
@@ -161,6 +162,7 @@ typedef struct client {
     xcb_window_t win;
     unsigned int dim[2];
     int borderwidth;
+    bool setfocus;
 } client;
 
 /* properties of each desktop
@@ -204,13 +206,14 @@ static void adjust_borders(const Arg *arg);
 static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
+static bool check_wmproto(xcb_window_t win, xcb_atom_t proto);
 static void centerwindow();
 static void cleanup(void);
 static int client_borders(const client *c);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
 static void configurerequest(xcb_generic_event_t *e);
-static void deletewindow(xcb_window_t w);
+static bool deletewindow(xcb_window_t w);
 static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
 static void dualstack(int hh, int cy);
@@ -256,6 +259,7 @@ static void rotate_mode(const Arg *arg);
 static void run(void);
 static void save_desktop(int i);
 static void select_desktop(int i);
+static bool sendevent(xcb_window_t win, xcb_atom_t proto);
 static void setfullscreen(client *c, bool fullscrn);
 static int setup(int default_screen);
 static void setwindefattr(xcb_window_t w);
@@ -321,27 +325,27 @@ static void (*layout[MODES])(int h, int y) = {
 
 static void unlink_node(node *n)
 {
-	list *l;
-	
+    list *l;
+    
     if (!n) return;
-	l = n->parent;
+    l = n->parent;
     if (l) {
-		if (n == l->head) {
-			l->head = l->head->next;
-			if(l->head)
-				l->head->prev = NULL;
-			else
-				l->tail = NULL;
-		}
-		else if (n == l->tail) {
-			l->tail = l->tail->prev;
-			l->tail->next = NULL;
-		}
-		else {
-			n->prev->next = n->next;
-			n->next->prev = n->prev;
-		}
-	}
+        if (n == l->head) {
+            l->head = l->head->next;
+            if(l->head)
+                l->head->prev = NULL;
+            else
+                l->tail = NULL;
+        }
+        else if (n == l->tail) {
+            l->tail = l->tail->prev;
+            l->tail->next = NULL;
+        }
+        else {
+            n->prev->next = n->next;
+            n->next->prev = n->prev;
+        }
+    }
 }
 
 static void destroy_node(node *n)
@@ -600,7 +604,7 @@ client *addwindow(xcb_window_t w)
     } else {
         head->next = c;
     }
-	DEBUG("client added");
+    DEBUG("client added");
     setwindefattr(c->win = w);
     return c;
 }
@@ -895,18 +899,9 @@ void configurerequest(xcb_generic_event_t *e)
 }
 
 /* close the window */
-void deletewindow(xcb_window_t w)
+bool deletewindow(xcb_window_t win)
 {
-    xcb_client_message_event_t ev = {0};
-
-    ev.response_type = XCB_CLIENT_MESSAGE;
-    ev.window = w;
-    ev.format = 32;
-    ev.sequence = 0;
-    ev.type = wmatoms[WM_PROTOCOLS];
-    ev.data.data32[0] = wmatoms[WM_DELETE_WINDOW];
-    ev.data.data32[1] = XCB_CURRENT_TIME;
-    xcb_send_event(dis, 0, w, XCB_EVENT_MASK_NO_EVENT, (char *)&ev);
+    return sendevent(win, wmatoms[WM_DELETE_WINDOW]);
 }
 
 /*
@@ -1421,26 +1416,30 @@ void keypress(xcb_generic_event_t *e)
  * send a delete message and remove the client */
 void killclient()
 {
-    if (!current)
-        return;
-    xcb_icccm_get_wm_protocols_reply_t reply;
-    unsigned int n = 0;
-    bool got = false;
-
-    if (xcb_icccm_get_wm_protocols_reply(dis,
-        xcb_icccm_get_wm_protocols(dis, current->win, wmatoms[WM_PROTOCOLS]),
-        &reply, NULL)) { /* TODO: Handle error? */
-        for (; n != reply.atoms_len; ++n)
-            if ((got = reply.atoms[n] == wmatoms[WM_DELETE_WINDOW]))
-                break;
-        xcb_icccm_get_wm_protocols_reply_wipe(&reply);
-    }
-    if (got)
-        deletewindow(current->win);
-    else {
+    if (!deletewindow(current->win)) {
+        DEBUG("client killed");
         xcb_kill_client(dis, current->win);
         removeclient(current);
     }
+    else {
+        DEBUG("client deleted");
+    }
+}
+static bool check_wmproto(xcb_window_t win, xcb_atom_t proto)
+{
+    xcb_icccm_get_wm_protocols_reply_t reply;
+    bool got = false;
+
+    if (xcb_icccm_get_wm_protocols_reply(dis,
+        xcb_icccm_get_wm_protocols(dis, win, wmatoms[WM_PROTOCOLS]), &reply, NULL)) {
+        /* TODO: Handle error? */
+        unsigned int n;
+        for (n = 0; n != reply.atoms_len; ++n)
+            if ((got = reply.atoms[n] == proto))
+                break;
+        xcb_icccm_get_wm_protocols_reply_wipe(&reply);
+    }
+    return got;
 }
 
 /* focus the previously focused desktop */
@@ -1458,21 +1457,21 @@ void mapnotify(xcb_generic_event_t *e)
     if (wintoclient(ev->window) || (scrpd && scrpd->win == ev->window))
         return;
     else {
-		xcb_window_t windows[] = {ev->window};
+        xcb_window_t windows[] = {ev->window};
         xcb_get_window_attributes_reply_t *attr[1];
 
         xcb_get_attributes(windows, attr, 1);
         if (!attr[0] || attr[0]->override_redirect) {
-			if(!(wintoalien(&alienlist, ev->window))) {
-				alien *a;
+            if(!(wintoalien(&alienlist, ev->window))) {
+                alien *a;
 
                 DEBUG("caught a new selfmapped window");
-				if((a = create_alien(ev->window))) {
-					add_tail(&alienlist, (node *)a);
+                if((a = create_alien(ev->window))) {
+                    add_tail(&alienlist, (node *)a);
                 }
-			}
+            }
             else {
-				DEBUG("selfmapped window already in list");
+                DEBUG("selfmapped window already in list");
             }
         }
         if(attr[0])
@@ -1538,6 +1537,7 @@ void maprequest(xcb_generic_event_t *e)
 
     if (xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0)) {
         DEBUGP("EWMH window title: %s\n", wtitle.strings);
+
         if (!strcmp(wtitle.strings, SCRPDNAME)) {
             if (!(scrpd = (client *)calloc(1, sizeof(client))))
                 err(EXIT_FAILURE, "cannot allocate client");
@@ -1596,6 +1596,11 @@ void maprequest(xcb_generic_event_t *e)
     if (cd != newdsk)
         select_desktop(newdsk);
     client *c = addwindow(ev->window);
+
+    xcb_icccm_wm_hints_t hints;
+    if (xcb_icccm_get_wm_hints_reply(dis,
+        xcb_icccm_get_wm_hints(dis, ev->window), &hints, NULL))
+        c->setfocus = (hints.input) ? True : False;
 
     xcb_icccm_get_wm_transient_for_reply(dis,
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
@@ -2240,6 +2245,25 @@ void select_desktop(int i)
     gaps            = desktops[i].gaps;
     invert     = desktops[i].invert;
     current_desktop = i;
+}
+
+static bool sendevent(xcb_window_t win, xcb_atom_t proto)
+{
+    bool got = check_wmproto(win, proto);
+    if (got) {
+        xcb_client_message_event_t ev = {0};
+
+        ev.response_type = XCB_CLIENT_MESSAGE;
+        ev.window = win;
+        ev.format = 32;
+        ev.sequence = 0;
+        ev.type = wmatoms[WM_PROTOCOLS];
+        ev.data.data32[0] = proto;
+        ev.data.data32[1] = XCB_CURRENT_TIME;
+        xcb_send_event(dis, 0, win, XCB_EVENT_MASK_NO_EVENT, (char *)&ev);
+    }
+
+    return got;
 }
 
 /* set or unset fullscreen state of client */
