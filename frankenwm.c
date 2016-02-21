@@ -142,16 +142,16 @@ typedef struct {
 /* a client is a wrapper to a window that additionally
  * holds some properties for that window
  *
- * next        - the client after this one, or NULL if the current is the last
- *               client
- * isurgent    - set when the window received an urgent hint
- * istransient - set when the window is transient
- * isfullscrn  - set when the window is fullscreen
- * isfloating  - set when the window is floating
- * win         - the window this client is representing
- * dim         - the window dimensions when floating
- * borderwidth - the border width if not using the global one
- * setfocus    - False: send wm_take_focus, else focus directly
+ * next          - the client after this one, or NULL if the current is the last
+ *                 client
+ * isurgent      - set when the window received an urgent hint
+ * istransient   - set when the window is transient
+ * isfullscrn    - set when the window is fullscreen
+ * isfloating    - set when the window is floating
+ * win           - the window this client is representing
+ * dim           - the window dimensions when floating
+ * borderwidth   - the border width if not using the global one
+ * neverfocus    - True: send wm_take_focus, else focus directly
  *
  * istransient is separate from isfloating as floating window can be reset
  * to their tiling positions, while the transients will always be floating
@@ -162,7 +162,7 @@ typedef struct client {
     xcb_window_t win;
     unsigned int dim[2];
     int borderwidth;
-    bool setfocus;
+    bool neverfocus;
 } client;
 
 /* properties of each desktop
@@ -1599,11 +1599,10 @@ void maprequest(xcb_generic_event_t *e)
         select_desktop(newdsk);
     client *c = addwindow(ev->window);
 
-    c->setfocus = True;
     xcb_icccm_wm_hints_t hints;
     if (xcb_icccm_get_wm_hints_reply(dis,
         xcb_icccm_get_wm_hints(dis, ev->window), &hints, NULL))
-        c->setfocus = (hints.input) ? True : False;
+        c->neverfocus = (hints.input) ? False : True;
 
     xcb_icccm_get_wm_transient_for_reply(dis,
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
@@ -2921,17 +2920,17 @@ void update_current(client *newfocus)   // newfocus may be NULL
     }
 
     if (current) {
-        if (current->setfocus) {
-        xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
-                            netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
-                            &current->win);
-        xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
-                            XCB_CURRENT_TIME);
-        DEBUG("xcb_set_input_focus();");
-        }
-        else {
+        if (current->neverfocus) {
             sendevent(current->win, wmatoms[WM_TAKE_FOCUS]);
             DEBUG("send WM_TAKE_FOCUS");
+        }
+        else {
+            xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
+                                netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
+                                &current->win);
+            xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
+                                XCB_CURRENT_TIME);
+            DEBUG("xcb_set_input_focus();");
         }
     }
 }
