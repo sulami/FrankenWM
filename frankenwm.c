@@ -2920,11 +2920,11 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     if (current) {
         if (current->setfocus) {
-            xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
-                                XCB_CURRENT_TIME);
         xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                             netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
                             &current->win);
+        xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
+                            XCB_CURRENT_TIME);
         DEBUG("xcb_set_input_focus();");
         }
         else {
