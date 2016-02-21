@@ -1632,6 +1632,8 @@ void maprequest(xcb_generic_event_t *e)
         update_current(c);
     }
     grabbuttons(c);
+ 
+    xcb_ewmh_set_wm_desktop(ewmh, c->win, cd);
 
     desktopinfo();
 
@@ -2462,19 +2464,19 @@ int setup(int default_screen)
 
                  haddsk = xcb_ewmh_get_wm_desktop_reply(ewmh,
                                     xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL);
-                if ((!haddsk || dsk == cd) && attr->map_state == XCB_MAP_STATE_UNMAPPED) {
+                if (haddsk && dsk == cd && attr->map_state == XCB_MAP_STATE_UNMAPPED) {
                     /* if a window is unmapped and not from different desktop,
                      * it hasn't requested mapping */
                     continue;
                 }
-                if (cd != dsk)
-                    select_desktop(dsk);
-                addwindow(children[i]);
-                grabbuttons(wintoclient(children[i]));
                 if (cd != dsk) {
-                    xcb_unmap_window(dis, children[i]);
+                    select_desktop(dsk);
+                    addwindow(children[i]);
                     select_desktop(cd);
                 }
+                else
+                    addwindow(children[i]);
+                grabbuttons(wintoclient(children[i]));
             }
             free(attr);
         }
