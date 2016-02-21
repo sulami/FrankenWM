@@ -726,13 +726,18 @@ void centerwindow(void)
 /* remove all windows in all desktops by sending a delete message */
 void cleanup(void)
 {
+/*
     xcb_query_tree_reply_t *query;
     xcb_window_t *c;
+*/
+    client *c;
+    
     if(USE_SCRATCHPAD && scrpd) {
         if(CLOSE_SCRATCHPAD) {
             deletewindow(scrpd->win);
         }
         else {
+            xcb_border_width(dis, scrpd->win, 0);
             xcb_get_geometry_reply_t *wa = get_geometry(scrpd->win);
             xcb_move(dis, scrpd->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
             free(wa);
@@ -753,6 +758,9 @@ void cleanup(void)
         free(query);
     }
 */
+    for (c = head; c; c = c->next)
+        xcb_border_width(dis, c->win, 0);
+
     xcb_ewmh_connection_wipe(ewmh);
     free(ewmh);
 
