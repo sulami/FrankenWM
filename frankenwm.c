@@ -728,7 +728,6 @@ void cleanup(void)
 {
     xcb_query_tree_reply_t *query;
     xcb_window_t *c;
-
     if(USE_SCRATCHPAD && scrpd) {
         if(CLOSE_SCRATCHPAD) {
             deletewindow(scrpd->win);
@@ -745,6 +744,7 @@ void cleanup(void)
     xcb_key_symbols_free(keysyms);
     xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
 
+/*
     if ((query = xcb_query_tree_reply(dis,
                                       xcb_query_tree(dis, screen->root), 0))) {
         c = xcb_query_tree_children(query);
@@ -752,6 +752,7 @@ void cleanup(void)
             deletewindow(c[i]);
         free(query);
     }
+*/
     xcb_ewmh_connection_wipe(ewmh);
     free(ewmh);
 
@@ -1598,6 +1599,7 @@ void maprequest(xcb_generic_event_t *e)
         select_desktop(newdsk);
     client *c = addwindow(ev->window);
 
+    c->setfocus = True;
     xcb_icccm_wm_hints_t hints;
     if (xcb_icccm_get_wm_hints_reply(dis,
         xcb_icccm_get_wm_hints(dis, ev->window), &hints, NULL))
