@@ -1466,13 +1466,13 @@ void mapnotify(xcb_generic_event_t *e)
 			if(!(wintoalien(&alienlist, ev->window))) {
 				alien *a;
 
-                DEBUG("caught a new selfmapping ABOVE window");
+                DEBUG("caught a new selfmapped window");
 				if((a = create_alien(ev->window))) {
 					add_tail(&alienlist, (node *)a);
                 }
 			}
             else {
-				DEBUG("_NET_WM_STATE_ABOVE already in list");
+				DEBUG("selfmapped window already in list");
             }
         }
         if(attr[0])
