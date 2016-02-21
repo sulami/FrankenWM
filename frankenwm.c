@@ -2469,14 +2469,19 @@ int setup(int default_screen)
                      * it hasn't requested mapping */
                     continue;
                 }
-                if (cd != dsk) {
+                if ((!haddsk || dsk == cd) && attr->map_state == XCB_MAP_STATE_UNMAPPED) {
+                    /* if a window is unmapped and not from different desktop,
+                     * it hasn't requested mapping */
+                    continue;
+                }
+                if (cd != dsk)
                     select_desktop(dsk);
-                    addwindow(children[i]);
+                addwindow(children[i]);
+                grabbuttons(wintoclient(children[i]));
+                if (cd != dsk) {
+                    xcb_unmap_window(dis, children[i]);
                     select_desktop(cd);
                 }
-                else
-                    addwindow(children[i]);
-                grabbuttons(wintoclient(children[i]));
             }
             free(attr);
         }
