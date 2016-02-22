@@ -330,7 +330,7 @@ static void (*layout[MODES])(int h, int y) = {
 static void unlink_node(node *n)
 {
     list *l;
-    
+
     if (!n) return;
     l = n->parent;
     if (l) {
@@ -391,17 +391,17 @@ static void add_tail(list *l, node *n)
 * glue functions for doubly linked stuff
 */
 static inline bool check_head(list *l) { return (l && l->head) ? True : False; }
- 
+
 static inline node *get_head(list *l) { return (l) ? l->head : NULL; }
- 
+
 static inline node *get_tail(list *l) { return (l) ? l->tail : NULL; }
- 
+
 static inline node *get_node_head(node *n) { return (n && n->parent) ? n->parent->head : NULL; }
- 
+
 static inline node *get_node_tail(node *n) { return (n && n->parent) ? n->parent->tail : NULL; }
- 
+
 static inline node *get_next(node *n) { return (n) ? n->next : NULL; }
- 
+
 static inline node *get_prev(node *n) { return (n) ? n->prev : NULL; }
 
 static alien *wintoalien(list *l, xcb_window_t win)
@@ -409,14 +409,14 @@ static alien *wintoalien(list *l, xcb_window_t win)
     alien *t;
     if (!l || !win)
         return NULL;
- 
+
     for (t=(alien *)get_head(l); t; t=(alien *)get_next((node *)t)) {
         if (t->win == win)
             break;
     }
     return t;
 }
- 
+
 static inline alien *create_alien(xcb_window_t win)
 {
     alien *a;
@@ -735,7 +735,7 @@ void cleanup(void)
     xcb_query_tree_reply_t *query;
     xcb_window_t *c;
 */
-    
+
     if(USE_SCRATCHPAD && scrpd) {
         if(CLOSE_SCRATCHPAD) {
             deletewindow(scrpd->win);
@@ -2227,28 +2227,18 @@ static void sanedefaults(client *c, xcb_window_t win)
         return;
 
     c->next = NULL;
-/*****/
     c->isurgent = False;
-/*****/
     c->istransient = False;
-/*****/
     c->isfullscrn = False;
-/*****/
     c->isfloating = False;
-/*****/
     c->isminimized = False;
-/*****/
     c->win = win;
-/*****/
     c->dim[0] = c->dim[1] = 0;
-/*****/
     c->borderwidth = -1;
-/*****/
     c->setfocus = True;
     if (xcb_icccm_get_wm_hints_reply(dis,
         xcb_icccm_get_wm_hints(dis, win), &hints, NULL))
         c->setfocus = (hints.input) ? True : False;
-/*****/
 }
 
 /* save specified desktop's properties */
@@ -2488,7 +2478,7 @@ int setup(int default_screen)
     /* grab existing windows */
     xcb_get_window_attributes_reply_t *attr;
     xcb_query_tree_reply_t *reply;
-    
+
     reply = xcb_query_tree_reply(dis, xcb_query_tree(dis, screen->root), 0);
     if (reply) {
         int len = xcb_query_tree_children_length(reply);
