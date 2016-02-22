@@ -41,8 +41,8 @@
 #define XCB_RESIZE      XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT
 
 static char *WM_NAME   = "FrankenWM";
-static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW" };
-enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_COUNT };
+static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "WM_STATE", "WM_TAKE_FOCUS" };
+enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_STATE, WM_TAKE_FOCUS, WM_COUNT };
 
 static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_WM_STATE_FULLSCREEN",
@@ -56,8 +56,8 @@ static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
                                   "_NET_WORKAREA",
                                   "_NET_SHOWING_DESKTOP",
                                   "_NET_CLOSE_WINDOW",
-                                  "_NET_WM_DESKTOP",
-                                  "_NET_WM_WINDOW_TYPE" };
+                                  "_NET_WM_WINDOW_TYPE",
+                                  "_NET_WM_DESKTOP" };
 enum { NET_SUPPORTED,
        NET_FULLSCREEN,
        NET_WM_STATE,
@@ -92,15 +92,27 @@ typedef union {
     const int i;
 } Arg;
 
-/* notifications (aka notes) are unmanaged & mapped windows, ie dunst notifications.
+/* notifications (aka notes) are unmanaged & selfmapped windows, ie dunst notifications.
  * They are always on top of all other windows.
  */
-struct note {
-    struct note *next;
-    struct note *prev;
+struct list {
+    struct node *head;
+    struct node *tail;
+};
+typedef struct list list;
+
+struct node {
+    struct node *next;
+    struct node *prev;
+    struct list *parent;
+};
+typedef struct node node;
+
+struct alien {
+    node link;
     xcb_window_t win;
 };
-typedef struct note note;
+typedef struct alien alien;
 
 /* a key struct represents a combination of
  * mod      - a modifier mask
@@ -130,18 +142,22 @@ typedef struct {
 /* a client is a wrapper to a window that additionally
  * holds some properties for that window
  *
- * next        - the client after this one, or NULL if the current is the last
- *               client
- * isurgent    - set when the window received an urgent hint
- * istransient - set when the window is transient
- * isfullscrn  - set when the window is fullscreen
- * isfloating  - set when the window is floating
- * win         - the window this client is representing
- * dim         - the window dimensions when floating
- * borderwidth - the border width if not using the global one
+ * next          - the client after this one, or NULL if the current is the last
+ *                 client
+ * isurgent      - set when the window received an urgent hint
+ * istransient   - set when the window is transient
+ * isfullscrn    - set when the window is fullscreen
+ * isfloating    - set when the window is floating
+ * win           - the window this client is representing
+ * dim           - the window dimensions when floating
+ * borderwidth   - the border width if not using the global one
+ * setfocus      - True: focus directly, else send wm_take_focus
  *
  * istransient is separate from isfloating as floating window can be reset
  * to their tiling positions, while the transients will always be floating
+ */
+/*
+ * Developer reminder: do not forget to update sanedefaults();
  */
 typedef struct client {
     struct client *next;
@@ -149,6 +165,7 @@ typedef struct client {
     xcb_window_t win;
     unsigned int dim[2];
     int borderwidth;
+    bool setfocus;
 } client;
 
 /* properties of each desktop
@@ -192,13 +209,14 @@ static void adjust_borders(const Arg *arg);
 static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
+static bool check_wmproto(xcb_window_t win, xcb_atom_t proto);
 static void centerwindow();
 static void cleanup(void);
 static int client_borders(const client *c);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
 static void configurerequest(xcb_generic_event_t *e);
-static void deletewindow(xcb_window_t w);
+static bool deletewindow(xcb_window_t w);
 static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
 static void dualstack(int hh, int cy);
@@ -242,8 +260,10 @@ static void rotate_client(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void rotate_mode(const Arg *arg);
 static void run(void);
+static void sanedefaults(client *c, xcb_window_t win);
 static void save_desktop(int i);
 static void select_desktop(int i);
+static bool sendevent(xcb_window_t win, xcb_atom_t proto);
 static void setfullscreen(client *c, bool fullscrn);
 static int setup(int default_screen);
 static void setwindefattr(xcb_window_t w);
@@ -276,7 +296,7 @@ static xcb_screen_t *screen;
 static uint32_t checkwin;
 static xcb_atom_t scrpd_atom;
 static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
-static note *notehead = NULL, *notetail = NULL;
+static list alienlist;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
@@ -304,101 +324,106 @@ static void (*layout[MODES])(int h, int y) = {
 };
 
 /*
- * doubly linked list functions
+ * lowlevel doubly linked list functions
  */
 
-static note *newnote(xcb_window_t win)
+static void unlink_node(node *n)
 {
-    note *n;
+    list *l;
 
-    if((n  = (note *)calloc(1, sizeof(note))))
-        n->win = win;
-    return n;
+    if (!n) return;
+    l = n->parent;
+    if (l) {
+        if (n == l->head) {
+            l->head = l->head->next;
+            if(l->head)
+                l->head->prev = NULL;
+            else
+                l->tail = NULL;
+        }
+        else if (n == l->tail) {
+            l->tail = l->tail->prev;
+            l->tail->next = NULL;
+        }
+        else {
+            n->prev->next = n->next;
+            n->next->prev = n->prev;
+        }
+    }
 }
 
-static void removenote(note *n)
+static void destroy_node(node *n)
 {
     if (!n)
         return;
 
-// only 1 note
-    if (n == notehead) {
-        notehead = notehead->next;
-        if(notehead)
-            notehead->prev = NULL;
-        else
-            notetail = NULL;
-    }
-    else if (n == notetail) {
-// at least 2 notes
-        notetail = notetail->prev;
-        notetail->next = NULL;
-
-    }
-    else {
-        note *prev, *next;
-
-// more than 2 notes
-        prev = n->prev;
-        next = n->next;
-        prev->next = next;
-        next->prev = prev;
-    }
-
+    unlink_node(n);
     free(n);
 }
 
-static note *findnote(xcb_window_t win)
+static void add_head(list *l, node *n)
 {
-    note *n;
-
-    if (!win || !notehead)
-        return NULL;
-
-    for (n=notehead; n; n=n->next) {
-        if (n->win == win)
-            return n;
+    if (l->head == NULL) {
+        l->head = n;
+        l->tail = n;
     }
+    else {
+        l->head->prev = n;
+        n->next = l->head;
+        l->head = n;
+    }
+    n->parent = l;
+}
 
-    return NULL;
+static void add_tail(list *l, node *n)
+{
+    if(l->head == NULL)
+        add_head(l, n);
+    else {
+        l->tail->next = n;
+        n->prev = l->tail;
+        l->tail = n;
+    }
+    n->parent = l;
 }
 
 /*
- * not yet needed
- *
-static void newnotehead(xcb_window_t win)
-{
-    note *n = newnote(win);
-
-    if (notehead == NULL) {
-        notehead = n;
-        notetail = n;
-    }
-    else {
-        head->prev = n;
-        n->next = notehead;
-        notehead = n;
-//      do not touch the tail
-    }
-}
+* glue functions for doubly linked stuff
 */
+static inline bool check_head(list *l) { return (l && l->head) ? True : False; }
 
-static void newnotetail(xcb_window_t win)
+static inline node *get_head(list *l) { return (l) ? l->head : NULL; }
+
+static inline node *get_tail(list *l) { return (l) ? l->tail : NULL; }
+
+static inline node *get_node_head(node *n) { return (n && n->parent) ? n->parent->head : NULL; }
+
+static inline node *get_node_tail(node *n) { return (n && n->parent) ? n->parent->tail : NULL; }
+
+static inline node *get_next(node *n) { return (n) ? n->next : NULL; }
+
+static inline node *get_prev(node *n) { return (n) ? n->prev : NULL; }
+
+static alien *wintoalien(list *l, xcb_window_t win)
 {
-    note *n = newnote(win);
+    alien *t;
+    if (!l || !win)
+        return NULL;
 
-    if(notehead == NULL) {
-        notehead = n;
-        notetail = n;
+    for (t=(alien *)get_head(l); t; t=(alien *)get_next((node *)t)) {
+        if (t->win == win)
+            break;
     }
-    else {
-//      do not touch the head
-        notetail->next = n;
-        n->prev = notetail;
-        notetail = n;
-    }
+    return t;
 }
 
+static inline alien *create_alien(xcb_window_t win)
+{
+    alien *a;
+    if((a = (alien *)calloc(1, sizeof(alien))))
+        a->win = win;
+    return(a);
+}
 
 
 /* get screen of display */
@@ -583,8 +608,9 @@ client *addwindow(xcb_window_t w)
     } else {
         head->next = c;
     }
-
-    setwindefattr(c->win = w);
+    DEBUG("client added");
+    sanedefaults(c, w);
+    setwindefattr(w);
     return c;
 }
 
@@ -705,14 +731,17 @@ void centerwindow(void)
 /* remove all windows in all desktops by sending a delete message */
 void cleanup(void)
 {
+/*
     xcb_query_tree_reply_t *query;
     xcb_window_t *c;
+*/
 
     if(USE_SCRATCHPAD && scrpd) {
         if(CLOSE_SCRATCHPAD) {
             deletewindow(scrpd->win);
         }
         else {
+            xcb_border_width(dis, scrpd->win, 0);
             xcb_get_geometry_reply_t *wa = get_geometry(scrpd->win);
             xcb_move(dis, scrpd->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
             free(wa);
@@ -721,9 +750,7 @@ void cleanup(void)
         scrpd = NULL;
     }
 
-    xcb_key_symbols_free(keysyms);
-
-    xcb_ungrab_key(dis, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
+/*
     if ((query = xcb_query_tree_reply(dis,
                                       xcb_query_tree(dis, screen->root), 0))) {
         c = xcb_query_tree_children(query);
@@ -731,6 +758,8 @@ void cleanup(void)
             deletewindow(c[i]);
         free(query);
     }
+*/
+
     xcb_ewmh_connection_wipe(ewmh);
     free(ewmh);
 
@@ -748,12 +777,14 @@ void cleanup(void)
 
         for (client *c = desktops[i].head, *c_next; c; c = c_next) {
             c_next = c->next;
+            xcb_border_width(dis, c->win, 0);
             free(c);
         }
     }
 
-    while (notehead)
-        removenote(notehead);
+    while (check_head(&alienlist)) {
+        destroy_node(get_head(&alienlist));
+    }
 }
 
 /*
@@ -877,18 +908,9 @@ void configurerequest(xcb_generic_event_t *e)
 }
 
 /* close the window */
-void deletewindow(xcb_window_t w)
+bool deletewindow(xcb_window_t win)
 {
-    xcb_client_message_event_t ev = {0};
-
-    ev.response_type = XCB_CLIENT_MESSAGE;
-    ev.window = w;
-    ev.format = 32;
-    ev.sequence = 0;
-    ev.type = wmatoms[WM_PROTOCOLS];
-    ev.data.data32[0] = wmatoms[WM_DELETE_WINDOW];
-    ev.data.data32[1] = XCB_CURRENT_TIME;
-    xcb_send_event(dis, 0, w, XCB_EVENT_MASK_NO_EVENT, (char *)&ev);
+    return sendevent(win, wmatoms[WM_DELETE_WINDOW]);
 }
 
 /*
@@ -959,12 +981,12 @@ void destroynotify(xcb_generic_event_t *e)
         scrpd = NULL;
         update_current(head);
     }
-    else {
-        note *n;
+   else {
+        alien *a;
 
-        if((n = findnote(ev->window))) {
-            removenote(n);
-            DEBUG("remove note");
+        if((a = wintoalien(&alienlist, ev->window))) {
+            DEBUG("unlink selfmapped window");
+            destroy_node(&a->link);
         }
     }
     desktopinfo();
@@ -1298,32 +1320,25 @@ void grabbuttons(client *c)
     if (!c)
         return;
 
-    if (c == scrpd) {
-        if (CLICK_TO_FOCUS) {
-            xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
-            xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                            XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                            XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                            XCB_BUTTON_INDEX_1, XCB_BUTTON_MASK_ANY);
-        }
-    }
+    xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
+    if (CLICK_TO_FOCUS)
+        xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                        XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                        XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                        (c == scrpd) ? XCB_BUTTON_INDEX_1 : XCB_BUTTON_INDEX_ANY,
+                        XCB_BUTTON_MASK_ANY);
     else {
-        xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
-        if (CLICK_TO_FOCUS)
-            xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                            XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                            XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                            XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
-        else {
-            unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
-                                         numlockmask|XCB_MOD_MASK_LOCK };
+        unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
+                                     numlockmask|XCB_MOD_MASK_LOCK };
 
-            for (unsigned int b = 0; b < LENGTH(buttons); b++)
-                for (unsigned int m = 0; m < LENGTH(modifiers); m++)
+        for (unsigned int b = 0; b < LENGTH(buttons); b++) {
+            for (unsigned int m = 0; m < LENGTH(modifiers); m++) {
                     xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
                                     XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
                                     XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                                    buttons[b].button, buttons[b].mask|modifiers[m]);
+                                    buttons[b].button,
+                                    buttons[b].mask|modifiers[m]);
+            }
         }
     }
 }
@@ -1410,26 +1425,31 @@ void keypress(xcb_generic_event_t *e)
  * send a delete message and remove the client */
 void killclient()
 {
-    if (!current)
-        return;
+    if (!deletewindow(current->win)) {
+        xcb_kill_client(dis, current->win);
+        DEBUG("client killed");
+    }
+    else {
+        DEBUG("client deleted");
+    }
+    removeclient(current);
+}
+
+static bool check_wmproto(xcb_window_t win, xcb_atom_t proto)
+{
     xcb_icccm_get_wm_protocols_reply_t reply;
-    unsigned int n = 0;
     bool got = false;
 
     if (xcb_icccm_get_wm_protocols_reply(dis,
-        xcb_icccm_get_wm_protocols(dis, current->win, wmatoms[WM_PROTOCOLS]),
-        &reply, NULL)) { /* TODO: Handle error? */
-        for (; n != reply.atoms_len; ++n)
-            if ((got = reply.atoms[n] == wmatoms[WM_DELETE_WINDOW]))
+        xcb_icccm_get_wm_protocols(dis, win, wmatoms[WM_PROTOCOLS]), &reply, NULL)) {
+        /* TODO: Handle error? */
+        unsigned int n;
+        for (n = 0; n != reply.atoms_len; ++n)
+            if ((got = reply.atoms[n] == proto))
                 break;
         xcb_icccm_get_wm_protocols_reply_wipe(&reply);
     }
-    if (got)
-        deletewindow(current->win);
-    else {
-        xcb_kill_client(dis, current->win);
-        removeclient(current);
-    }
+    return got;
 }
 
 /* focus the previously focused desktop */
@@ -1447,31 +1467,21 @@ void mapnotify(xcb_generic_event_t *e)
     if (wintoclient(ev->window) || (scrpd && scrpd->win == ev->window))
         return;
     else {
-        xcb_window_t                        windows[] = {ev->window};
-        xcb_get_window_attributes_reply_t   *attr[1];
-        xcb_ewmh_get_atoms_reply_t          type;
+        xcb_window_t windows[] = {ev->window};
+        xcb_get_window_attributes_reply_t *attr[1];
 
         xcb_get_attributes(windows, attr, 1);
         if (!attr[0] || attr[0]->override_redirect) {
-            if (xcb_ewmh_get_wm_window_type_reply(ewmh,
-                                              xcb_ewmh_get_wm_window_type(ewmh,
-                                              ev->window), &type, NULL) == 1) {
-                for (unsigned int i = 0; i < type.atoms_len; i++) {
-                    note *n;
-                    xcb_atom_t a = type.atoms[i];
-                    if (a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
-                        if(!(n = findnote(ev->window))) {
-                            DEBUG("caught a new note");
-                            newnotetail(ev->window);
-                        }
-                        else {
-                            DEBUG("note was already caught");
-                        }
-                        break;
-                    }
-                }
-                xcb_ewmh_get_atoms_reply_wipe(&type);
+            if(!(wintoalien(&alienlist, ev->window))) {
+                alien *a;
 
+                DEBUG("caught a new selfmapped window");
+                if((a = create_alien(ev->window))) {
+                    add_tail(&alienlist, (node *)a);
+                }
+            }
+            else {
+                DEBUG("selfmapped window already in list");
             }
         }
         if(attr[0])
@@ -1537,11 +1547,13 @@ void maprequest(xcb_generic_event_t *e)
 
     if (xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0)) {
         DEBUGP("EWMH window title: %s\n", wtitle.strings);
+
         if (!strcmp(wtitle.strings, SCRPDNAME)) {
             if (!(scrpd = (client *)calloc(1, sizeof(client))))
                 err(EXIT_FAILURE, "cannot allocate client");
 
-            setwindefattr(scrpd->win = ev->window);
+            sanedefaults(scrpd, ev->window);
+            setwindefattr(scrpd->win);
             grabbuttons(scrpd);
             xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
@@ -1595,6 +1607,7 @@ void maprequest(xcb_generic_event_t *e)
     if (cd != newdsk)
         select_desktop(newdsk);
     client *c = addwindow(ev->window);
+
 
     xcb_icccm_get_wm_transient_for_reply(dis,
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
@@ -2207,6 +2220,27 @@ void run(void)
     }
 }
 
+static void sanedefaults(client *c, xcb_window_t win)
+{
+    xcb_icccm_wm_hints_t hints;
+    if (!c)
+        return;
+
+    c->next = NULL;
+    c->isurgent = False;
+    c->istransient = False;
+    c->isfullscrn = False;
+    c->isfloating = False;
+    c->isminimized = False;
+    c->win = win;
+    c->dim[0] = c->dim[1] = 0;
+    c->borderwidth = -1;
+    c->setfocus = True;
+    if (xcb_icccm_get_wm_hints_reply(dis,
+        xcb_icccm_get_wm_hints(dis, win), &hints, NULL))
+        c->setfocus = (hints.input) ? True : False;
+}
+
 /* save specified desktop's properties */
 void save_desktop(int i)
 {
@@ -2239,6 +2273,25 @@ void select_desktop(int i)
     gaps            = desktops[i].gaps;
     invert     = desktops[i].invert;
     current_desktop = i;
+}
+
+static bool sendevent(xcb_window_t win, xcb_atom_t proto)
+{
+    bool got = check_wmproto(win, proto);
+    if (got) {
+        xcb_client_message_event_t ev = {0};
+
+        ev.response_type = XCB_CLIENT_MESSAGE;
+        ev.window = win;
+        ev.format = 32;
+        ev.sequence = 0;
+        ev.type = wmatoms[WM_PROTOCOLS];
+        ev.data.data32[0] = proto;
+        ev.data.data32[1] = XCB_CURRENT_TIME;
+        xcb_send_event(dis, 0, win, XCB_EVENT_MASK_NO_EVENT, (char *)&ev);
+    }
+
+    return got;
 }
 
 /* set or unset fullscreen state of client */
@@ -2328,6 +2381,9 @@ int setup(int default_screen)
         if (!miniq[i])
             err(EXIT_FAILURE, "error: cannot allocate miniq\n");
     }
+
+    alienlist.head = NULL;
+    alienlist.tail = NULL;
 
     win_focus   = getcolor(FOCUS);
     win_unfocus = getcolor(UNFOCUS);
@@ -2421,8 +2477,9 @@ int setup(int default_screen)
 
     /* grab existing windows */
     xcb_get_window_attributes_reply_t *attr;
-    xcb_query_tree_reply_t *reply = xcb_query_tree_reply(dis,
-                                        xcb_query_tree(dis, screen->root), 0);
+    xcb_query_tree_reply_t *reply;
+
+    reply = xcb_query_tree_reply(dis, xcb_query_tree(dis, screen->root), 0);
     if (reply) {
         int len = xcb_query_tree_children_length(reply);
         xcb_window_t *children = xcb_query_tree_children(reply);
@@ -2450,7 +2507,7 @@ int setup(int default_screen)
                         xcb_atom_t reply_type = prop_reply->type;
                         free(prop_reply);
                         if (reply_type != XCB_NONE && (scrpd = (client *)calloc(1, sizeof(client)))) {
-                            scrpd->win = children[i];
+                            sanedefaults(scrpd, children[i]);
                             setwindefattr(scrpd->win);
                             grabbuttons(scrpd);
                             xcb_move(dis, scrpd->win, -2 * ww, 0);
@@ -2849,8 +2906,7 @@ void update_current(client *newfocus)   // newfocus may be NULL
     for (fl += !ISFFTM(current) ? 1 : 0, c = head; c; c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
-        xcb_border_width(dis, c->win,
-                         (c->isfullscrn ||
+        xcb_border_width(dis, c->win, (c->isfullscrn ||
                           (!MONOCLE_BORDERS && !head->next) ||
                           (mode == MONOCLE && !ISFFTM(c) && !MONOCLE_BORDERS)
                           ) ? 0 : client_borders(c));
@@ -2883,19 +2939,25 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     tile();
 
-    if(notehead) {
-        note *t;
-
-        for(t=notehead; t; t=t->next)
-            xcb_raise_window(dis, t->win);
+    if (check_head(&alienlist)) {
+        alien *a;
+        for(a=(alien *)get_head(&alienlist); a; a=(alien *)get_next((node *)a))
+            xcb_raise_window(dis, a->win);
     }
 
-    if(current) {
-        xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
-                            netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
-                            &current->win);
-        xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
-                            XCB_CURRENT_TIME);
+    if (current) {
+        if (current->setfocus) {
+            xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
+                                netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
+                                &current->win);
+            xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
+                                XCB_CURRENT_TIME);
+            DEBUG("xcb_set_input_focus();");
+        }
+        else {
+            sendevent(current->win, wmatoms[WM_TAKE_FOCUS]);
+            DEBUG("send WM_TAKE_FOCUS");
+        }
     }
 }
 
@@ -2964,6 +3026,7 @@ int main(int argc, char *argv[])
         run();
     }
     cleanup();
+    xcb_flush(dis);
     xcb_disconnect(dis);
     ungrab_focus();
     return retval;
