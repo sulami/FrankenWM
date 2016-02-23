@@ -3027,7 +3027,6 @@ int main(int argc, char *argv[])
         run();
     }
     cleanup();
-//    xcb_flush(dis);
     xcb_aux_sync(dis);
     xcb_disconnect(dis);
     ungrab_focus();
