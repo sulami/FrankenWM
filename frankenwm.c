@@ -2519,30 +2519,34 @@ int setup(int default_screen)
                 }
 
 /*
- * 4 different cases we have to take care for:
  * case 1: window has no desktop property and is unmapped --> ignore
- * case 2: window has no desktop property and is mapped   --> add desktop property and append to client list.
- * case 3: window has a desktop property and is unmapped  --> this one is tricky:
+ * case 2: window has no desktop property and is mapped --> add desktop property and append to client list.
+ * case 3: window has current desktop property and is unmapped --> this one is tricky:
  *         If there's no ewmh compatible taskbar, then I (t4nkw4rt) prefer to map these windows and append to client list.
  *         Another solution would be to move them directly to miniq.
- * case 4: window has a desktop property and is mapped    --> append to client list.
+ * case 4: window has current desktop property and is mapped  --> append to client list.
+ * case 5: window has different desktop property and is unmapped -> append to client list.
+ * case 6: window has different desktop property and is mapped -> unmap and append to client list.
  */
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
                     if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                    /* case 1 */
-                        continue;
+                        continue;                                               /* case 1 */
                     else
-                    /* case 2 */
-                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
-                    if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                    /* case 3 */
-                        xcb_map_window(dis, children[i]);   /* TODO: ewmh-taskbar or miniq */
-                    else {
-                    /* case 4 */
-                        ;
+                    if (dsk == cd) {
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
+                            xcb_map_window(dis, children[i]);                   /* case 3 */   
+                        else
+                            { ; }                                               /* case 4 */
+                    }
+                    else {  /* different desktop */
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
+                            { ; }                                               /* case 5 */
+                        else
+                            xcb_unmap_window(dis, children[i]);                 /* case 6 */
                     }
                 }
                 if (cd != dsk)
