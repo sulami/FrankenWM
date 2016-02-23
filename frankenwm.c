@@ -1646,6 +1646,8 @@ void maprequest(xcb_generic_event_t *e)
     }
     grabbuttons(c);
 
+    xcb_ewmh_set_wm_desktop(ewmh, c->win, cd);
+
     desktopinfo();
 
     if (c->isfloating && AUTOCENTER)
