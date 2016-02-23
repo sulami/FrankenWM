@@ -5,7 +5,7 @@ BINDIR ?= ${PREFIX}/bin
 MANPREFIX = ${PREFIX}/share/man
 
 INCS = -I. -I${PREFIX}/include -I/usr/X11R6/include
-LIBS = -lc -lX11 `pkg-config --libs xcb xcb-icccm xcb-keysyms xcb-ewmh`
+LIBS = -lc -lX11 `pkg-config --libs xcb xcb-aux xcb-icccm xcb-keysyms xcb-ewmh`
 
 CFLAGS   += -std=c99 -pedantic -Wall -Wextra -Os ${INCS} ${CPPFLAGS}
 LDFLAGS  += ${LIBS}

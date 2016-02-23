@@ -13,6 +13,7 @@
 #include <X11/keysym.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_atom.h>
+#include <xcb/xcb_aux.h>
 #include <xcb/xcb_icccm.h>
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xcb_ewmh.h>
@@ -3026,7 +3027,8 @@ int main(int argc, char *argv[])
         run();
     }
     cleanup();
-    xcb_flush(dis);
+//    xcb_flush(dis);
+    xcb_aux_sync(dis);
     xcb_disconnect(dis);
     ungrab_focus();
     return retval;
