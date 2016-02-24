@@ -2378,6 +2378,14 @@ int setup(int default_screen)
     borders = BORDER_WIDTH;
     gaps = USELESSGAP;
     for (unsigned int i = 0; i < DESKTOPS; i++) {
+        if (wh > ww) {      /* Pivot monitor support */
+            if (desktops[i].mode == TILE)
+                desktops[i].mode = BSTACK;
+            else {
+                if (desktops[i].mode == BSTACK)
+                    desktops[i].mode = TILE;
+            }
+        }
         desktops[i].gaps = USELESSGAP;
         save_desktop(i);
         miniq[i] = calloc(1, sizeof(struct filo));
