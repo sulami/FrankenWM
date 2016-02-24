@@ -158,7 +158,7 @@ typedef struct {
  * to their tiling positions, while the transients will always be floating
  */
 /*
- * Developer reminder: do not forget to update sanedefaults();
+ * Developer reminder: do not forget to update create_client();
  */
 typedef struct client {
     struct client *next;
@@ -217,6 +217,7 @@ static int client_borders(const client *c);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
 static void configurerequest(xcb_generic_event_t *e);
+static client *create_client(xcb_window_t win);
 static bool deletewindow(xcb_window_t w);
 static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
@@ -261,7 +262,6 @@ static void rotate_client(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void rotate_mode(const Arg *arg);
 static void run(void);
-static void sanedefaults(client *c, xcb_window_t win);
 static void save_desktop(int i);
 static void select_desktop(int i);
 static bool sendevent(xcb_window_t win, xcb_atom_t proto);
@@ -595,11 +595,9 @@ static int xcb_checkotherwm(void)
  */
 client *addwindow(xcb_window_t w)
 {
-    client *c, *t = prev_client(head);
+    client *c = create_client(w), *t = prev_client(head);
 
-    if (!(c = (client *)calloc(1, sizeof(client))))
-         err(EXIT_FAILURE, "cannot allocate client");
-
+/* c is valid, else we would not get here */
     if (!head) {
         head = c;
     } else if (!ATTACH_ASIDE) {
@@ -610,7 +608,6 @@ client *addwindow(xcb_window_t w)
         head->next = c;
     }
     DEBUG("client added");
-    sanedefaults(c, w);
     setwindefattr(w);
     return c;
 }
@@ -907,6 +904,33 @@ void configurerequest(xcb_generic_event_t *e)
     }
     tile();
 }
+
+/*
+ * allocate client structure and fill in sane defaults
+ * exit FrankenWM if memory allocation fails
+ */
+static client *create_client(xcb_window_t win)
+{
+    xcb_icccm_wm_hints_t hints;
+    client *c = calloc(1, sizeof(client));
+    if (!c)
+        err(EXIT_FAILURE, "cannot allocate client");
+    c->next = NULL;
+    c->isurgent = False;
+    c->istransient = False;
+    c->isfullscrn = False;
+    c->isfloating = False;
+    c->isminimized = False;
+    c->win = win;
+    c->dim[0] = c->dim[1] = 0;
+    c->borderwidth = -1;    /* default: use global border width */
+    c->setfocus = True;     /* default: prefer xcb_set_input_focus(); */
+    if (xcb_icccm_get_wm_hints_reply(dis,
+            xcb_icccm_get_wm_hints(dis, win), &hints, NULL))
+        c->setfocus = (hints.input) ? True : False;
+    return c;
+}
+
 
 /* close the window */
 bool deletewindow(xcb_window_t win)
@@ -1550,10 +1574,7 @@ void maprequest(xcb_generic_event_t *e)
         DEBUGP("EWMH window title: %s\n", wtitle.strings);
 
         if (!strcmp(wtitle.strings, SCRPDNAME)) {
-            if (!(scrpd = (client *)calloc(1, sizeof(client))))
-                err(EXIT_FAILURE, "cannot allocate client");
-
-            sanedefaults(scrpd, ev->window);
+            scrpd = create_client(ev->window);
             setwindefattr(scrpd->win);
             grabbuttons(scrpd);
             xcb_map_window(dis, scrpd->win);
@@ -2223,27 +2244,6 @@ void run(void)
     }
 }
 
-static void sanedefaults(client *c, xcb_window_t win)
-{
-    xcb_icccm_wm_hints_t hints;
-    if (!c)
-        return;
-
-    c->next = NULL;
-    c->isurgent = False;
-    c->istransient = False;
-    c->isfullscrn = False;
-    c->isfloating = False;
-    c->isminimized = False;
-    c->win = win;
-    c->dim[0] = c->dim[1] = 0;
-    c->borderwidth = -1;
-    c->setfocus = True;
-    if (xcb_icccm_get_wm_hints_reply(dis,
-        xcb_icccm_get_wm_hints(dis, win), &hints, NULL))
-        c->setfocus = (hints.input) ? True : False;
-}
-
 /* save specified desktop's properties */
 void save_desktop(int i)
 {
@@ -2508,8 +2508,8 @@ int setup(int default_screen)
                     if (prop_reply) {
                         xcb_atom_t reply_type = prop_reply->type;
                         free(prop_reply);
-                        if (reply_type != XCB_NONE && (scrpd = (client *)calloc(1, sizeof(client)))) {
-                            sanedefaults(scrpd, children[i]);
+                        if (reply_type != XCB_NONE) {
+                            scrpd = create_client(children[i]);
                             setwindefattr(scrpd->win);
                             grabbuttons(scrpd);
                             xcb_move(dis, scrpd->win, -2 * ww, 0);
