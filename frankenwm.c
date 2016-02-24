@@ -931,7 +931,7 @@ static client *create_client(xcb_window_t win)
     return c;
 }
 
-                            
+
 /* close the window */
 bool deletewindow(xcb_window_t win)
 {
