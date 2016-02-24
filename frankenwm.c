@@ -2538,7 +2538,7 @@ int setup(int default_screen)
                 else {
                     if (dsk == cd) {
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                            xcb_map_window(dis, children[i]);                   /* case 3 */   
+                            xcb_map_window(dis, children[i]);                   /* case 3 */
                         else
                             { ; }                                               /* case 4 */
                     }
