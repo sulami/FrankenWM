@@ -2378,6 +2378,8 @@ int setup(int default_screen)
     borders = BORDER_WIDTH;
     gaps = USELESSGAP;
     for (unsigned int i = 0; i < DESKTOPS; i++) {
+        if (desktops[i].mode == TILE && wh > ww)
+            desktops[i].mode = BSTACK;
         desktops[i].gaps = USELESSGAP;
         save_desktop(i);
         miniq[i] = calloc(1, sizeof(struct filo));
