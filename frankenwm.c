@@ -677,7 +677,7 @@ void buttonpress(xcb_generic_event_t *e)
  * first all others then the current */
 void change_desktop(const Arg *arg)
 {
-    if (arg->i == current_desktop)
+    if (arg->i == current_desktop || arg->i > DESKTOPS-1)
         return;
     previous_desktop = current_desktop;
     select_desktop(arg->i);
@@ -802,7 +802,7 @@ int client_borders(const client *c)
  * and add it as last client of the new desktop's client list */
 void client_to_desktop(const Arg *arg)
 {
-    if (!current || arg->i == current_desktop)
+    if (!current || arg->i == current_desktop || arg->i > DESKTOPS-1)
         return;
     int cd = current_desktop;
     client *p = prev_client(current), *c = current;
@@ -2453,7 +2453,8 @@ int setup(int default_screen)
 
     xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
     xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, checkwin);
-    xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
+    int max_desktops = DESKTOPS < 1 ? 1 : DESKTOPS;
+    xcb_ewmh_set_number_of_desktops(ewmh, default_screen, max_desktops);
     xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
     xcb_ewmh_set_desktop_geometry(ewmh, default_screen, ww, wh);
     xcb_ewmh_set_desktop_viewport(ewmh, default_screen, 1, viewports);
@@ -2536,6 +2537,8 @@ int setup(int default_screen)
  * case 4: window has current desktop property and is mapped  --> append to client list.
  * case 5: window has different desktop property and is unmapped -> append to client list.
  * case 6: window has different desktop property and is mapped -> unmap and append to client list.
+ * case 7: if desktop property > DESKTOPS, move window to last desktop.
+ * TODO: case 8: sticky windows (desktop property == -1)
  */
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
@@ -2545,6 +2548,10 @@ int setup(int default_screen)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
+                    if ((int)dsk > max_desktops-1) {                            /* case 7 */
+                        dsk = max_desktops-1;
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk);
+                    }
                     if (dsk == cd) {
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
                             xcb_map_window(dis, children[i]);                   /* case 3 */
