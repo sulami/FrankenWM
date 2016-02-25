@@ -2453,8 +2453,7 @@ int setup(int default_screen)
 
     xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
     xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, checkwin);
-    int max_desktops = DESKTOPS < 1 ? 1 : DESKTOPS;
-    xcb_ewmh_set_number_of_desktops(ewmh, default_screen, max_desktops);
+    xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
     xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
     xcb_ewmh_set_desktop_geometry(ewmh, default_screen, ww, wh);
     xcb_ewmh_set_desktop_viewport(ewmh, default_screen, 1, viewports);
@@ -2548,8 +2547,8 @@ int setup(int default_screen)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
-                    if ((int)dsk > max_desktops-1) {                            /* case 7 */
-                        dsk = max_desktops-1;
+                    if ((int)dsk > DESKTOPS-1) {                                /* case 7 */
+                        dsk = DESKTOPS-1;
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk);
                     }
                     if (dsk == cd) {
