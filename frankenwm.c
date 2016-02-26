@@ -2547,10 +2547,8 @@ int setup(int default_screen)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
-                    if (dsk > DESKTOPS-1) {                                     /* case 7 */
-                        dsk = DESKTOPS-1;
-                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk);
-                    }
+                    if (dsk > DESKTOPS-1)
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);   /* case 7 */
                     if (dsk == cd) {
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
                             xcb_map_window(dis, children[i]);                   /* case 3 */
