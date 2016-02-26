@@ -2547,7 +2547,7 @@ int setup(int default_screen)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
-                    if ((int)dsk > DESKTOPS-1) {                                /* case 7 */
+                    if (dsk > DESKTOPS-1) {                                     /* case 7 */
                         dsk = DESKTOPS-1;
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk);
                     }
