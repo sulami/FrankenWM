@@ -1539,13 +1539,15 @@ void maprequest(xcb_generic_event_t *e)
     DEBUG("xcb: map request");
 
     xcb_get_attributes(windows, attr, 1);
-    if (!attr[0] || attr[0]->override_redirect) {
+    if (!attr[0])
+        return;
+
+    if (attr[0]->override_redirect) {
         free(attr[0]);
+        xcb_map_window(dis, ev->window);
         return;
     }
-    else {
-        free(attr[0]);
-    }
+    free(attr[0]);
 
     if (wintoclient(ev->window))
         return;
@@ -1554,9 +1556,12 @@ void maprequest(xcb_generic_event_t *e)
                                       ev->window), &type, NULL) == 1) {
         for (unsigned int i = 0; i < type.atoms_len; i++) {
             xcb_atom_t a = type.atoms[i];
-            if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLBAR
-                || a == ewmh->_NET_WM_WINDOW_TYPE_DOCK) {
+            if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLBAR || a == ewmh->_NET_WM_WINDOW_TYPE_DOCK) {
+                alien *utility;
+                if((utility = create_alien(ev->window)))
+                    add_tail(&alienlist, (node *)utility);
                 xcb_ewmh_get_atoms_reply_wipe(&type);
+                xcb_map_window(dis, ev->window);
                 return;
             }
         }
