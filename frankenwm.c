@@ -858,7 +858,7 @@ void clientmessage(xcb_generic_event_t *e)
              && ev->data.data32[0] < DESKTOPS)
         change_desktop(&(Arg){.i = ev->data.data32[0]});
     else if (c && ev->type == netatoms[NET_CLOSE_WINDOW])
-        removeclient(c);
+        killclient(c);
     else if (c && ev->type == netatoms[NET_ACTIVE])
         for (t = head; t && t != c; t = t->next);
     else if (c && ev->type == netatoms[NET_WM_DESKTOP]
