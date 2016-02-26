@@ -1558,9 +1558,9 @@ void maprequest(xcb_generic_event_t *e)
             xcb_atom_t a = type.atoms[i];
             if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLBAR || a == ewmh->_NET_WM_WINDOW_TYPE_DOCK) {
                 alien *utility;
+                xcb_ewmh_get_atoms_reply_wipe(&type);
                 if((utility = create_alien(ev->window)))
                     add_tail(&alienlist, (node *)utility);
-                xcb_ewmh_get_atoms_reply_wipe(&type);
                 xcb_map_window(dis, ev->window);
                 return;
             }
