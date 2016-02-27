@@ -1516,7 +1516,7 @@ void maprequest(xcb_generic_event_t *e)
     xcb_ewmh_get_atoms_reply_t         type;
     xcb_get_property_cookie_t          cookie;
     xcb_ewmh_get_utf8_strings_reply_t  wtitle;
-    bool                               isSpecial = False;
+    bool isSpecial = False, isFloating = False;
 
     DEBUG("xcb: map request");
 
@@ -1534,21 +1534,22 @@ void maprequest(xcb_generic_event_t *e)
     isSpecial = (attr[0]->override_redirect) ? True : False;
     free(attr[0]);
 
-    if (!isSpecial)
-    {
-        /*
-         * check if window type is not _NET_WM_WINDOW_TYPE_NORMAL.
-         * if yes, then we add it to alien list and map it.
-         */
-        if (xcb_ewmh_get_wm_window_type_reply(ewmh,
-                                    xcb_ewmh_get_wm_window_type(ewmh,
-                                    ev->window), &type, NULL) == 1) {
-            for (unsigned int i = 0; i < type.atoms_len; i++) {
-                if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL)
+    /*
+     * check if window type is not _NET_WM_WINDOW_TYPE_NORMAL.
+     * if yes, then we add it to alien list and map it.
+     */
+    if (xcb_ewmh_get_wm_window_type_reply(ewmh,
+                                xcb_ewmh_get_wm_window_type(ewmh,
+                                ev->window), &type, NULL) == 1) {
+        for (unsigned int i = 0; i < type.atoms_len; i++) {
+            if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
+                if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG)
+                    isFloating = True;
+                else
                     isSpecial = True;
             }
-            xcb_ewmh_get_atoms_reply_wipe(&type);
         }
+        xcb_ewmh_get_atoms_reply_wipe(&type);
     }
 
     if (isSpecial) {
@@ -1562,7 +1563,7 @@ void maprequest(xcb_generic_event_t *e)
 
     DEBUG("event is valid");
 
-    bool follow = false, floating = false;
+    bool follow = false;
     int cd = current_desktop, newdsk = current_desktop, border_width = -1;
 
     cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, ev->window);
@@ -1590,7 +1591,7 @@ void maprequest(xcb_generic_event_t *e)
                 newdsk = (rules[i].desktop < 0 ||
                           rules[i].desktop >= DESKTOPS) ? current_desktop
                                                         : rules[i].desktop;
-                floating = rules[i].floating;
+                isFloating = rules[i].floating;
                 border_width = rules[i].border_width;
                 break;
             }
@@ -1613,7 +1614,7 @@ void maprequest(xcb_generic_event_t *e)
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
                     &transient, NULL); /* TODO: error handling */
     c->istransient = transient ? true : false;
-    c->isfloating  = floating || c->istransient;
+    c->isfloating  = isFloating || c->istransient;
     c->borderwidth = border_width;
 
     prop_reply = xcb_get_property_reply(dis, xcb_get_property_unchecked(
