@@ -182,7 +182,7 @@ static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
 static bool check_wmproto(xcb_window_t win, xcb_atom_t proto);
-static void centerclient(client *c);
+static void centerfloating(client *c);
 static void centerwindow();
 static void cleanup(void);
 static int client_borders(const client *c);
@@ -683,17 +683,12 @@ void change_desktop(const Arg *arg)
 }
 
 /*
- * place the current window in the center of the screen floating
+ * place a floating client in the center of the screen
  */
-static void centerclient(client *c)
+static void centerfloating(client *c)
 {
-    if (!c)
+    if (!c || !current->isfloating)
         return;
-
-    if (!current->isfloating && !current->istransient) {
-        float_client(current);
-        tile();
-    }
 
     xcb_get_geometry_reply_t *wa;
     wa = get_geometry(c->win);
@@ -707,8 +702,15 @@ static void centerclient(client *c)
  */
 void centerwindow(void)
 {
-    if (current)
-        centerclient(current);
+    if (!current)
+        return;
+
+    if (!current->isfloating && !current->istransient) {
+        float_client(current);
+        tile();
+    }
+
+    centerfloating(current);
 }
 
 /* remove all windows in all desktops by sending a delete message */
@@ -1660,7 +1662,7 @@ void maprequest(xcb_generic_event_t *e)
     desktopinfo();
 
     if (c->isfloating && AUTOCENTER)
-        centerclient(c);
+        centerfloating(c);
 }
 
 /* maximize the current window, or if we are maximized, tile() */
@@ -2134,13 +2136,8 @@ void restore()
      * before minimizing, TODO: fix it to use centerwindow() instead of copying
      * half of it
      */
-    if (tmp->c->isfloating) {
-        xcb_get_geometry_reply_t *wa;
-        wa = get_geometry(tmp->c->win);
-        xcb_raise_window(dis, tmp->c->win);
-        xcb_move(dis, tmp->c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
-        free(wa);
-    }
+    if (tmp->c->isfloating)
+        centerfloating(tmp->c);
     tile();
     update_current(tmp->c);
     tmp->c = NULL;
