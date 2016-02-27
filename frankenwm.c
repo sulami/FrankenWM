@@ -182,6 +182,7 @@ static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
 static bool check_wmproto(xcb_window_t win, xcb_atom_t proto);
+static void centerclient(client *c);
 static void centerwindow();
 static void cleanup(void);
 static int client_borders(const client *c);
@@ -684,23 +685,30 @@ void change_desktop(const Arg *arg)
 /*
  * place the current window in the center of the screen floating
  */
-void centerwindow(void)
+static void centerclient(client *c)
 {
-    xcb_get_geometry_reply_t *wa;
-    desktop *d = &desktops[current_desktop];
-
-    if (!d->current)
+    if (!c)
         return;
 
-    if (!d->current->isfloating && !d->current->istransient) {
-        float_client(d->current);
+    if (!current->isfloating && !current->istransient) {
+        float_client(current);
         tile();
     }
 
-    wa = get_geometry(current->win);
-    xcb_raise_window(dis, d->current->win);
-    xcb_move(dis, d->current->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+    xcb_get_geometry_reply_t *wa;
+    wa = get_geometry(c->win);
+    xcb_raise_window(dis, c->win);
+    xcb_move(dis, c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
     free(wa);
+}
+
+/*
+ * centerclient(); wrapper
+ */
+void centerwindow(void)
+{
+    if (current)
+        centerclient(current);
 }
 
 /* remove all windows in all desktops by sending a delete message */
@@ -1652,7 +1660,7 @@ void maprequest(xcb_generic_event_t *e)
     desktopinfo();
 
     if (c->isfloating && AUTOCENTER)
-        centerwindow();
+        centerclient(c);
 }
 
 /* maximize the current window, or if we are maximized, tile() */
