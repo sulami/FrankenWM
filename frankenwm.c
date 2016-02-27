@@ -181,6 +181,7 @@ static void adjust_borders(const Arg *arg);
 static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
+static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating);
 static bool check_wmproto(xcb_window_t win, xcb_atom_t proto);
 static void centerfloating(client *c);
 static void centerwindow();
@@ -680,6 +681,61 @@ void change_desktop(const Arg *arg)
         update_current(current);
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
+}
+
+/*
+ * returns:
+ * True if window is alien
+ * False if window will be client
+ */
+static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating)
+{
+    xcb_get_window_attributes_reply_t *attr[1];
+    xcb_window_t windows[] = {win};
+    xcb_ewmh_get_atoms_reply_t type;
+    bool isAlien = False;
+
+/* isFloating may be NULL */
+
+    if (isFloating) *isFloating = False;
+    xcb_get_attributes(windows, attr, 1);
+    if (!attr[0])   /* dead on arrival */
+        return True;
+
+    /*
+     * check if window is override_redirect.
+     * if yes, then we add it to alien list and map it.
+     */
+    isAlien = (attr[0]->override_redirect) ? True : False;
+    free(attr[0]);
+
+    /*
+     * check if window type is not _NET_WM_WINDOW_TYPE_NORMAL.
+     * if yes, then we add it to alien list and map it.
+     */
+    if (xcb_ewmh_get_wm_window_type_reply(ewmh,
+                                xcb_ewmh_get_wm_window_type(ewmh,
+                                win), &type, NULL) == 1) {
+        for (unsigned int i = 0; i < type.atoms_len; i++) {
+            if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
+                if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG) {
+                    if (isFloating) *isFloating = True;
+                }
+                else
+                    isAlien = True;
+            }
+        }
+        xcb_ewmh_get_atoms_reply_wipe(&type);
+    }
+
+    if (isAlien) {
+        alien *a;
+        if ((a = create_alien(win)))
+            add_tail(&alienlist, (node *)a);
+        xcb_raise_window(dis, win);
+        xcb_map_window(dis, win);
+    }
+    return isAlien;
 }
 
 /*
@@ -1519,57 +1575,20 @@ void mapnotify(xcb_generic_event_t *e)
 void maprequest(xcb_generic_event_t *e)
 {
     xcb_map_request_event_t            *ev = (xcb_map_request_event_t *)e;
-    xcb_window_t                       windows[] = {ev->window}, transient = 0;
-    xcb_get_window_attributes_reply_t  *attr[1];
+    xcb_window_t                       transient = 0;
     xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
-    xcb_ewmh_get_atoms_reply_t         type;
     xcb_get_property_cookie_t          cookie;
     xcb_ewmh_get_utf8_strings_reply_t  wtitle;
-    bool isSpecial = False, isFloating = False;
+    bool isFloating = False;
 
     DEBUG("xcb: map request");
 
     if (wintoclient(ev->window))
         return;
 
-    xcb_get_attributes(windows, attr, 1);
-    if (!attr[0])   /* dead on arrival */
+    if (check_if_window_is_alien(ev->window, &isFloating))
         return;
-
-    /*
-     * check if window is override_redirect.
-     * if yes, then we add it to alien list and map it.
-     */
-    isSpecial = (attr[0]->override_redirect) ? True : False;
-    free(attr[0]);
-
-    /*
-     * check if window type is not _NET_WM_WINDOW_TYPE_NORMAL.
-     * if yes, then we add it to alien list and map it.
-     */
-    if (xcb_ewmh_get_wm_window_type_reply(ewmh,
-                                xcb_ewmh_get_wm_window_type(ewmh,
-                                ev->window), &type, NULL) == 1) {
-        for (unsigned int i = 0; i < type.atoms_len; i++) {
-            if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
-                if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG)
-                    isFloating = True;
-                else
-                    isSpecial = True;
-            }
-        }
-        xcb_ewmh_get_atoms_reply_wipe(&type);
-    }
-
-    if (isSpecial) {
-        alien *a;
-        if ((a = create_alien(ev->window)))
-            add_tail(&alienlist, (node *)a);
-        xcb_raise_window(dis, ev->window);
-        xcb_map_window(dis, ev->window);
-        return;
-    }
 
     DEBUG("event is valid");
 
@@ -2482,6 +2501,9 @@ int setup(int default_screen)
         xcb_window_t *children = xcb_query_tree_children(reply);
         uint32_t cd = current_desktop;
         for (int i = 0; i < len; i++) {
+            if (check_if_window_is_alien(children[i], NULL))
+                continue;
+
             attr = xcb_get_window_attributes_reply(dis,
                             xcb_get_window_attributes(dis, children[i]), NULL);
             if (!attr)
