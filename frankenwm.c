@@ -1473,27 +1473,27 @@ void mapnotify(xcb_generic_event_t *e)
 
     if (wintoclient(ev->window) || (scrpd && scrpd->win == ev->window))
         return;
-    else {
-        xcb_window_t windows[] = {ev->window};
-        xcb_get_window_attributes_reply_t *attr[1];
 
-        xcb_get_attributes(windows, attr, 1);
-        if (!attr[0] || attr[0]->override_redirect) {
-            if(!(wintoalien(&alienlist, ev->window))) {
-                alien *a;
+    xcb_window_t wins[] = {ev->window};
+    xcb_get_window_attributes_reply_t *attr[1];
 
+    xcb_get_attributes(wins, attr, 1);
+    if (!attr[0])
+        return;     /* dead on arrival */
+    if (attr[0]->override_redirect) {
+        if (!(wintoalien(&alienlist, ev->window))) {
+            alien *a;
+            if ((a = create_alien(ev->window))) {
+                xcb_raise_window(dis, ev->window);
                 DEBUG("caught a new selfmapped window");
-                if((a = create_alien(ev->window))) {
-                    add_tail(&alienlist, (node *)a);
-                }
+                add_tail(&alienlist, (node *)a);
             }
             else {
-                DEBUG("selfmapped window already in list");
+                DEBUG("alien window already in list");
             }
         }
-        if(attr[0])
-            free(attr[0]);
     }
+    free(attr[0]);
 }
 
 /* a map request is received when a window wants to display itself
