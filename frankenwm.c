@@ -677,7 +677,7 @@ void buttonpress(xcb_generic_event_t *e)
  * first all others then the current */
 void change_desktop(const Arg *arg)
 {
-    if (arg->i == current_desktop)
+    if (arg->i == current_desktop || arg->i > DESKTOPS-1)
         return;
     previous_desktop = current_desktop;
     select_desktop(arg->i);
@@ -802,7 +802,7 @@ int client_borders(const client *c)
  * and add it as last client of the new desktop's client list */
 void client_to_desktop(const Arg *arg)
 {
-    if (!current || arg->i == current_desktop)
+    if (!current || arg->i == current_desktop || arg->i > DESKTOPS-1)
         return;
     int cd = current_desktop;
     client *p = prev_client(current), *c = current;
@@ -2536,6 +2536,8 @@ int setup(int default_screen)
  * case 4: window has current desktop property and is mapped  --> append to client list.
  * case 5: window has different desktop property and is unmapped -> append to client list.
  * case 6: window has different desktop property and is mapped -> unmap and append to client list.
+ * case 7: window has desktop property > DESKTOPS -> move window to last desktop
+ * case 8: window has desktop property = -1 -> TODO: sticky window
  */
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
@@ -2545,6 +2547,8 @@ int setup(int default_screen)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
+                    if ((int)dsk > DESKTOPS-1)
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);
                     if (dsk == cd) {
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
                             xcb_map_window(dis, children[i]);                   /* case 3 */
