@@ -1516,33 +1516,48 @@ void maprequest(xcb_generic_event_t *e)
     xcb_ewmh_get_atoms_reply_t         type;
     xcb_get_property_cookie_t          cookie;
     xcb_ewmh_get_utf8_strings_reply_t  wtitle;
-    bool atom_success = false;
+    bool                               isSpecial = False;
 
     DEBUG("xcb: map request");
 
-    xcb_get_attributes(windows, attr, 1);
-    if (!attr[0] || attr[0]->override_redirect) {
-        free(attr[0]);
-        return;
-    }
-    else {
-        free(attr[0]);
-    }
-
     if (wintoclient(ev->window))
         return;
-    if (xcb_ewmh_get_wm_window_type_reply(ewmh,
-                                      xcb_ewmh_get_wm_window_type(ewmh,
-                                      ev->window), &type, NULL) == 1) {
-        for (unsigned int i = 0; i < type.atoms_len; i++) {
-            xcb_atom_t a = type.atoms[i];
-            if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLBAR
-                || a == ewmh->_NET_WM_WINDOW_TYPE_DOCK) {
-                xcb_ewmh_get_atoms_reply_wipe(&type);
-                return;
+
+    xcb_get_attributes(windows, attr, 1);
+    if (!attr[0])   /* dead on arrival */
+        return;
+
+    /*
+     * check if window is override_redirect.
+     * if yes, then we add it to alien list and map it.
+     */
+    isSpecial = (attr[0]->override_redirect) ? True : False;
+    free(attr[0]);
+
+    if (!isSpecial)
+    {
+        /*
+         * check if window type is not _NET_WM_WINDOW_TYPE_NORMAL.
+         * if yes, then we add it to alien list and map it.
+         */
+        if (xcb_ewmh_get_wm_window_type_reply(ewmh,
+                                    xcb_ewmh_get_wm_window_type(ewmh,
+                                    ev->window), &type, NULL) == 1) {
+            for (unsigned int i = 0; i < type.atoms_len; i++) {
+                if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL)
+                    isSpecial = True;
             }
+            xcb_ewmh_get_atoms_reply_wipe(&type);
         }
-        atom_success = true;
+    }
+
+    if (isSpecial) {
+        alien *a;
+        if ((a = create_alien(ev->window)))
+            add_tail(&alienlist, (node *)a);
+        xcb_raise_window(dis, ev->window);
+        xcb_map_window(dis, ev->window);
+        return;
     }
 
     DEBUG("event is valid");
@@ -1559,18 +1574,13 @@ void maprequest(xcb_generic_event_t *e)
             scrpd = create_client(ev->window);
             setwindefattr(scrpd->win);
             grabbuttons(scrpd);
-            xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
+            xcb_map_window(dis, scrpd->win);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
-
-            if (atom_success) {
-                xcb_ewmh_get_atoms_reply_wipe(&type);
-            }
 
             if (scrpd_atom)
                 xcb_change_property(dis, XCB_PROP_MODE_REPLACE, scrpd->win, scrpd_atom,
                                     XCB_ATOM_WINDOW, 32, 1, &scrpd->win);
-
             return;
         }
 
@@ -1586,20 +1596,6 @@ void maprequest(xcb_generic_event_t *e)
             }
 
         xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
-    }
-    if (atom_success) {
-        for (unsigned int i = 0; i < type.atoms_len; i++) {
-            xcb_atom_t a = type.atoms[i];
-            if (a == ewmh->_NET_WM_WINDOW_TYPE_SPLASH
-                || a == ewmh->_NET_WM_WINDOW_TYPE_DIALOG
-                || a == ewmh->_NET_WM_WINDOW_TYPE_DROPDOWN_MENU
-                || a == ewmh->_NET_WM_WINDOW_TYPE_POPUP_MENU
-                || a == ewmh->_NET_WM_WINDOW_TYPE_TOOLTIP
-                || a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
-                floating = true;
-            }
-        }
-        xcb_ewmh_get_atoms_reply_wipe(&type);
     }
 
     /* might be useful in future */
