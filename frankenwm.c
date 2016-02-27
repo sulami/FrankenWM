@@ -45,37 +45,7 @@ static char *WM_NAME   = "FrankenWM";
 static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "WM_STATE", "WM_TAKE_FOCUS" };
 enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_STATE, WM_TAKE_FOCUS, WM_COUNT };
 
-static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
-                                  "_NET_WM_STATE_FULLSCREEN",
-                                  "_NET_WM_STATE",
-                                  "_NET_SUPPORTING_WM_CHECK",
-                                  "_NET_ACTIVE_WINDOW",
-                                  "_NET_NUMBER_OF_DESKTOPS",
-                                  "_NET_CURRENT_DESKTOP",
-                                  "_NET_DESKTOP_GEOMETRY",
-                                  "_NET_DESKTOP_VIEWPORT",
-                                  "_NET_WORKAREA",
-                                  "_NET_SHOWING_DESKTOP",
-                                  "_NET_CLOSE_WINDOW",
-                                  "_NET_WM_WINDOW_TYPE",
-                                  "_NET_WM_DESKTOP" };
-enum { NET_SUPPORTED,
-       NET_FULLSCREEN,
-       NET_WM_STATE,
-       NET_SUPPORTING_WM_CHECK,
-       NET_ACTIVE,
-       NET_NUMBER_OF_DESKTOPS,
-       NET_CURRENT_DESKTOP,
-       NET_DESKTOP_GEOMETRY,
-       NET_DESKTOP_VIEWPORT,
-       NET_WORKAREA,
-       NET_SHOWING_DESKTOP,
-       NET_CLOSE_WINDOW,
-       NET_WM_WINDOW_TYPE,
-       NET_WM_DESKTOP,
-       NET_COUNT };
-
-#define LENGTH(x) (sizeof(x)/sizeof(*x))
+#define LENGTH(x)       (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
 #define ISFFTM(c)        (c->isfullscrn || c->isfloating || c->istransient || c->isminimized)
@@ -300,7 +270,7 @@ static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
 static list alienlist;
 
 static xcb_ewmh_connection_t *ewmh;
-static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
+static xcb_atom_t wmatoms[WM_COUNT];
 static desktop desktops[DESKTOPS];
 static filo *miniq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
@@ -761,7 +731,7 @@ void cleanup(void)
     xcb_ewmh_connection_wipe(ewmh);
     free(ewmh);
 
-    xcb_delete_property(dis, screen->root, netatoms[NET_SUPPORTED]);
+    xcb_delete_property(dis, screen->root, ewmh->_NET_SUPPORTED);
     xcb_destroy_window(dis, checkwin);
 
     for (unsigned int i = 0; i < LENGTH(rules); i++)
@@ -848,20 +818,20 @@ void clientmessage(xcb_generic_event_t *e)
 
     DEBUG("xcb: client message");
 
-    if (c && ev->type == netatoms[NET_WM_STATE]
-          && ((unsigned)ev->data.data32[1] == netatoms[NET_FULLSCREEN]
-           || (unsigned)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
+    if (c && ev->type == ewmh->_NET_WM_STATE
+          && ((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_FULLSCREEN
+           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN))
         setfullscreen(c, (ev->data.data32[0] == 1 ||
                          (ev->data.data32[0] == 2 &&
                          !c->isfullscrn)));
-    else if (c && ev->type == netatoms[NET_CURRENT_DESKTOP]
+    else if (c && ev->type == ewmh->_NET_CURRENT_DESKTOP
              && ev->data.data32[0] < DESKTOPS)
         change_desktop(&(Arg){.i = ev->data.data32[0]});
-    else if (c && ev->type == netatoms[NET_CLOSE_WINDOW])
+    else if (c && ev->type == ewmh->_NET_CLOSE_WINDOW)
         removeclient(c);
-    else if (c && ev->type == netatoms[NET_ACTIVE])
+    else if (c && ev->type == ewmh->_NET_ACTIVE_WINDOW)
         for (t = head; t && t != c; t = t->next);
-    else if (c && ev->type == netatoms[NET_WM_DESKTOP]
+    else if (c && ev->type == ewmh->_NET_WM_DESKTOP
              && ev->data.data32[0] < DESKTOPS)
         client_to_desktop(&(Arg){.i = ev->data.data32[0]});
     if (t)
@@ -1639,7 +1609,7 @@ void maprequest(xcb_generic_event_t *e)
     c->borderwidth = border_width;
 
     prop_reply = xcb_get_property_reply(dis, xcb_get_property_unchecked(
-                                    dis, 0, ev->window, netatoms[NET_WM_STATE],
+                                    dis, 0, ev->window, ewmh->_NET_WM_STATE,
                                     XCB_ATOM_ATOM, 0, 1), NULL);
                                     /* TODO: error handling */
     if (prop_reply) {
@@ -1647,7 +1617,7 @@ void maprequest(xcb_generic_event_t *e)
             xcb_atom_t *v = xcb_get_property_value(prop_reply);
             for (unsigned int i = 0; i < prop_reply->value_len; i++)
                 DEBUGP("%d : %d\n", i, v[0]);
-            setfullscreen(c, (v[0] == netatoms[NET_FULLSCREEN]));
+            setfullscreen(c, (v[0] == ewmh->_NET_WM_STATE_FULLSCREEN));
         }
         free(prop_reply);
     }
@@ -2301,11 +2271,11 @@ static bool sendevent(xcb_window_t win, xcb_atom_t proto)
 void setfullscreen(client *c, bool fullscrn)
 {
     DEBUGP("xcb: set fullscreen: %d\n", fullscrn);
-    long data[] = { fullscrn ? netatoms[NET_FULLSCREEN] : XCB_NONE };
+    long data[] = { fullscrn ? ewmh->_NET_WM_STATE_FULLSCREEN : XCB_NONE };
 
     if (fullscrn != c->isfullscrn)
         xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
-                            c->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 32,
+                            c->win, ewmh->_NET_WM_STATE, XCB_ATOM_ATOM, 32,
                             fullscrn, data);
     if ((c->isfullscrn = fullscrn))
         xcb_move_resize(dis, c->win, 0, 0, ww, wh + PANEL_HEIGHT);
@@ -2406,7 +2376,6 @@ int setup(int default_screen)
 
     /* set up atoms for dialog/notification windows */
     xcb_get_atoms(WM_ATOM_NAME, wmatoms, WM_COUNT);
-    xcb_get_atoms(NET_ATOM_NAME, netatoms, NET_COUNT);
 
     /* check if another wm is running */
     if (xcb_checkotherwm())
@@ -2451,7 +2420,7 @@ int setup(int default_screen)
                       XCB_WINDOW_CLASS_INPUT_ONLY, 0, XCB_CW_EVENT_MASK, &noevents);
     xcb_ewmh_set_wm_name(ewmh, checkwin, sizeof(WM_NAME)-1, WM_NAME);
 
-    xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
+    xcb_ewmh_set_supported(ewmh, default_screen, LENGTH(net_atoms), net_atoms);
     xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, checkwin);
     xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
     xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
@@ -2461,8 +2430,8 @@ int setup(int default_screen)
     xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
-                        netatoms[NET_SUPPORTED], XCB_ATOM_ATOM, 32, NET_COUNT,
-                        netatoms);
+                        ewmh->_NET_SUPPORTED, XCB_ATOM_ATOM, 32,
+                        LENGTH(net_atoms), net_atoms);
 
     if (USE_SCRATCHPAD && !CLOSE_SCRATCHPAD)
         scrpd_atom = xcb_internatom(dis, SCRPDNAME, 0);
@@ -2888,7 +2857,7 @@ void unmapnotify(xcb_generic_event_t *e)
  */
 static inline void nada(void)
 {
-        xcb_delete_property(dis, screen->root, netatoms[NET_ACTIVE]);
+        xcb_delete_property(dis, screen->root, ewmh->_NET_ACTIVE_WINDOW);
         xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root, XCB_CURRENT_TIME);
         prevfocus = current = NULL;
 }
@@ -2982,7 +2951,7 @@ void update_current(client *newfocus)   // newfocus may be NULL
     if (current) {
         if (current->setfocus) {
             xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
-                                netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
+                                ewmh->_NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, 32, 1,
                                 &current->win);
             xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
                                 XCB_CURRENT_TIME);
