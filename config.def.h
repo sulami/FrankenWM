@@ -36,6 +36,7 @@
 #define USE_SCRATCHPAD  False     /* enable the scratchpad functionality */
 #define CLOSE_SCRATCHPAD True     /* close scratchpad on quit */
 #define SCRPDNAME       "scratchpad" /* the name of the scratchpad window */
+#define EWMH_TASKBAR    True      /* False if text (or no) panel/taskbar */
 
 /*
  * EDIT THIS: applicaton specific rules
