@@ -63,9 +63,6 @@ typedef union {
     const int i;
 } Arg;
 
-/* notifications (aka notes) are unmanaged & selfmapped windows, ie dunst notifications.
- * They are always on top of all other windows.
- */
 struct list {
     struct node *head;
     struct node *tail;
@@ -79,6 +76,10 @@ struct node {
 };
 typedef struct node node;
 
+/*
+ * aliens are unmanaged & selfmapped windows, ie dunst notifications.
+ * They are always on top of all other windows.
+ */
 struct alien {
     node link;
     xcb_window_t win;
@@ -255,6 +256,12 @@ static void xerror(xcb_generic_event_t *e);
 static client *wintoclient(xcb_window_t w);
 
 #include "config.h"
+
+#ifdef EWMH_TASKBAR
+static void Setup_EWMH_Taskbar_Support(void);
+static void Cleanup_EWMH_Taskbar_Support(void);
+static inline void Update_EWMH_Taskbar_Properties(void);
+#endif /* EWMH_TASKBAR */
 
 /* variables */
 static bool running = true, showpanel = SHOW_PANEL, show = true,
@@ -699,10 +706,9 @@ void centerwindow(void)
 /* remove all windows in all desktops by sending a delete message */
 void cleanup(void)
 {
-/*
-    xcb_query_tree_reply_t *query;
-    xcb_window_t *c;
-*/
+#ifdef EWMH_TASKBAR
+    Cleanup_EWMH_Taskbar_Support();
+#endif /* EWMH_TASKBAR */
 
     if(USE_SCRATCHPAD && scrpd) {
         if(CLOSE_SCRATCHPAD) {
@@ -717,16 +723,6 @@ void cleanup(void)
         free(scrpd);
         scrpd = NULL;
     }
-
-/*
-    if ((query = xcb_query_tree_reply(dis,
-                                      xcb_query_tree(dis, screen->root), 0))) {
-        c = xcb_query_tree_children(query);
-        for (unsigned int i = 0; i != query->children_len; ++i)
-            deletewindow(c[i]);
-        free(query);
-    }
-*/
 
     xcb_ewmh_connection_wipe(ewmh);
     free(ewmh);
@@ -937,6 +933,7 @@ bool deletewindow(xcb_window_t win)
  */
 void desktopinfo(void)
 {
+#ifndef EWMH_TASKBAR
     bool urgent = false;
     int cd = current_desktop, n = 0, d = 0;
     xcb_get_property_cookie_t cookie;
@@ -967,6 +964,9 @@ void desktopinfo(void)
     fflush(stdout);
     if (cd != d - 1)
         select_desktop(cd);
+#else
+    Update_EWMH_Taskbar_Properties();
+#endif /* EWMH_TASKBAR */
 }
 
 /*
@@ -2403,6 +2403,9 @@ int setup(int default_screen)
 
     /* set EWMH atoms */
     xcb_atom_t net_atoms[] = { ewmh->_NET_SUPPORTED,
+#ifdef EWMH_TASKBAR
+                               ewmh->_NET_CLIENT_LIST,
+#endif /* EWMH_TASKBAR */
                                ewmh->_NET_WM_STATE_FULLSCREEN,
                                ewmh->_NET_WM_STATE,
                                ewmh->_NET_SUPPORTING_WM_CHECK,
@@ -2559,6 +2562,10 @@ int setup(int default_screen)
     /* open the scratchpad terminal if enabled */
     if (USE_SCRATCHPAD && !scrpd)
         spawn(&(Arg){.com = scrpcmd});
+
+#ifdef EWMH_TASKBAR
+    Setup_EWMH_Taskbar_Support();
+#endif
 
     return 0;
 }
@@ -3046,6 +3053,62 @@ int main(int argc, char *argv[])
     ungrab_focus();
     return retval;
 }
+
+#ifdef EWMH_TASKBAR
+/*
+ * Optional EWMH Taskbar (Panel) Support functions
+ */
+
+static void Setup_EWMH_Taskbar_Support(void)
+{
+	/*
+	 * initial _NET_CLIENT_LIST property
+	 */
+
+	Update_EWMH_Taskbar_Properties();
+}
+
+static void Cleanup_EWMH_Taskbar_Support(void)
+{
+	/*
+	 * set _NET_CLIENT_LIST property to zero
+	 */
+	xcb_window_t empty = 0;
+	xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
+						screen->root, ewmh->_NET_CLIENT_LIST,
+						XCB_ATOM_WINDOW, 32, 0, &empty);
+}
+
+static inline void Update_EWMH_Taskbar_Properties(void)
+{
+	/*
+	 * update _NET_CLIENT_LIST property, may be empty
+	 */
+
+	xcb_window_t *wins;
+	client *c;
+	int num=0;
+
+	if(showscratchpad && scrpd)
+		num++;
+	for(c=head; c!=NULL; c=c->next)
+	num++;
+
+	if((wins = (xcb_window_t *)calloc(num, sizeof(xcb_window_t))))
+	{
+		num = 0;
+		if(showscratchpad && scrpd)
+			wins[num++] = scrpd->win;
+		for(c=head; c!=NULL; c=c->next)
+			wins[num++] = c->win;
+		xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
+							screen->root, ewmh->_NET_CLIENT_LIST,
+							XCB_ATOM_WINDOW, 32, num, wins);
+		free(wins);
+		DEBUGP("update _NET_CLIENT_LIST property (%d entries)\n", num);
+	}
+}
+#endif
 
 /* vim: set ts=4 sw=4 expandtab :*/
 
