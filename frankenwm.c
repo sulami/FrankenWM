@@ -814,28 +814,40 @@ void client_to_desktop(const Arg *arg)
 void clientmessage(xcb_generic_event_t *e)
 {
     xcb_client_message_event_t *ev = (xcb_client_message_event_t *)e;
-    client *t = NULL, *c = wintoclient(ev->window);
+    client *c = wintoclient(ev->window);
 
     DEBUG("xcb: client message");
 
     if (c && ev->type == ewmh->_NET_WM_STATE
           && ((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_FULLSCREEN
-           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN))
+           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN)) {
         setfullscreen(c, (ev->data.data32[0] == 1 ||
                          (ev->data.data32[0] == 2 &&
                          !c->isfullscrn)));
-    else if (c && ev->type == ewmh->_NET_CURRENT_DESKTOP
-             && ev->data.data32[0] < DESKTOPS)
-        change_desktop(&(Arg){.i = ev->data.data32[0]});
-    else if (c && ev->type == ewmh->_NET_CLOSE_WINDOW)
-        removeclient(c);
-    else if (c && ev->type == ewmh->_NET_ACTIVE_WINDOW)
-        for (t = head; t && t != c; t = t->next);
-    else if (c && ev->type == ewmh->_NET_WM_DESKTOP
-             && ev->data.data32[0] < DESKTOPS)
-        client_to_desktop(&(Arg){.i = ev->data.data32[0]});
-    if (t)
-        update_current(c);
+    }
+    else {
+        if (c && ev->type == ewmh->_NET_CURRENT_DESKTOP
+              && ev->data.data32[0] < DESKTOPS)
+            change_desktop(&(Arg){.i = ev->data.data32[0]});
+        else {
+            if (c && ev->type == ewmh->_NET_CLOSE_WINDOW)
+                removeclient(c);
+            else {
+                if (c && ev->type == ewmh->_NET_ACTIVE_WINDOW) {
+                    client *t = NULL;
+                    for (t = head; t && t != c; t = t->next)
+                        ;
+                    if (t)
+                        update_current(c);
+                }
+                else {
+                    if (c && ev->type == ewmh->_NET_WM_DESKTOP
+                          && ev->data.data32[0] < DESKTOPS)
+                        client_to_desktop(&(Arg){.i = ev->data.data32[0]});
+                }
+            }
+        }
+    }
 }
 
 /* a configure request means that the window requested changes in its geometry
