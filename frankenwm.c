@@ -687,7 +687,7 @@ void change_desktop(const Arg *arg)
  */
 static void centerfloating(client *c)
 {
-    if (!c || !current->isfloating)
+    if (!c || !c->isfloating)
         return;
 
     xcb_get_geometry_reply_t *wa;
@@ -698,7 +698,7 @@ static void centerfloating(client *c)
 }
 
 /*
- * centerclient(); wrapper
+ * centerfloating(); wrapper
  */
 void centerwindow(void)
 {
