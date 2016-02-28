@@ -159,11 +159,11 @@ typedef struct {
     bool showpanel, invert;
 } desktop;
 
-/* filo for minimized clients */
-typedef struct filo {
+/* lifo for minimized clients */
+typedef struct lifo {
     client *c;
-    struct filo *next;
-} filo;
+    struct lifo *next;
+} lifo;
 
 /* define behavior of certain applications
  * configured in config.h
@@ -286,7 +286,7 @@ static list alienlist;
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT];
 static desktop desktops[DESKTOPS];
-static filo *miniq[DESKTOPS];
+static lifo *miniq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
 static xcb_key_symbols_t *keysyms;
 
@@ -857,7 +857,7 @@ void cleanup(void)
         regfree(&appruleregex[i]);
 
     for (unsigned int i = 0; i < DESKTOPS; i++) {
-        for (struct filo *tmp = miniq[i], *tmp_next; tmp; tmp = tmp_next) {
+        for (struct lifo *tmp = miniq[i], *tmp_next; tmp; tmp = tmp_next) {
             tmp_next = tmp->next;
             free(tmp);
         }
@@ -1810,26 +1810,22 @@ void maximize()
 /* push the current client down the miniq and minimize the window */
 void minimize_client(client *c)
 {
-    filo *tmp, *new;
+    lifo *new;
 
     if (!c)
         return;
 
-    tmp = miniq[current_desktop];
-    while (tmp->next)
-        tmp = tmp->next;
-
-    /* we always have an empty filo at the end of the miniq */
-    new = calloc(1, sizeof(filo));
+    new = calloc(1, sizeof(lifo));
     if (!new)
         return;
 
-    tmp->c = c;
-    tmp->next = new;
+    new->c = c;
+    new->next = miniq[current_desktop];
+    miniq[current_desktop] = new;
 
-    tmp->c->isminimized = true;
-    xcb_move(dis, tmp->c->win, -2 * ww, 0);
-    xcb_add_property(dis, tmp->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+    new->c->isminimized = true;
+    xcb_move(dis, new->c->win, -2 * ww, 0);
+    xcb_add_property(dis, new->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     client *t = head;
     while (t) {
@@ -2230,23 +2226,16 @@ void resize_y(const Arg *arg)
 /* get the last client from the current miniq and restore it */
 void restore_client(client *c)
 {
-    filo *tmp;
+    lifo *tmp;
 
-    if (!miniq[current_desktop]->c)
+    if (!miniq[current_desktop])
         return;
 
 /* TODO: find certain client in miniq */
 
-    /* find the last occupied filo, before the free one */
     tmp = miniq[current_desktop];
-    while (tmp->next) {
-        if (!tmp->next->next)
-            break;
-        tmp = tmp->next;
-    }
+    miniq[current_desktop] = miniq[current_desktop]->next;
 
-    free(tmp->next);
-    tmp->next = NULL;
     tmp->c->isminimized = false;
     xcb_remove_property(dis, tmp->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
@@ -2260,7 +2249,7 @@ void restore_client(client *c)
         centerfloating(tmp->c);
     tile();
     update_current(tmp->c);
-    tmp->c = NULL;
+    free(tmp);
 }
 
 /* restore_client(); wrapper */
@@ -2498,9 +2487,6 @@ int setup(int default_screen)
         }
         desktops[i].gaps = USELESSGAP;
         save_desktop(i);
-        miniq[i] = calloc(1, sizeof(struct filo));
-        if (!miniq[i])
-            err(EXIT_FAILURE, "error: cannot allocate miniq\n");
     }
 
     alienlist.head = NULL;
