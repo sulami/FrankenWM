@@ -121,6 +121,7 @@ typedef struct {
  * isfullscrn    - set when the window is fullscreen
  * isfloating    - set when the window is floating
  * win           - the window this client is representing
+ * type          - the _NET_WM_WINDOW_TYPE
  * dim           - the window dimensions when floating
  * borderwidth   - the border width if not using the global one
  * setfocus      - True: focus directly, else send wm_take_focus
@@ -135,6 +136,7 @@ typedef struct client {
     struct client *next;
     bool isurgent, istransient, isfullscrn, isfloating, isminimized;
     xcb_window_t win;
+    xcb_atom_t type;
     unsigned int dim[2];
     int borderwidth;
     bool setfocus;
@@ -176,12 +178,12 @@ typedef struct {
 } AppRule;
 
  /* function prototypes sorted alphabetically */
-static client *addwindow(xcb_window_t w);
+static client *addwindow(xcb_window_t w, xcb_atom_t wtype);
 static void adjust_borders(const Arg *arg);
 static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
-static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating);
+static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_atom_t *wtype);
 static bool check_wmproto(xcb_window_t win, xcb_atom_t proto);
 static void centerfloating(client *c);
 static void centerwindow();
@@ -190,7 +192,7 @@ static int client_borders(const client *c);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
 static void configurerequest(xcb_generic_event_t *e);
-static client *create_client(xcb_window_t win);
+static client *create_client(xcb_window_t win, xcb_atom_t wtype);
 static bool deletewindow(xcb_window_t w);
 static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
@@ -572,9 +574,9 @@ static int xcb_checkotherwm(void)
 /* create a new client and add the new window
  * window should notify of property change events
  */
-client *addwindow(xcb_window_t w)
+client *addwindow(xcb_window_t win, xcb_atom_t wtype)
 {
-    client *c = create_client(w), *t = prev_client(head);
+    client *c = create_client(win, wtype), *t = prev_client(head);
 
 /* c is valid, else we would not get here */
     if (!head) {
@@ -587,7 +589,7 @@ client *addwindow(xcb_window_t w)
         head->next = c;
     }
     DEBUG("client added");
-    setwindefattr(w);
+    setwindefattr(win);
     return c;
 }
 
@@ -688,7 +690,7 @@ void change_desktop(const Arg *arg)
  * True if window is alien
  * False if window will be client
  */
-static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating)
+static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_atom_t *wtype)
 {
     xcb_get_window_attributes_reply_t *attr[1];
     xcb_window_t windows[] = {win};
@@ -716,10 +718,13 @@ static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating)
     if (xcb_ewmh_get_wm_window_type_reply(ewmh,
                                 xcb_ewmh_get_wm_window_type(ewmh,
                                 win), &type, NULL) == 1) {
+        if (wtype)
+            *wtype = type.atoms[0];
         for (unsigned int i = 0; i < type.atoms_len; i++) {
             if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
                 if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG) {
-                    if (isFloating) *isFloating = True;
+                    if (isFloating)
+                        *isFloating = True;
                 }
                 else
                     isAlien = True;
@@ -749,7 +754,8 @@ static void centerfloating(client *c)
     xcb_get_geometry_reply_t *wa;
     wa = get_geometry(c->win);
     xcb_raise_window(dis, c->win);
-    xcb_move(dis, c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+    xcb_move(dis, c->win, ((ww - wa->width) / 2) - c->borderwidth,
+                          ((wh - wa->height) / 2) - c->borderwidth);
     free(wa);
 }
 
@@ -932,8 +938,14 @@ void configurerequest(xcb_generic_event_t *e)
         int borders = c ? client_borders(c) : 0;
         if (ev->value_mask & XCB_CONFIG_WINDOW_X)
             v[i++] = ev->x;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_Y)
-            v[i++] = (ev->y + (showpanel && TOP_PANEL)) ? PANEL_HEIGHT : 0;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_Y) {
+            int y = ev->y;
+            if (c && c->type == ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
+                if (showpanel && TOP_PANEL && y < PANEL_HEIGHT)
+                     y = PANEL_HEIGHT;
+            }
+            v[i++] = y;
+        }
         if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
             v[i++] = (ev->width < ww - borders) ? ev->width : ww + borders;
         if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
@@ -953,7 +965,7 @@ void configurerequest(xcb_generic_event_t *e)
  * allocate client structure and fill in sane defaults
  * exit FrankenWM if memory allocation fails
  */
-static client *create_client(xcb_window_t win)
+static client *create_client(xcb_window_t win, xcb_atom_t wtype)
 {
     xcb_icccm_wm_hints_t hints;
     client *c = calloc(1, sizeof(client));
@@ -966,6 +978,7 @@ static client *create_client(xcb_window_t win)
     c->isfloating = False;
     c->isminimized = False;
     c->win = win;
+    c->type = wtype;
     c->dim[0] = c->dim[1] = 0;
     c->borderwidth = -1;    /* default: use global border width */
     c->setfocus = True;     /* default: prefer xcb_set_input_focus(); */
@@ -1580,6 +1593,7 @@ void maprequest(xcb_generic_event_t *e)
     xcb_get_property_reply_t           *prop_reply;
     xcb_get_property_cookie_t          cookie;
     xcb_ewmh_get_utf8_strings_reply_t  wtitle;
+    xcb_atom_t                         wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
     bool isFloating = False;
 
     DEBUG("xcb: map request");
@@ -1587,7 +1601,7 @@ void maprequest(xcb_generic_event_t *e)
     if (wintoclient(ev->window))
         return;
 
-    if (check_if_window_is_alien(ev->window, &isFloating))
+    if (check_if_window_is_alien(ev->window, &isFloating, &wtype))
         return;
 
     DEBUG("event is valid");
@@ -1601,7 +1615,7 @@ void maprequest(xcb_generic_event_t *e)
         DEBUGP("EWMH window title: %s\n", wtitle.strings);
 
         if (!strcmp(wtitle.strings, SCRPDNAME)) {
-            scrpd = create_client(ev->window);
+            scrpd = create_client(ev->window, wtype);
             setwindefattr(scrpd->win);
             grabbuttons(scrpd);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
@@ -1636,7 +1650,7 @@ void maprequest(xcb_generic_event_t *e)
 
     if (cd != newdsk)
         select_desktop(newdsk);
-    client *c = addwindow(ev->window);
+    client *c = addwindow(ev->window, wtype);
 
 
     xcb_icccm_get_wm_transient_for_reply(dis,
@@ -2501,7 +2515,8 @@ int setup(int default_screen)
         xcb_window_t *children = xcb_query_tree_children(reply);
         uint32_t cd = current_desktop;
         for (int i = 0; i < len; i++) {
-            if (check_if_window_is_alien(children[i], NULL))
+            xcb_atom_t wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
+            if (check_if_window_is_alien(children[i], NULL, &wtype))
                 continue;
 
             attr = xcb_get_window_attributes_reply(dis,
@@ -2525,7 +2540,7 @@ int setup(int default_screen)
                         xcb_atom_t reply_type = prop_reply->type;
                         free(prop_reply);
                         if (reply_type != XCB_NONE) {
-                            scrpd = create_client(children[i]);
+                            scrpd = create_client(children[i], wtype);
                             setwindefattr(scrpd->win);
                             grabbuttons(scrpd);
                             xcb_move(dis, scrpd->win, -2 * ww, 0);
@@ -2572,7 +2587,7 @@ int setup(int default_screen)
                 }
                 if (cd != dsk)
                     select_desktop(dsk);
-                addwindow(children[i]);
+                addwindow(children[i], wtype);
                 grabbuttons(wintoclient(children[i]));
                 if (cd != dsk) {
                     xcb_unmap_window(dis, children[i]);
