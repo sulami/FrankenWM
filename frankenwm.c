@@ -44,6 +44,7 @@
 static char *WM_NAME   = "FrankenWM";
 static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "WM_STATE", "WM_TAKE_FOCUS" };
 enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_STATE, WM_TAKE_FOCUS, WM_COUNT };
+enum { _NET_WM_STATE_REMOVE, _NET_WM_STATE_ADD, _NET_WM_STATE_TOGGLE };
 
 #define LENGTH(x)       (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
@@ -216,6 +217,7 @@ static void last_desktop();
 static void mapnotify(xcb_generic_event_t *e);
 static void maprequest(xcb_generic_event_t *e);
 static void maximize();
+static void minimize_client(client *c);
 static void minimize();
 static void monocle(int h, int y);
 static void move_down();
@@ -231,6 +233,7 @@ static void resize_master(const Arg *arg);
 static void resize_stack(const Arg *arg);
 static void resize_x(const Arg *arg);
 static void resize_y(const Arg *arg);
+static void restore_client(client *c);
 static void restore();
 static void rotate(const Arg *arg);
 static void rotate_client(const Arg *arg);
@@ -934,12 +937,32 @@ void clientmessage(xcb_generic_event_t *e)
 
     DEBUG("xcb: client message");
 
-    if (c && ev->type == ewmh->_NET_WM_STATE
-          && ((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_FULLSCREEN
-           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN)) {
-        setfullscreen(c, (ev->data.data32[0] == 1 ||
-                         (ev->data.data32[0] == 2 &&
-                         !c->isfullscrn)));
+    if (c && ev->type == ewmh->_NET_WM_STATE) {
+        if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_FULLSCREEN
+          || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN)) {
+            setfullscreen(c, (ev->data.data32[0] == 1 ||
+                             (ev->data.data32[0] == 2 &&
+                             !c->isfullscrn)));
+        }
+        if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_HIDDEN
+          || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_HIDDEN)) {
+            switch (ev->data.data32[0]) {
+                case _NET_WM_STATE_REMOVE:
+                    restore_client(c);
+                break;
+
+                case _NET_WM_STATE_ADD:
+                    minimize_client(c);
+                break;
+
+                case _NET_WM_STATE_TOGGLE:
+                    if (c->isminimized)
+                        restore_client(c);
+                    else
+                        minimize_client(c);
+                break;
+            }
+        }
     }
     else {
         if (ev->type == ewmh->_NET_CURRENT_DESKTOP
@@ -1785,11 +1808,11 @@ void maximize()
 }
 
 /* push the current client down the miniq and minimize the window */
-void minimize()
+void minimize_client(client *c)
 {
     filo *tmp, *new;
 
-    if (!current)
+    if (!c)
         return;
 
     tmp = miniq[current_desktop];
@@ -1801,13 +1824,12 @@ void minimize()
     if (!new)
         return;
 
-    xcb_add_property(dis, screen->root, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
-
-    tmp->c = current;
+    tmp->c = c;
     tmp->next = new;
 
     tmp->c->isminimized = true;
     xcb_move(dis, tmp->c->win, -2 * ww, 0);
+    xcb_add_property(dis, tmp->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     client *t = head;
     while (t) {
@@ -1819,6 +1841,12 @@ void minimize()
         update_current(t);
 
     tile();
+}
+
+/* minimize_client(); wrapper */
+void minimize()
+{
+    minimize_client(current);
 }
 
 /* grab the pointer and get it's current position
@@ -2200,12 +2228,14 @@ void resize_y(const Arg *arg)
 }
 
 /* get the last client from the current miniq and restore it */
-void restore()
+void restore_client(client *c)
 {
     filo *tmp;
 
     if (!miniq[current_desktop]->c)
         return;
+
+/* TODO: find certain client in miniq */
 
     /* find the last occupied filo, before the free one */
     tmp = miniq[current_desktop];
@@ -2218,8 +2248,7 @@ void restore()
     free(tmp->next);
     tmp->next = NULL;
     tmp->c->isminimized = false;
-
-    xcb_remove_property(dis, screen->root, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+    xcb_remove_property(dis, tmp->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     /*
      * if our window is floating, center it to move it back onto the visible
@@ -2232,6 +2261,12 @@ void restore()
     tile();
     update_current(tmp->c);
     tmp->c = NULL;
+}
+
+/* restore_client(); wrapper */
+void restore()
+{
+   restore_client(NULL);
 }
 
 /* jump and focus the next or previous desktop */
@@ -3195,7 +3230,7 @@ static inline void Update_EWMH_Taskbar_Properties(void)
     if(showscratchpad && scrpd)
         num++;
     for(c=head; c!=NULL; c=c->next)
-    num++;
+        num++;
 
     if((wins = (xcb_window_t *)calloc(num, sizeof(xcb_window_t))))
     {
