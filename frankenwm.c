@@ -901,12 +901,18 @@ void clientmessage(xcb_generic_event_t *e)
             if (c && ev->type == ewmh->_NET_CLOSE_WINDOW)
                 removeclient(c);
             else {
-                if (c && ev->type == ewmh->_NET_ACTIVE_WINDOW) {
-                    client *t = NULL;
-                    for (t = head; t && t != c; t = t->next)
-                        ;
-                    if (t)
-                        update_current(c);
+                if (ev->type == ewmh->_NET_ACTIVE_WINDOW) {
+                    if (c) {
+                        client *t = NULL;
+                        for (t = head; t && t != c; t = t->next)
+                            ;
+                        if (t)
+                            update_current(c);
+                    }
+                    else {
+                        if (showscratchpad && scrpd && scrpd->win == ev->window)
+                            update_current(scrpd);
+                    }
                 }
                 else {
                     if (c && ev->type == ewmh->_NET_WM_DESKTOP
