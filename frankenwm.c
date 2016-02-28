@@ -408,6 +408,54 @@ static inline alien *create_alien(xcb_window_t win)
 }
 
 
+/*
+ * Add an atom to a list of atoms the given property defines.
+ * This is useful, for example, for manipulating _NET_WM_STATE.
+ *
+ */
+void xcb_add_property(xcb_connection_t *con, xcb_window_t win, xcb_atom_t prop, xcb_atom_t atom)
+{
+    xcb_change_property(con, XCB_PROP_MODE_APPEND, win, prop, XCB_ATOM_ATOM, 32, 1, (uint32_t[]){atom});
+}
+
+/*
+ * Remove an atom from a list of atoms the given property defines without
+ * removing any other potentially set atoms.  This is useful, for example, for
+ * manipulating _NET_WM_STATE.
+ *
+ */
+void xcb_remove_property(xcb_connection_t *con, xcb_window_t win, xcb_atom_t prop, xcb_atom_t atom)
+{
+    xcb_grab_server(con);
+
+    xcb_get_property_reply_t *reply =
+        xcb_get_property_reply(con,
+                               xcb_get_property(con, False, win, prop, XCB_GET_PROPERTY_TYPE_ANY, 0, 4096), NULL);
+    if (reply == NULL || xcb_get_property_value_length(reply) == 0)
+        goto release_grab;
+    xcb_atom_t *atoms = xcb_get_property_value(reply);
+    if (atoms == NULL) {
+        goto release_grab;
+    }
+
+    {
+        int num = 0;
+        const int current_size = xcb_get_property_value_length(reply) / (reply->format / 8);
+        xcb_atom_t values[current_size];
+        for (int i = 0; i < current_size; i++) {
+            if (atoms[i] != atom)
+                values[num++] = atoms[i];
+        }
+
+        xcb_change_property(con, XCB_PROP_MODE_REPLACE, win, prop, XCB_ATOM_ATOM, 32, num, values);
+    }
+
+release_grab:
+    if (reply)
+        free(reply);
+    xcb_ungrab_server(con);
+}
+
 /* get screen of display */
 static xcb_screen_t *xcb_screen_of_display(xcb_connection_t *con, int screen)
 {
@@ -894,8 +942,8 @@ void clientmessage(xcb_generic_event_t *e)
                          !c->isfullscrn)));
     }
     else {
-        if (c && ev->type == ewmh->_NET_CURRENT_DESKTOP
-              && ev->data.data32[0] < DESKTOPS)
+        if (ev->type == ewmh->_NET_CURRENT_DESKTOP
+            && ev->data.data32[0] < DESKTOPS)
             change_desktop(&(Arg){.i = ev->data.data32[0]});
         else {
             if (c && ev->type == ewmh->_NET_CLOSE_WINDOW)
@@ -1753,6 +1801,8 @@ void minimize()
     if (!new)
         return;
 
+    xcb_add_property(dis, screen->root, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+
     tmp->c = current;
     tmp->next = new;
 
@@ -2168,6 +2218,8 @@ void restore()
     free(tmp->next);
     tmp->next = NULL;
     tmp->c->isminimized = false;
+
+    xcb_remove_property(dis, screen->root, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     /*
      * if our window is floating, center it to move it back onto the visible
@@ -3110,52 +3162,54 @@ int main(int argc, char *argv[])
 
 static void Setup_EWMH_Taskbar_Support(void)
 {
-	/*
-	 * initial _NET_CLIENT_LIST property
-	 */
+    /*
+     * initial _NET_CLIENT_LIST property
+     */
+    Update_EWMH_Taskbar_Properties();
 
-	Update_EWMH_Taskbar_Properties();
+    xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
+                        ewmh->_NET_DESKTOP_NAMES, ewmh->UTF8_STRING, 8, 0, NULL);
 }
 
 static void Cleanup_EWMH_Taskbar_Support(void)
 {
-	/*
-	 * set _NET_CLIENT_LIST property to zero
-	 */
-	xcb_window_t empty = 0;
-	xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
-						screen->root, ewmh->_NET_CLIENT_LIST,
-						XCB_ATOM_WINDOW, 32, 0, &empty);
+    /*
+     * set _NET_CLIENT_LIST property to zero
+     */
+    xcb_window_t empty = 0;
+    xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
+                        screen->root, ewmh->_NET_CLIENT_LIST,
+                        XCB_ATOM_WINDOW, 32, 0, &empty);
 }
 
 static inline void Update_EWMH_Taskbar_Properties(void)
 {
-	/*
-	 * update _NET_CLIENT_LIST property, may be empty
-	 */
+    /*
+     * update _NET_CLIENT_LIST property, may be empty
+     */
 
-	xcb_window_t *wins;
-	client *c;
-	int num=0;
+    xcb_window_t *wins;
+    client *c;
+    int num=0;
 
-	if(showscratchpad && scrpd)
-		num++;
-	for(c=head; c!=NULL; c=c->next)
-	num++;
+    if(showscratchpad && scrpd)
+        num++;
+    for(c=head; c!=NULL; c=c->next)
+    num++;
 
-	if((wins = (xcb_window_t *)calloc(num, sizeof(xcb_window_t))))
-	{
-		num = 0;
-		if(showscratchpad && scrpd)
-			wins[num++] = scrpd->win;
-		for(c=head; c!=NULL; c=c->next)
-			wins[num++] = c->win;
-		xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
-							screen->root, ewmh->_NET_CLIENT_LIST,
-							XCB_ATOM_WINDOW, 32, num, wins);
-		free(wins);
-		DEBUGP("update _NET_CLIENT_LIST property (%d entries)\n", num);
-	}
+    if((wins = (xcb_window_t *)calloc(num, sizeof(xcb_window_t))))
+    {
+        num = 0;
+        if(showscratchpad && scrpd)
+            wins[num++] = scrpd->win;
+        for(c=head; c!=NULL; c=c->next)
+            wins[num++] = c->win;
+        xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
+                            screen->root, ewmh->_NET_CLIENT_LIST,
+                            XCB_ATOM_WINDOW, 32, num, wins);
+        free(wins);
+        DEBUGP("update _NET_CLIENT_LIST property (%d entries)\n", num);
+    }
 }
 #endif
 
