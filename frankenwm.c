@@ -2223,7 +2223,7 @@ void resize_y(const Arg *arg)
     free(r);
 }
 
-/* get the last client from the current miniq and restore it */
+/* get (the last) client from the current miniq and restore it */
 void restore_client(client *c)
 {
     lifo *tmp;
@@ -2231,10 +2231,24 @@ void restore_client(client *c)
     if (!miniq[current_desktop])
         return;
 
-/* TODO: find certain client in miniq */
+    if (c == NULL) {
+        tmp = miniq[current_desktop];
+        miniq[current_desktop] = miniq[current_desktop]->next;
+    }
+    else {
+        lifo *prev = NULL;
 
-    tmp = miniq[current_desktop];
-    miniq[current_desktop] = miniq[current_desktop]->next;
+        for(tmp = miniq[current_desktop]; tmp; tmp = tmp->next) {
+            if (tmp->c == c) {
+                if (prev)
+                    prev->next = tmp->next;
+                else
+                    miniq[current_desktop] = tmp->next;
+                break;
+            }
+            prev = tmp;
+        }
+    }
 
     tmp->c->isminimized = false;
     xcb_remove_property(dis, tmp->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
