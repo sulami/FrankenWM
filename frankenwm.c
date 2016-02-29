@@ -1675,7 +1675,10 @@ void maprequest(xcb_generic_event_t *e)
 
     DEBUG("xcb: map request");
 
+    xcb_remove_property(dis, ev->window, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+
     if (wintoclient(ev->window))
+        xcb_map_window(dis, ev->window);
         return;
 
     if (check_if_window_is_alien(ev->window, &isFloating, &wtype))
@@ -1744,9 +1747,11 @@ void maprequest(xcb_generic_event_t *e)
     if (prop_reply) {
         if (prop_reply->format == 32) {
             xcb_atom_t *v = xcb_get_property_value(prop_reply);
-            for (unsigned int i = 0; i < prop_reply->value_len; i++)
-                DEBUGP("%d : %d\n", i, v[0]);
-            setfullscreen(c, (v[0] == ewmh->_NET_WM_STATE_FULLSCREEN));
+            for (unsigned int i = 0; i < prop_reply->value_len; i++) {
+                DEBUGP("%d : %d\n", i, v[i]);
+                if (v[i] == ewmh->_NET_WM_STATE_FULLSCREEN)
+                    setfullscreen(c, True);
+            }
         }
         free(prop_reply);
     }
@@ -2609,6 +2614,8 @@ int setup(int default_screen)
         uint32_t cd = current_desktop;
         for (int i = 0; i < len; i++) {
             xcb_atom_t wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
+            bool minimize = False;
+
             if (check_if_window_is_alien(children[i], NULL, &wtype))
                 continue;
 
@@ -2664,10 +2671,14 @@ int setup(int default_screen)
                 }
                 else {
                     if ((int)dsk > DESKTOPS-1)
-                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 7 */
                     if (dsk == cd) {
-                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                            xcb_map_window(dis, children[i]);                   /* case 3 */
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED) {
+                            if (!EWMH_TASKBAR)
+                                xcb_map_window(dis, children[i]);               /* case 3a */
+                            else
+                                minimize = True;                                /* case 3b */
+                        }
                         else
                             { ; }                                               /* case 4 */
                     }
@@ -2680,10 +2691,13 @@ int setup(int default_screen)
                 }
                 if (cd != dsk)
                     select_desktop(dsk);
-                addwindow(children[i], wtype);
-                grabbuttons(wintoclient(children[i]));
+                client *c = addwindow(children[i], wtype);
+                xcb_remove_property(dis, c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+                if (minimize)
+                    minimize_client(c);
+                grabbuttons(c);
                 if (cd != dsk) {
-                    xcb_unmap_window(dis, children[i]);
+                    xcb_unmap_window(dis, c->win);
                     select_desktop(cd);
                 }
             }
@@ -3246,7 +3260,7 @@ static inline void Update_EWMH_Taskbar_Properties(void)
         DEBUGP("update _NET_CLIENT_LIST property (%d entries)\n", num);
     }
 }
-#endif
+#endif /* EWMH_TASKBAR */
 
 /* vim: set ts=4 sw=4 expandtab :*/
 
