@@ -1677,9 +1677,10 @@ void maprequest(xcb_generic_event_t *e)
 
     xcb_remove_property(dis, ev->window, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
-    if (wintoclient(ev->window))
+    if (wintoclient(ev->window)) {
         xcb_map_window(dis, ev->window);
         return;
+    }
 
     if (check_if_window_is_alien(ev->window, &isFloating, &wtype))
         return;
@@ -2614,7 +2615,6 @@ int setup(int default_screen)
         uint32_t cd = current_desktop;
         for (int i = 0; i < len; i++) {
             xcb_atom_t wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
-            bool minimize = False;
 
             if (check_if_window_is_alien(children[i], NULL, &wtype))
                 continue;
@@ -2650,17 +2650,37 @@ int setup(int default_screen)
                     }
                 }
 
+
+                xcb_get_property_reply_t *prop_reply;
+                bool isHidden = False, doMinimize = False;
+                prop_reply = xcb_get_property_reply(dis, xcb_get_property_unchecked(
+                                               dis, 0, children[i], ewmh->_NET_WM_STATE,
+                                                XCB_ATOM_ATOM, 0, 1), NULL);
+                                                /* TODO: error handling */
+                if (prop_reply) {
+                    if (prop_reply->format == 32) {
+                        xcb_atom_t *v = xcb_get_property_value(prop_reply);
+                        for (unsigned int i = 0; i < prop_reply->value_len; i++) {
+                            DEBUGP("%d : %d\n", i, v[i]);
+                            if (v[i] == ewmh->_NET_WM_STATE_HIDDEN)
+                                isHidden = True;
+                        }
+                    }
+                    free(prop_reply);
+                }
+
 /*
  * case 1: window has no desktop property and is unmapped --> ignore
  * case 2: window has no desktop property and is mapped --> add desktop property and append to client list.
- * case 3: window has current desktop property and is unmapped --> this one is tricky:
- *         If there's no ewmh compatible taskbar, then I (t4nkw4rt) prefer to map these windows and append to client list.
- *         Another solution would be to move them directly to miniq.
- * case 4: window has current desktop property and is mapped  --> append to client list.
+ * case 3: window has current desktop property and is unmapped --> same as case 4.
+ * case 4: window has current desktop property and is hidden (minimized) -> this one is tricky:
+ *     4a: If there's no ewmh compatible taskbar, then I (t4nkw4rt) prefer to map these windows and append to client list.
+ *     4b: Another solution would be to move them directly to miniq.
+ * case 5: window has current desktop property and is mapped  --> append to client list.
  * case 5: window has different desktop property and is unmapped -> append to client list.
- * case 6: window has different desktop property and is mapped -> unmap and append to client list.
- * case 7: window has desktop property > DESKTOPS -> move window to last desktop
- * case 8: window has desktop property = -1 -> TODO: sticky window
+ * case 7: window has different desktop property and is mapped -> unmap and append to client list.
+ * case 8: window has desktop property > DESKTOPS -> move window to last desktop
+ * case 9: window has desktop property = -1 -> TODO: sticky window
  */
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
@@ -2671,29 +2691,29 @@ int setup(int default_screen)
                 }
                 else {
                     if ((int)dsk > DESKTOPS-1)
-                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 7 */
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 8 */
                     if (dsk == cd) {
-                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED) {
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED || isHidden) {
                             if (!EWMH_TASKBAR)
-                                xcb_map_window(dis, children[i]);               /* case 3a */
+                                xcb_map_window(dis, children[i]);               /* case 4a */
                             else
-                                minimize = True;                                /* case 3b */
+                                doMinimize = True;                              /* case 4b */
                         }
                         else
-                            { ; }                                               /* case 4 */
+                            { ; }                                               /* case 5 */
                     }
                     else {  /* different desktop */
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                            { ; }                                               /* case 5 */
+                            { ; }                                               /* case 6 */
                         else
-                            xcb_unmap_window(dis, children[i]);                 /* case 6 */
+                            xcb_unmap_window(dis, children[i]);                 /* case 7 */
                     }
                 }
                 if (cd != dsk)
                     select_desktop(dsk);
                 client *c = addwindow(children[i], wtype);
                 xcb_remove_property(dis, c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
-                if (minimize)
+                if (doMinimize)
                     minimize_client(c);
                 grabbuttons(c);
                 if (cd != dsk) {
@@ -3256,6 +3276,7 @@ static inline void Update_EWMH_Taskbar_Properties(void)
         xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
                             screen->root, ewmh->_NET_CLIENT_LIST,
                             XCB_ATOM_WINDOW, 32, num, wins);
+        xcb_flush(dis);
         free(wins);
         DEBUGP("update _NET_CLIENT_LIST property (%d entries)\n", num);
     }
