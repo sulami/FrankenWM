@@ -44,38 +44,9 @@
 static char *WM_NAME   = "FrankenWM";
 static char *WM_ATOM_NAME[]   = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "WM_STATE", "WM_TAKE_FOCUS" };
 enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_STATE, WM_TAKE_FOCUS, WM_COUNT };
+enum { _NET_WM_STATE_REMOVE, _NET_WM_STATE_ADD, _NET_WM_STATE_TOGGLE };
 
-static char *NET_ATOM_NAME[]  = { "_NET_SUPPORTED",
-                                  "_NET_WM_STATE_FULLSCREEN",
-                                  "_NET_WM_STATE",
-                                  "_NET_SUPPORTING_WM_CHECK",
-                                  "_NET_ACTIVE_WINDOW",
-                                  "_NET_NUMBER_OF_DESKTOPS",
-                                  "_NET_CURRENT_DESKTOP",
-                                  "_NET_DESKTOP_GEOMETRY",
-                                  "_NET_DESKTOP_VIEWPORT",
-                                  "_NET_WORKAREA",
-                                  "_NET_SHOWING_DESKTOP",
-                                  "_NET_CLOSE_WINDOW",
-                                  "_NET_WM_WINDOW_TYPE",
-                                  "_NET_WM_DESKTOP" };
-enum { NET_SUPPORTED,
-       NET_FULLSCREEN,
-       NET_WM_STATE,
-       NET_SUPPORTING_WM_CHECK,
-       NET_ACTIVE,
-       NET_NUMBER_OF_DESKTOPS,
-       NET_CURRENT_DESKTOP,
-       NET_DESKTOP_GEOMETRY,
-       NET_DESKTOP_VIEWPORT,
-       NET_WORKAREA,
-       NET_SHOWING_DESKTOP,
-       NET_CLOSE_WINDOW,
-       NET_WM_WINDOW_TYPE,
-       NET_WM_DESKTOP,
-       NET_COUNT };
-
-#define LENGTH(x) (sizeof(x)/sizeof(*x))
+#define LENGTH(x)       (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
 #define ISFFTM(c)        (c->isfullscrn || c->isfloating || c->istransient || c->isminimized)
@@ -93,9 +64,6 @@ typedef union {
     const int i;
 } Arg;
 
-/* notifications (aka notes) are unmanaged & selfmapped windows, ie dunst notifications.
- * They are always on top of all other windows.
- */
 struct list {
     struct node *head;
     struct node *tail;
@@ -109,6 +77,10 @@ struct node {
 };
 typedef struct node node;
 
+/*
+ * aliens are unmanaged & selfmapped windows, ie dunst notifications.
+ * They are always on top of all other windows.
+ */
 struct alien {
     node link;
     xcb_window_t win;
@@ -150,6 +122,7 @@ typedef struct {
  * isfullscrn    - set when the window is fullscreen
  * isfloating    - set when the window is floating
  * win           - the window this client is representing
+ * type          - the _NET_WM_WINDOW_TYPE
  * dim           - the window dimensions when floating
  * borderwidth   - the border width if not using the global one
  * setfocus      - True: focus directly, else send wm_take_focus
@@ -164,6 +137,7 @@ typedef struct client {
     struct client *next;
     bool isurgent, istransient, isfullscrn, isfloating, isminimized;
     xcb_window_t win;
+    xcb_atom_t type;
     unsigned int dim[2];
     int borderwidth;
     bool setfocus;
@@ -185,11 +159,11 @@ typedef struct {
     bool showpanel, invert;
 } desktop;
 
-/* filo for minimized clients */
-typedef struct filo {
+/* lifo for minimized clients */
+typedef struct lifo {
     client *c;
-    struct filo *next;
-} filo;
+    struct lifo *next;
+} lifo;
 
 /* define behavior of certain applications
  * configured in config.h
@@ -205,19 +179,21 @@ typedef struct {
 } AppRule;
 
  /* function prototypes sorted alphabetically */
-static client *addwindow(xcb_window_t w);
+static client *addwindow(xcb_window_t w, xcb_atom_t wtype);
 static void adjust_borders(const Arg *arg);
 static void adjust_gaps(const Arg *arg);
 static void buttonpress(xcb_generic_event_t *e);
 static void change_desktop(const Arg *arg);
+static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_atom_t *wtype);
 static bool check_wmproto(xcb_window_t win, xcb_atom_t proto);
+static void centerfloating(client *c);
 static void centerwindow();
 static void cleanup(void);
 static int client_borders(const client *c);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
 static void configurerequest(xcb_generic_event_t *e);
-static client *create_client(xcb_window_t win);
+static client *create_client(xcb_window_t win, xcb_atom_t wtype);
 static bool deletewindow(xcb_window_t w);
 static void desktopinfo(void);
 static void destroynotify(xcb_generic_event_t *e);
@@ -241,6 +217,7 @@ static void last_desktop();
 static void mapnotify(xcb_generic_event_t *e);
 static void maprequest(xcb_generic_event_t *e);
 static void maximize();
+static void minimize_client(client *c);
 static void minimize();
 static void monocle(int h, int y);
 static void move_down();
@@ -256,6 +233,7 @@ static void resize_master(const Arg *arg);
 static void resize_stack(const Arg *arg);
 static void resize_x(const Arg *arg);
 static void resize_y(const Arg *arg);
+static void restore_client(client *c);
 static void restore();
 static void rotate(const Arg *arg);
 static void rotate_client(const Arg *arg);
@@ -286,6 +264,12 @@ static client *wintoclient(xcb_window_t w);
 
 #include "config.h"
 
+#ifdef EWMH_TASKBAR
+static void Setup_EWMH_Taskbar_Support(void);
+static void Cleanup_EWMH_Taskbar_Support(void);
+static inline void Update_EWMH_Taskbar_Properties(void);
+#endif /* EWMH_TASKBAR */
+
 /* variables */
 static bool running = true, showpanel = SHOW_PANEL, show = true,
             invert = INVERT, showscratchpad = false;
@@ -300,9 +284,9 @@ static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
 static list alienlist;
 
 static xcb_ewmh_connection_t *ewmh;
-static xcb_atom_t wmatoms[WM_COUNT], netatoms[NET_COUNT];
+static xcb_atom_t wmatoms[WM_COUNT];
 static desktop desktops[DESKTOPS];
-static filo *miniq[DESKTOPS];
+static lifo *miniq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
 static xcb_key_symbols_t *keysyms;
 
@@ -426,6 +410,54 @@ static inline alien *create_alien(xcb_window_t win)
     return(a);
 }
 
+
+/*
+ * Add an atom to a list of atoms the given property defines.
+ * This is useful, for example, for manipulating _NET_WM_STATE.
+ *
+ */
+void xcb_add_property(xcb_connection_t *con, xcb_window_t win, xcb_atom_t prop, xcb_atom_t atom)
+{
+    xcb_change_property(con, XCB_PROP_MODE_APPEND, win, prop, XCB_ATOM_ATOM, 32, 1, (uint32_t[]){atom});
+}
+
+/*
+ * Remove an atom from a list of atoms the given property defines without
+ * removing any other potentially set atoms.  This is useful, for example, for
+ * manipulating _NET_WM_STATE.
+ *
+ */
+void xcb_remove_property(xcb_connection_t *con, xcb_window_t win, xcb_atom_t prop, xcb_atom_t atom)
+{
+    xcb_grab_server(con);
+
+    xcb_get_property_reply_t *reply =
+        xcb_get_property_reply(con,
+                               xcb_get_property(con, False, win, prop, XCB_GET_PROPERTY_TYPE_ANY, 0, 4096), NULL);
+    if (reply == NULL || xcb_get_property_value_length(reply) == 0)
+        goto release_grab;
+    xcb_atom_t *atoms = xcb_get_property_value(reply);
+    if (atoms == NULL) {
+        goto release_grab;
+    }
+
+    {
+        int num = 0;
+        const int current_size = xcb_get_property_value_length(reply) / (reply->format / 8);
+        xcb_atom_t values[current_size];
+        for (int i = 0; i < current_size; i++) {
+            if (atoms[i] != atom)
+                values[num++] = atoms[i];
+        }
+
+        xcb_change_property(con, XCB_PROP_MODE_REPLACE, win, prop, XCB_ATOM_ATOM, 32, num, values);
+    }
+
+release_grab:
+    if (reply)
+        free(reply);
+    xcb_ungrab_server(con);
+}
 
 /* get screen of display */
 static xcb_screen_t *xcb_screen_of_display(xcb_connection_t *con, int screen)
@@ -593,9 +625,9 @@ static int xcb_checkotherwm(void)
 /* create a new client and add the new window
  * window should notify of property change events
  */
-client *addwindow(xcb_window_t w)
+client *addwindow(xcb_window_t win, xcb_atom_t wtype)
 {
-    client *c = create_client(w), *t = prev_client(head);
+    client *c = create_client(win, wtype), *t = prev_client(head);
 
 /* c is valid, else we would not get here */
     if (!head) {
@@ -608,7 +640,7 @@ client *addwindow(xcb_window_t w)
         head->next = c;
     }
     DEBUG("client added");
-    setwindefattr(w);
+    setwindefattr(win);
     return c;
 }
 
@@ -677,7 +709,7 @@ void buttonpress(xcb_generic_event_t *e)
  * first all others then the current */
 void change_desktop(const Arg *arg)
 {
-    if (arg->i == current_desktop)
+    if (arg->i == current_desktop || arg->i > DESKTOPS-1)
         return;
     previous_desktop = current_desktop;
     select_desktop(arg->i);
@@ -705,34 +737,101 @@ void change_desktop(const Arg *arg)
 }
 
 /*
- * place the current window in the center of the screen floating
+ * returns:
+ * True if window is alien
+ * False if window will be client
+ */
+static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_atom_t *wtype)
+{
+    xcb_get_window_attributes_reply_t *attr[1];
+    xcb_window_t windows[] = {win};
+    xcb_ewmh_get_atoms_reply_t type;
+    bool isAlien = False;
+
+/* isFloating may be NULL */
+
+    if (isFloating) *isFloating = False;
+    xcb_get_attributes(windows, attr, 1);
+    if (!attr[0])   /* dead on arrival */
+        return True;
+
+    /*
+     * check if window is override_redirect.
+     * if yes, then we add it to alien list and map it.
+     */
+    isAlien = (attr[0]->override_redirect) ? True : False;
+    free(attr[0]);
+
+    /*
+     * check if window type is not _NET_WM_WINDOW_TYPE_NORMAL.
+     * if yes, then we add it to alien list and map it.
+     */
+    if (xcb_ewmh_get_wm_window_type_reply(ewmh,
+                                xcb_ewmh_get_wm_window_type(ewmh,
+                                win), &type, NULL) == 1) {
+        if (wtype)
+            *wtype = type.atoms[0];
+        for (unsigned int i = 0; i < type.atoms_len; i++) {
+            if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
+                if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG) {
+                    if (isFloating)
+                        *isFloating = True;
+                }
+                else
+                    isAlien = True;
+            }
+        }
+        xcb_ewmh_get_atoms_reply_wipe(&type);
+    }
+
+    if (isAlien) {
+        alien *a;
+        if ((a = create_alien(win)))
+            add_tail(&alienlist, (node *)a);
+        xcb_raise_window(dis, win);
+        xcb_map_window(dis, win);
+    }
+    return isAlien;
+}
+
+/*
+ * place a floating client in the center of the screen
+ */
+static void centerfloating(client *c)
+{
+    if (!c || !c->isfloating)
+        return;
+
+    xcb_get_geometry_reply_t *wa;
+    wa = get_geometry(c->win);
+    xcb_raise_window(dis, c->win);
+    xcb_move(dis, c->win, ((ww - wa->width) / 2) - c->borderwidth,
+                          ((wh - wa->height) / 2) - c->borderwidth);
+    free(wa);
+}
+
+/*
+ * centerfloating(); wrapper
  */
 void centerwindow(void)
 {
-    xcb_get_geometry_reply_t *wa;
-    desktop *d = &desktops[current_desktop];
-
-    if (!d->current)
+    if (!current)
         return;
 
-    if (!d->current->isfloating && !d->current->istransient) {
-        float_client(d->current);
+    if (!current->isfloating && !current->istransient) {
+        float_client(current);
         tile();
     }
 
-    wa = get_geometry(current->win);
-    xcb_raise_window(dis, d->current->win);
-    xcb_move(dis, d->current->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
-    free(wa);
+    centerfloating(current);
 }
 
 /* remove all windows in all desktops by sending a delete message */
 void cleanup(void)
 {
-/*
-    xcb_query_tree_reply_t *query;
-    xcb_window_t *c;
-*/
+#ifdef EWMH_TASKBAR
+    Cleanup_EWMH_Taskbar_Support();
+#endif /* EWMH_TASKBAR */
 
     if(USE_SCRATCHPAD && scrpd) {
         if(CLOSE_SCRATCHPAD) {
@@ -748,27 +847,17 @@ void cleanup(void)
         scrpd = NULL;
     }
 
-/*
-    if ((query = xcb_query_tree_reply(dis,
-                                      xcb_query_tree(dis, screen->root), 0))) {
-        c = xcb_query_tree_children(query);
-        for (unsigned int i = 0; i != query->children_len; ++i)
-            deletewindow(c[i]);
-        free(query);
-    }
-*/
-
     xcb_ewmh_connection_wipe(ewmh);
     free(ewmh);
 
-    xcb_delete_property(dis, screen->root, netatoms[NET_SUPPORTED]);
+    xcb_delete_property(dis, screen->root, ewmh->_NET_SUPPORTED);
     xcb_destroy_window(dis, checkwin);
 
     for (unsigned int i = 0; i < LENGTH(rules); i++)
         regfree(&appruleregex[i]);
 
     for (unsigned int i = 0; i < DESKTOPS; i++) {
-        for (struct filo *tmp = miniq[i], *tmp_next; tmp; tmp = tmp_next) {
+        for (struct lifo *tmp = miniq[i], *tmp_next; tmp; tmp = tmp_next) {
             tmp_next = tmp->next;
             free(tmp);
         }
@@ -802,7 +891,7 @@ int client_borders(const client *c)
  * and add it as last client of the new desktop's client list */
 void client_to_desktop(const Arg *arg)
 {
-    if (!current || arg->i == current_desktop)
+    if (!current || arg->i == current_desktop || arg->i > DESKTOPS-1)
         return;
     int cd = current_desktop;
     client *p = prev_client(current), *c = current;
@@ -844,28 +933,66 @@ void client_to_desktop(const Arg *arg)
 void clientmessage(xcb_generic_event_t *e)
 {
     xcb_client_message_event_t *ev = (xcb_client_message_event_t *)e;
-    client *t = NULL, *c = wintoclient(ev->window);
+    client *c = wintoclient(ev->window);
 
     DEBUG("xcb: client message");
 
-    if (c && ev->type == netatoms[NET_WM_STATE]
-          && ((unsigned)ev->data.data32[1] == netatoms[NET_FULLSCREEN]
-           || (unsigned)ev->data.data32[2] == netatoms[NET_FULLSCREEN]))
-        setfullscreen(c, (ev->data.data32[0] == 1 ||
-                         (ev->data.data32[0] == 2 &&
-                         !c->isfullscrn)));
-    else if (c && ev->type == netatoms[NET_CURRENT_DESKTOP]
-             && ev->data.data32[0] < DESKTOPS)
-        change_desktop(&(Arg){.i = ev->data.data32[0]});
-    else if (c && ev->type == netatoms[NET_CLOSE_WINDOW])
-        removeclient(c);
-    else if (c && ev->type == netatoms[NET_ACTIVE])
-        for (t = head; t && t != c; t = t->next);
-    else if (c && ev->type == netatoms[NET_WM_DESKTOP]
-             && ev->data.data32[0] < DESKTOPS)
-        client_to_desktop(&(Arg){.i = ev->data.data32[0]});
-    if (t)
-        update_current(c);
+    if (c && ev->type == ewmh->_NET_WM_STATE) {
+        if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_FULLSCREEN
+          || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN)) {
+            setfullscreen(c, (ev->data.data32[0] == 1 ||
+                             (ev->data.data32[0] == 2 &&
+                             !c->isfullscrn)));
+        }
+        if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_HIDDEN
+          || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_HIDDEN)) {
+            switch (ev->data.data32[0]) {
+                case _NET_WM_STATE_REMOVE:
+                    restore_client(c);
+                break;
+
+                case _NET_WM_STATE_ADD:
+                    minimize_client(c);
+                break;
+
+                case _NET_WM_STATE_TOGGLE:
+                    if (c->isminimized)
+                        restore_client(c);
+                    else
+                        minimize_client(c);
+                break;
+            }
+        }
+    }
+    else {
+        if (ev->type == ewmh->_NET_CURRENT_DESKTOP
+            && ev->data.data32[0] < DESKTOPS)
+            change_desktop(&(Arg){.i = ev->data.data32[0]});
+        else {
+            if (c && ev->type == ewmh->_NET_CLOSE_WINDOW)
+                removeclient(c);
+            else {
+                if (ev->type == ewmh->_NET_ACTIVE_WINDOW) {
+                    if (c) {
+                        client *t = NULL;
+                        for (t = head; t && t != c; t = t->next)
+                            ;
+                        if (t)
+                            update_current(c);
+                    }
+                    else {
+                        if (showscratchpad && scrpd && scrpd->win == ev->window)
+                            update_current(scrpd);
+                    }
+                }
+                else {
+                    if (c && ev->type == ewmh->_NET_WM_DESKTOP
+                          && ev->data.data32[0] < DESKTOPS)
+                        client_to_desktop(&(Arg){.i = ev->data.data32[0]});
+                }
+            }
+        }
+    }
 }
 
 /* a configure request means that the window requested changes in its geometry
@@ -888,8 +1015,14 @@ void configurerequest(xcb_generic_event_t *e)
         int borders = c ? client_borders(c) : 0;
         if (ev->value_mask & XCB_CONFIG_WINDOW_X)
             v[i++] = ev->x;
-        if (ev->value_mask & XCB_CONFIG_WINDOW_Y)
-            v[i++] = (ev->y + (showpanel && TOP_PANEL)) ? PANEL_HEIGHT : 0;
+        if (ev->value_mask & XCB_CONFIG_WINDOW_Y) {
+            int y = ev->y;
+            if (c && c->type == ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
+                if (showpanel && TOP_PANEL && y < PANEL_HEIGHT)
+                     y = PANEL_HEIGHT;
+            }
+            v[i++] = y;
+        }
         if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
             v[i++] = (ev->width < ww - borders) ? ev->width : ww + borders;
         if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
@@ -909,7 +1042,7 @@ void configurerequest(xcb_generic_event_t *e)
  * allocate client structure and fill in sane defaults
  * exit FrankenWM if memory allocation fails
  */
-static client *create_client(xcb_window_t win)
+static client *create_client(xcb_window_t win, xcb_atom_t wtype)
 {
     xcb_icccm_wm_hints_t hints;
     client *c = calloc(1, sizeof(client));
@@ -922,6 +1055,7 @@ static client *create_client(xcb_window_t win)
     c->isfloating = False;
     c->isminimized = False;
     c->win = win;
+    c->type = wtype;
     c->dim[0] = c->dim[1] = 0;
     c->borderwidth = -1;    /* default: use global border width */
     c->setfocus = True;     /* default: prefer xcb_set_input_focus(); */
@@ -955,6 +1089,7 @@ bool deletewindow(xcb_window_t win)
  */
 void desktopinfo(void)
 {
+#ifndef EWMH_TASKBAR
     bool urgent = false;
     int cd = current_desktop, n = 0, d = 0;
     xcb_get_property_cookie_t cookie;
@@ -985,6 +1120,9 @@ void desktopinfo(void)
     fflush(stdout);
     if (cd != d - 1)
         select_desktop(cd);
+#else
+    Update_EWMH_Taskbar_Properties();
+#endif /* EWMH_TASKBAR */
 }
 
 /*
@@ -1491,27 +1629,27 @@ void mapnotify(xcb_generic_event_t *e)
 
     if (wintoclient(ev->window) || (scrpd && scrpd->win == ev->window))
         return;
-    else {
-        xcb_window_t windows[] = {ev->window};
-        xcb_get_window_attributes_reply_t *attr[1];
 
-        xcb_get_attributes(windows, attr, 1);
-        if (!attr[0] || attr[0]->override_redirect) {
-            if(!(wintoalien(&alienlist, ev->window))) {
-                alien *a;
+    xcb_window_t wins[] = {ev->window};
+    xcb_get_window_attributes_reply_t *attr[1];
 
+    xcb_get_attributes(wins, attr, 1);
+    if (!attr[0])
+        return;     /* dead on arrival */
+    if (attr[0]->override_redirect) {
+        if (!(wintoalien(&alienlist, ev->window))) {
+            alien *a;
+            if ((a = create_alien(ev->window))) {
+                xcb_raise_window(dis, ev->window);
                 DEBUG("caught a new selfmapped window");
-                if((a = create_alien(ev->window))) {
-                    add_tail(&alienlist, (node *)a);
-                }
+                add_tail(&alienlist, (node *)a);
             }
             else {
-                DEBUG("selfmapped window already in list");
+                DEBUG("alien window already in list");
             }
         }
-        if(attr[0])
-            free(attr[0]);
     }
+    free(attr[0]);
 }
 
 /* a map request is received when a window wants to display itself
@@ -1527,45 +1665,29 @@ void mapnotify(xcb_generic_event_t *e)
 void maprequest(xcb_generic_event_t *e)
 {
     xcb_map_request_event_t            *ev = (xcb_map_request_event_t *)e;
-    xcb_window_t                       windows[] = {ev->window}, transient = 0;
-    xcb_get_window_attributes_reply_t  *attr[1];
+    xcb_window_t                       transient = 0;
     xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
-    xcb_ewmh_get_atoms_reply_t         type;
     xcb_get_property_cookie_t          cookie;
     xcb_ewmh_get_utf8_strings_reply_t  wtitle;
-    bool atom_success = false;
+    xcb_atom_t                         wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
+    bool isFloating = False;
 
     DEBUG("xcb: map request");
 
-    xcb_get_attributes(windows, attr, 1);
-    if (!attr[0] || attr[0]->override_redirect) {
-        free(attr[0]);
+    xcb_remove_property(dis, ev->window, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+
+    if (wintoclient(ev->window)) {
+        xcb_map_window(dis, ev->window);
         return;
-    }
-    else {
-        free(attr[0]);
     }
 
-    if (wintoclient(ev->window))
+    if (check_if_window_is_alien(ev->window, &isFloating, &wtype))
         return;
-    if (xcb_ewmh_get_wm_window_type_reply(ewmh,
-                                      xcb_ewmh_get_wm_window_type(ewmh,
-                                      ev->window), &type, NULL) == 1) {
-        for (unsigned int i = 0; i < type.atoms_len; i++) {
-            xcb_atom_t a = type.atoms[i];
-            if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLBAR
-                || a == ewmh->_NET_WM_WINDOW_TYPE_DOCK) {
-                xcb_ewmh_get_atoms_reply_wipe(&type);
-                return;
-            }
-        }
-        atom_success = true;
-    }
 
     DEBUG("event is valid");
 
-    bool follow = false, floating = false;
+    bool follow = false;
     int cd = current_desktop, newdsk = current_desktop, border_width = -1;
 
     cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, ev->window);
@@ -1574,21 +1696,16 @@ void maprequest(xcb_generic_event_t *e)
         DEBUGP("EWMH window title: %s\n", wtitle.strings);
 
         if (!strcmp(wtitle.strings, SCRPDNAME)) {
-            scrpd = create_client(ev->window);
+            scrpd = create_client(ev->window, wtype);
             setwindefattr(scrpd->win);
             grabbuttons(scrpd);
-            xcb_map_window(dis, scrpd->win);
             xcb_move(dis, scrpd->win, -2 * ww, 0);
+            xcb_map_window(dis, scrpd->win);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
-
-            if (atom_success) {
-                xcb_ewmh_get_atoms_reply_wipe(&type);
-            }
 
             if (scrpd_atom)
                 xcb_change_property(dis, XCB_PROP_MODE_REPLACE, scrpd->win, scrpd_atom,
                                     XCB_ATOM_WINDOW, 32, 1, &scrpd->win);
-
             return;
         }
 
@@ -1598,26 +1715,12 @@ void maprequest(xcb_generic_event_t *e)
                 newdsk = (rules[i].desktop < 0 ||
                           rules[i].desktop >= DESKTOPS) ? current_desktop
                                                         : rules[i].desktop;
-                floating = rules[i].floating;
+                isFloating = rules[i].floating;
                 border_width = rules[i].border_width;
                 break;
             }
 
         xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
-    }
-    if (atom_success) {
-        for (unsigned int i = 0; i < type.atoms_len; i++) {
-            xcb_atom_t a = type.atoms[i];
-            if (a == ewmh->_NET_WM_WINDOW_TYPE_SPLASH
-                || a == ewmh->_NET_WM_WINDOW_TYPE_DIALOG
-                || a == ewmh->_NET_WM_WINDOW_TYPE_DROPDOWN_MENU
-                || a == ewmh->_NET_WM_WINDOW_TYPE_POPUP_MENU
-                || a == ewmh->_NET_WM_WINDOW_TYPE_TOOLTIP
-                || a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION) {
-                floating = true;
-            }
-        }
-        xcb_ewmh_get_atoms_reply_wipe(&type);
     }
 
     /* might be useful in future */
@@ -1628,26 +1731,28 @@ void maprequest(xcb_generic_event_t *e)
 
     if (cd != newdsk)
         select_desktop(newdsk);
-    client *c = addwindow(ev->window);
+    client *c = addwindow(ev->window, wtype);
 
 
     xcb_icccm_get_wm_transient_for_reply(dis,
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
                     &transient, NULL); /* TODO: error handling */
     c->istransient = transient ? true : false;
-    c->isfloating  = floating || c->istransient;
+    c->isfloating  = isFloating || c->istransient;
     c->borderwidth = border_width;
 
     prop_reply = xcb_get_property_reply(dis, xcb_get_property_unchecked(
-                                    dis, 0, ev->window, netatoms[NET_WM_STATE],
+                                    dis, 0, ev->window, ewmh->_NET_WM_STATE,
                                     XCB_ATOM_ATOM, 0, 1), NULL);
                                     /* TODO: error handling */
     if (prop_reply) {
         if (prop_reply->format == 32) {
             xcb_atom_t *v = xcb_get_property_value(prop_reply);
-            for (unsigned int i = 0; i < prop_reply->value_len; i++)
-                DEBUGP("%d : %d\n", i, v[0]);
-            setfullscreen(c, (v[0] == netatoms[NET_FULLSCREEN]));
+            for (unsigned int i = 0; i < prop_reply->value_len; i++) {
+                DEBUGP("%d : %d\n", i, v[i]);
+                if (v[i] == ewmh->_NET_WM_STATE_FULLSCREEN)
+                    setfullscreen(c, True);
+            }
         }
         free(prop_reply);
     }
@@ -1673,7 +1778,7 @@ void maprequest(xcb_generic_event_t *e)
     desktopinfo();
 
     if (c->isfloating && AUTOCENTER)
-        centerwindow();
+        centerfloating(c);
 }
 
 /* maximize the current window, or if we are maximized, tile() */
@@ -1709,27 +1814,24 @@ void maximize()
 }
 
 /* push the current client down the miniq and minimize the window */
-void minimize()
+void minimize_client(client *c)
 {
-    filo *tmp, *new;
+    lifo *new;
 
-    if (!current)
+    if (!c)
         return;
 
-    tmp = miniq[current_desktop];
-    while (tmp->next)
-        tmp = tmp->next;
-
-    /* we always have an empty filo at the end of the miniq */
-    new = calloc(1, sizeof(filo));
+    new = calloc(1, sizeof(lifo));
     if (!new)
         return;
 
-    tmp->c = current;
-    tmp->next = new;
+    new->c = c;
+    new->next = miniq[current_desktop];
+    miniq[current_desktop] = new;
 
-    tmp->c->isminimized = true;
-    xcb_move(dis, tmp->c->win, -2 * ww, 0);
+    new->c->isminimized = true;
+    xcb_move(dis, new->c->win, -2 * ww, 0);
+    xcb_add_property(dis, new->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     client *t = head;
     while (t) {
@@ -1741,6 +1843,12 @@ void minimize()
         update_current(t);
 
     tile();
+}
+
+/* minimize_client(); wrapper */
+void minimize()
+{
+    minimize_client(current);
 }
 
 /* grab the pointer and get it's current position
@@ -2121,25 +2229,35 @@ void resize_y(const Arg *arg)
     free(r);
 }
 
-/* get the last client from the current miniq and restore it */
-void restore()
+/* get (the last) client from the current miniq and restore it */
+void restore_client(client *c)
 {
-    filo *tmp;
+    lifo *tmp;
 
-    if (!miniq[current_desktop]->c)
+    if (!miniq[current_desktop])
         return;
 
-    /* find the last occupied filo, before the free one */
-    tmp = miniq[current_desktop];
-    while (tmp->next) {
-        if (!tmp->next->next)
-            break;
-        tmp = tmp->next;
+    if (c == NULL) {
+        tmp = miniq[current_desktop];
+        miniq[current_desktop] = miniq[current_desktop]->next;
+    }
+    else {
+        lifo *prev = NULL;
+
+        for(tmp = miniq[current_desktop]; tmp; tmp = tmp->next) {
+            if (tmp->c == c) {
+                if (prev)
+                    prev->next = tmp->next;
+                else
+                    miniq[current_desktop] = tmp->next;
+                break;
+            }
+            prev = tmp;
+        }
     }
 
-    free(tmp->next);
-    tmp->next = NULL;
     tmp->c->isminimized = false;
+    xcb_remove_property(dis, tmp->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     /*
      * if our window is floating, center it to move it back onto the visible
@@ -2147,16 +2265,17 @@ void restore()
      * before minimizing, TODO: fix it to use centerwindow() instead of copying
      * half of it
      */
-    if (tmp->c->isfloating) {
-        xcb_get_geometry_reply_t *wa;
-        wa = get_geometry(tmp->c->win);
-        xcb_raise_window(dis, tmp->c->win);
-        xcb_move(dis, tmp->c->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
-        free(wa);
-    }
+    if (tmp->c->isfloating)
+        centerfloating(tmp->c);
     tile();
     update_current(tmp->c);
-    tmp->c = NULL;
+    free(tmp);
+}
+
+/* restore_client(); wrapper */
+void restore()
+{
+   restore_client(NULL);
 }
 
 /* jump and focus the next or previous desktop */
@@ -2301,11 +2420,11 @@ static bool sendevent(xcb_window_t win, xcb_atom_t proto)
 void setfullscreen(client *c, bool fullscrn)
 {
     DEBUGP("xcb: set fullscreen: %d\n", fullscrn);
-    long data[] = { fullscrn ? netatoms[NET_FULLSCREEN] : XCB_NONE };
+    long data[] = { fullscrn ? ewmh->_NET_WM_STATE_FULLSCREEN : XCB_NONE };
 
     if (fullscrn != c->isfullscrn)
         xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
-                            c->win, netatoms[NET_WM_STATE], XCB_ATOM_ATOM, 32,
+                            c->win, ewmh->_NET_WM_STATE, XCB_ATOM_ATOM, 32,
                             fullscrn, data);
     if ((c->isfullscrn = fullscrn))
         xcb_move_resize(dis, c->win, 0, 0, ww, wh + PANEL_HEIGHT);
@@ -2388,9 +2507,6 @@ int setup(int default_screen)
         }
         desktops[i].gaps = USELESSGAP;
         save_desktop(i);
-        miniq[i] = calloc(1, sizeof(struct filo));
-        if (!miniq[i])
-            err(EXIT_FAILURE, "error: cannot allocate miniq\n");
     }
 
     alienlist.head = NULL;
@@ -2406,7 +2522,6 @@ int setup(int default_screen)
 
     /* set up atoms for dialog/notification windows */
     xcb_get_atoms(WM_ATOM_NAME, wmatoms, WM_COUNT);
-    xcb_get_atoms(NET_ATOM_NAME, netatoms, NET_COUNT);
 
     /* check if another wm is running */
     if (xcb_checkotherwm())
@@ -2426,6 +2541,9 @@ int setup(int default_screen)
 
     /* set EWMH atoms */
     xcb_atom_t net_atoms[] = { ewmh->_NET_SUPPORTED,
+#ifdef EWMH_TASKBAR
+                               ewmh->_NET_CLIENT_LIST,
+#endif /* EWMH_TASKBAR */
                                ewmh->_NET_WM_STATE_FULLSCREEN,
                                ewmh->_NET_WM_STATE,
                                ewmh->_NET_SUPPORTING_WM_CHECK,
@@ -2451,7 +2569,7 @@ int setup(int default_screen)
                       XCB_WINDOW_CLASS_INPUT_ONLY, 0, XCB_CW_EVENT_MASK, &noevents);
     xcb_ewmh_set_wm_name(ewmh, checkwin, sizeof(WM_NAME)-1, WM_NAME);
 
-    xcb_ewmh_set_supported(ewmh, default_screen, NET_COUNT, net_atoms);
+    xcb_ewmh_set_supported(ewmh, default_screen, LENGTH(net_atoms), net_atoms);
     xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, checkwin);
     xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
     xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
@@ -2461,8 +2579,8 @@ int setup(int default_screen)
     xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
 
     xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
-                        netatoms[NET_SUPPORTED], XCB_ATOM_ATOM, 32, NET_COUNT,
-                        netatoms);
+                        ewmh->_NET_SUPPORTED, XCB_ATOM_ATOM, 32,
+                        LENGTH(net_atoms), net_atoms);
 
     if (USE_SCRATCHPAD && !CLOSE_SCRATCHPAD)
         scrpd_atom = xcb_internatom(dis, SCRPDNAME, 0);
@@ -2496,6 +2614,11 @@ int setup(int default_screen)
         xcb_window_t *children = xcb_query_tree_children(reply);
         uint32_t cd = current_desktop;
         for (int i = 0; i < len; i++) {
+            xcb_atom_t wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
+
+            if (check_if_window_is_alien(children[i], NULL, &wtype))
+                continue;
+
             attr = xcb_get_window_attributes_reply(dis,
                             xcb_get_window_attributes(dis, children[i]), NULL);
             if (!attr)
@@ -2517,7 +2640,7 @@ int setup(int default_screen)
                         xcb_atom_t reply_type = prop_reply->type;
                         free(prop_reply);
                         if (reply_type != XCB_NONE) {
-                            scrpd = create_client(children[i]);
+                            scrpd = create_client(children[i], wtype);
                             setwindefattr(scrpd->win);
                             grabbuttons(scrpd);
                             xcb_move(dis, scrpd->win, -2 * ww, 0);
@@ -2527,15 +2650,37 @@ int setup(int default_screen)
                     }
                 }
 
+
+                xcb_get_property_reply_t *prop_reply;
+                bool isHidden = False, doMinimize = False;
+                prop_reply = xcb_get_property_reply(dis, xcb_get_property_unchecked(
+                                               dis, 0, children[i], ewmh->_NET_WM_STATE,
+                                                XCB_ATOM_ATOM, 0, 1), NULL);
+                                                /* TODO: error handling */
+                if (prop_reply) {
+                    if (prop_reply->format == 32) {
+                        xcb_atom_t *v = xcb_get_property_value(prop_reply);
+                        for (unsigned int i = 0; i < prop_reply->value_len; i++) {
+                            DEBUGP("%d : %d\n", i, v[i]);
+                            if (v[i] == ewmh->_NET_WM_STATE_HIDDEN)
+                                isHidden = True;
+                        }
+                    }
+                    free(prop_reply);
+                }
+
 /*
  * case 1: window has no desktop property and is unmapped --> ignore
  * case 2: window has no desktop property and is mapped --> add desktop property and append to client list.
- * case 3: window has current desktop property and is unmapped --> this one is tricky:
- *         If there's no ewmh compatible taskbar, then I (t4nkw4rt) prefer to map these windows and append to client list.
- *         Another solution would be to move them directly to miniq.
- * case 4: window has current desktop property and is mapped  --> append to client list.
+ * case 3: window has current desktop property and is unmapped --> same as case 4.
+ * case 4: window has current desktop property and is hidden (minimized) -> this one is tricky:
+ *     4a: If there's no ewmh compatible taskbar, then I (t4nkw4rt) prefer to map these windows and append to client list.
+ *     4b: Another solution would be to move them directly to miniq.
+ * case 5: window has current desktop property and is mapped  --> append to client list.
  * case 5: window has different desktop property and is unmapped -> append to client list.
- * case 6: window has different desktop property and is mapped -> unmap and append to client list.
+ * case 7: window has different desktop property and is mapped -> unmap and append to client list.
+ * case 8: window has desktop property > DESKTOPS -> move window to last desktop
+ * case 9: window has desktop property = -1 -> TODO: sticky window
  */
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
@@ -2545,25 +2690,34 @@ int setup(int default_screen)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
+                    if ((int)dsk > DESKTOPS-1)
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 8 */
                     if (dsk == cd) {
-                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                            xcb_map_window(dis, children[i]);                   /* case 3 */
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED || isHidden) {
+                            if (!EWMH_TASKBAR)
+                                xcb_map_window(dis, children[i]);               /* case 4a */
+                            else
+                                doMinimize = True;                              /* case 4b */
+                        }
                         else
-                            { ; }                                               /* case 4 */
+                            { ; }                                               /* case 5 */
                     }
                     else {  /* different desktop */
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                            { ; }                                               /* case 5 */
+                            { ; }                                               /* case 6 */
                         else
-                            xcb_unmap_window(dis, children[i]);                 /* case 6 */
+                            xcb_unmap_window(dis, children[i]);                 /* case 7 */
                     }
                 }
                 if (cd != dsk)
                     select_desktop(dsk);
-                addwindow(children[i]);
-                grabbuttons(wintoclient(children[i]));
+                client *c = addwindow(children[i], wtype);
+                xcb_remove_property(dis, c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+                if (doMinimize)
+                    minimize_client(c);
+                grabbuttons(c);
                 if (cd != dsk) {
-                    xcb_unmap_window(dis, children[i]);
+                    xcb_unmap_window(dis, c->win);
                     select_desktop(cd);
                 }
             }
@@ -2578,6 +2732,10 @@ int setup(int default_screen)
     /* open the scratchpad terminal if enabled */
     if (USE_SCRATCHPAD && !scrpd)
         spawn(&(Arg){.com = scrpcmd});
+
+#ifdef EWMH_TASKBAR
+    Setup_EWMH_Taskbar_Support();
+#endif
 
     return 0;
 }
@@ -2888,7 +3046,7 @@ void unmapnotify(xcb_generic_event_t *e)
  */
 static inline void nada(void)
 {
-        xcb_delete_property(dis, screen->root, netatoms[NET_ACTIVE]);
+        xcb_delete_property(dis, screen->root, ewmh->_NET_ACTIVE_WINDOW);
         xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root, XCB_CURRENT_TIME);
         prevfocus = current = NULL;
 }
@@ -2982,7 +3140,7 @@ void update_current(client *newfocus)   // newfocus may be NULL
     if (current) {
         if (current->setfocus) {
             xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
-                                netatoms[NET_ACTIVE], XCB_ATOM_WINDOW, 32, 1,
+                                ewmh->_NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, 32, 1,
                                 &current->win);
             xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
                                 XCB_CURRENT_TIME);
@@ -3065,6 +3223,65 @@ int main(int argc, char *argv[])
     ungrab_focus();
     return retval;
 }
+
+#ifdef EWMH_TASKBAR
+/*
+ * Optional EWMH Taskbar (Panel) Support functions
+ */
+
+static void Setup_EWMH_Taskbar_Support(void)
+{
+    /*
+     * initial _NET_CLIENT_LIST property
+     */
+    Update_EWMH_Taskbar_Properties();
+
+    xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
+                        ewmh->_NET_DESKTOP_NAMES, ewmh->UTF8_STRING, 8, 0, NULL);
+}
+
+static void Cleanup_EWMH_Taskbar_Support(void)
+{
+    /*
+     * set _NET_CLIENT_LIST property to zero
+     */
+    xcb_window_t empty = 0;
+    xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
+                        screen->root, ewmh->_NET_CLIENT_LIST,
+                        XCB_ATOM_WINDOW, 32, 0, &empty);
+}
+
+static inline void Update_EWMH_Taskbar_Properties(void)
+{
+    /*
+     * update _NET_CLIENT_LIST property, may be empty
+     */
+
+    xcb_window_t *wins;
+    client *c;
+    int num=0;
+
+    if(showscratchpad && scrpd)
+        num++;
+    for(c=head; c!=NULL; c=c->next)
+        num++;
+
+    if((wins = (xcb_window_t *)calloc(num, sizeof(xcb_window_t))))
+    {
+        num = 0;
+        if(showscratchpad && scrpd)
+            wins[num++] = scrpd->win;
+        for(c=head; c!=NULL; c=c->next)
+            wins[num++] = c->win;
+        xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
+                            screen->root, ewmh->_NET_CLIENT_LIST,
+                            XCB_ATOM_WINDOW, 32, num, wins);
+        xcb_flush(dis);
+        free(wins);
+        DEBUGP("update _NET_CLIENT_LIST property (%d entries)\n", num);
+    }
+}
+#endif /* EWMH_TASKBAR */
 
 /* vim: set ts=4 sw=4 expandtab :*/
 
