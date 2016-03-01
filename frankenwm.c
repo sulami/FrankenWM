@@ -2691,7 +2691,7 @@ int setup(int default_screen)
                     if (isHidden)
                         doMinimize = True;                                      /* case 4 */
                     if ((int)dsk > DESKTOPS-1)
-                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);   /* case 8 */
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 8 */
                     if (dsk == cd) {
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)                  
                             xcb_map_window(dis, children[i]);                   /* case 3 */
