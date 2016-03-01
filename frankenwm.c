@@ -2669,44 +2669,40 @@ int setup(int default_screen)
                     free(prop_reply);
                 }
 
-/*
+/*              
  * case 1: window has no desktop property and is unmapped --> ignore
  * case 2: window has no desktop property and is mapped --> add desktop property and append to client list.
- * case 3: window has current desktop property and is unmapped --> same as case 4.
- * case 4: window has current desktop property and is hidden (minimized) -> this one is tricky:
- *     4a: If there's no ewmh compatible taskbar, then I (t4nkw4rt) prefer to map these windows and append to client list.
- *     4b: Another solution would be to move them directly to miniq.
+ * case 3: window has current desktop property and is unmapped --> map and append to client list.
+ * case 4: window has HIDDEN property -> move to miniq and append to client list.
  * case 5: window has current desktop property and is mapped  --> append to client list.
- * case 5: window has different desktop property and is unmapped -> append to client list.
+ * case 6: window has different desktop property and is unmapped -> append to client list.
  * case 7: window has different desktop property and is mapped -> unmap and append to client list.
  * case 8: window has desktop property > DESKTOPS -> move window to last desktop
- * case 9: window has desktop property = -1 -> TODO: sticky window
+ * case 9: window has desktop property = -1 -> TODO: sticky window support.
  */
+                if (isHidden)
+                    doMinimize = True;                                                  /* case 4 */
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
                     if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                        continue;                                               /* case 1 */
+                        continue;                                                       /* case 1 */
                     else
-                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);           /* case 2 */
                 }
                 else {
                     if ((int)dsk > DESKTOPS-1)
-                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 8 */
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);   /* case 8 */
                     if (dsk == cd) {
-                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED || isHidden) {
-                            if (!EWMH_TASKBAR)
-                                xcb_map_window(dis, children[i]);               /* case 4a */
-                            else
-                                doMinimize = True;                              /* case 4b */
-                        }
-                        else
-                            { ; }                                               /* case 5 */
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)                  
+                            xcb_map_window(dis, children[i]);                           /* case 3 */
+                        else    
+                            { ; }                                                       /* case 5 */
                     }
                     else {  /* different desktop */
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                            { ; }                                               /* case 6 */
+                            { ; }                                                       /* case 6 */
                         else
-                            xcb_unmap_window(dis, children[i]);                 /* case 7 */
+                            xcb_unmap_window(dis, children[i]);                         /* case 7 */
                     }
                 }
                 if (cd != dsk)
