@@ -2669,7 +2669,7 @@ int setup(int default_screen)
                     free(prop_reply);
                 }
 
-/*              
+/*
  * case 1: window has no desktop property and is unmapped --> ignore
  * case 2: window has no desktop property and is mapped --> add desktop property and append to client list.
  * case 3: window has current desktop property and is unmapped --> map and append to client list.
