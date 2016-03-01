@@ -2693,9 +2693,9 @@ int setup(int default_screen)
                     if ((int)dsk > DESKTOPS-1)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 8 */
                     if (dsk == cd) {
-                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)                  
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
                             xcb_map_window(dis, children[i]);                   /* case 3 */
-                        else    
+                        else
                             { ; }                                               /* case 5 */
                     }
                     else {  /* different desktop */
@@ -3280,4 +3280,3 @@ static inline void Update_EWMH_Taskbar_Properties(void)
 #endif /* EWMH_TASKBAR */
 
 /* vim: set ts=4 sw=4 expandtab :*/
-
