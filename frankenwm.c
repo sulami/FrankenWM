@@ -2683,26 +2683,26 @@ int setup(int default_screen)
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
                     if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                        continue;                                                   /* case 1 */
+                        continue;                                               /* case 1 */
                     else
-                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);       /* case 2 */
+                        xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
                     if (isHidden)
-                        doMinimize = True;                                          /* case 4 */
+                        doMinimize = True;                                      /* case 4 */
                     if ((int)dsk > DESKTOPS-1)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);   /* case 8 */
                     if (dsk == cd) {
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)                  
-                            xcb_map_window(dis, children[i]);                       /* case 3 */
+                            xcb_map_window(dis, children[i]);                   /* case 3 */
                         else    
-                            { ; }                                                   /* case 5 */
+                            { ; }                                               /* case 5 */
                     }
                     else {  /* different desktop */
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                            { ; }                                                   /* case 6 */
+                            { ; }                                               /* case 6 */
                         else
-                            xcb_unmap_window(dis, children[i]);                     /* case 7 */
+                            xcb_unmap_window(dis, children[i]);                 /* case 7 */
                     }
                 }
                 if (cd != dsk)
