@@ -2672,15 +2672,13 @@ int setup(int default_screen)
 /*
  * case 1: window has no desktop property and is unmapped --> ignore
  * case 2: window has no desktop property and is mapped --> add desktop property and append to client list.
- * case 3: window has current desktop property and is unmapped --> same as case 4.
- * case 4: window has current desktop property and is hidden (minimized) -> this one is tricky:
- *     4a: If there's no ewmh compatible taskbar, then I (t4nkw4rt) prefer to map these windows and append to client list.
- *     4b: Another solution would be to move them directly to miniq.
+ * case 3: window has current desktop property and is unmapped --> map and append to client list.
+ * case 4: window has desktop and hidden property -> move to miniq and append to client list.
  * case 5: window has current desktop property and is mapped  --> append to client list.
- * case 5: window has different desktop property and is unmapped -> append to client list.
+ * case 6: window has different desktop property and is unmapped -> append to client list.
  * case 7: window has different desktop property and is mapped -> unmap and append to client list.
  * case 8: window has desktop property > DESKTOPS -> move window to last desktop
- * case 9: window has desktop property = -1 -> TODO: sticky window
+ * case 9: window has desktop property = -1 -> TODO: sticky window support.
  */
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
@@ -2690,15 +2688,13 @@ int setup(int default_screen)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = cd);   /* case 2 */
                 }
                 else {
+                    if (isHidden)
+                        doMinimize = True;                                      /* case 4 */
                     if ((int)dsk > DESKTOPS-1)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 8 */
                     if (dsk == cd) {
-                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED || isHidden) {
-                            if (!EWMH_TASKBAR)
-                                xcb_map_window(dis, children[i]);               /* case 4a */
-                            else
-                                doMinimize = True;                              /* case 4b */
-                        }
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
+                            xcb_map_window(dis, children[i]);                   /* case 3 */
                         else
                             { ; }                                               /* case 5 */
                     }
@@ -3284,4 +3280,3 @@ static inline void Update_EWMH_Taskbar_Properties(void)
 #endif /* EWMH_TASKBAR */
 
 /* vim: set ts=4 sw=4 expandtab :*/
-
