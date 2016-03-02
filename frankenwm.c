@@ -87,6 +87,15 @@ struct alien {
 };
 typedef struct alien alien;
 
+typedef struct
+{
+    uint16_t left, right, top, bottom;
+    uint16_t left_start_y, left_end_y;
+    uint16_t right_start_y, right_end_y;
+    uint16_t top_start_x, top_end_x;
+    uint16_t bottom_start_x, bottom_end_x;
+} strut_t;
+
 /* a key struct represents a combination of
  * mod      - a modifier mask
  * keysym   - and the key pressed
@@ -141,6 +150,7 @@ typedef struct client {
     unsigned int dim[2];
     int borderwidth;
     bool setfocus;
+    strut_t strut;
 } client;
 
 /* properties of each desktop
@@ -289,6 +299,9 @@ static desktop desktops[DESKTOPS];
 static lifo *miniq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
 static xcb_key_symbols_t *keysyms;
+#ifdef EWMH_TASKBAR
+static strut_t gstrut;
+#endif /* EWMH_TASKBAR */
 
 /* events array
  * on receival of a new event, call the appropriate function to handle it
@@ -3276,6 +3289,25 @@ static inline void Update_EWMH_Taskbar_Properties(void)
         free(wins);
         DEBUGP("update _NET_CLIENT_LIST property (%d entries)\n", num);
     }
+}
+#endif /* EWMH_TASKBAR */
+
+
+#ifdef EWMH_TASKBAR
+static void Setup_Global_Strut(void)
+{
+}
+
+static void Cleanup_Global_Strut(void)
+{
+}
+
+static void Update_Global_Strut(void)
+{
+}
+
+static void Update_Client_Strut(client *c)
+{
 }
 #endif /* EWMH_TASKBAR */
 
