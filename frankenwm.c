@@ -793,8 +793,11 @@ static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_ato
                     if (isFloating)
                         *isFloating = True;
                 }
-                else
+                else {
+                    unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE}; 
                     isAlien = True;
+                    xcb_change_window_attributes(dis, win, XCB_CW_EVENT_MASK, values);
+                }
             }
         }
         xcb_ewmh_get_atoms_reply_wipe(&type);
@@ -1007,13 +1010,6 @@ void clientmessage(xcb_generic_event_t *e)
                           && ev->data.data32[0] < DESKTOPS) {
                         client_to_desktop(&(Arg){.i = ev->data.data32[0]});
                     }
-#ifdef EWMH_TASKBAR
-                    else {
-                        if (ev->type == ewmh->_NET_WM_STRUT)
-                            tile();
-                    }
-#endif /* EWMH_TASKBAR */
-
                 }
             }
         }
@@ -2140,6 +2136,14 @@ void propertynotify(xcb_generic_event_t *e)
     client *c;
 
     DEBUG("xcb: property notify");
+
+#ifdef EWMH_TASKBAR
+    if (ev->atom == ewmh->_NET_WM_STRUT) {
+        DEBUG("_NET_WM_STRUT");
+        tile();
+        return;
+    }
+#endif /* EWMH_TASKBAR */
 
     c = wintoclient(ev->window);
     if (!c || ev->atom != XCB_ICCCM_WM_ALL_HINTS)
@@ -3332,7 +3336,9 @@ static void Cleanup_Global_Strut(void)
 
 static inline void Reset_Global_Strut(void)
 {
-    memset(&gstrut, 0, sizeof(gstrut));
+    gstrut.left = gstrut.right = gstrut.top = gstrut.bottom = 0;
+    ww = screen->width_in_pixels;
+    wh = screen->height_in_pixels;
     wy = 0;
 }
 
