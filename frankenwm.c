@@ -1043,7 +1043,11 @@ void configurerequest(xcb_generic_event_t *e)
         if (ev->value_mask & XCB_CONFIG_WINDOW_Y) {
             int y = ev->y;
             if (c && c->type == ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
+#ifndef EWMH_TASKBAR
                 if (showpanel && TOP_PANEL && y < PANEL_HEIGHT)
+#else
+                if (y < wy)
+#endif /* EWMH_TASKBAR */
                      y = PANEL_HEIGHT;
             }
             v[i++] = y;
