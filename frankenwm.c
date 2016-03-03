@@ -87,15 +87,6 @@ struct alien {
 };
 typedef struct alien alien;
 
-typedef struct
-{
-    uint16_t left, right, top, bottom;
-    uint16_t left_start_y, left_end_y;
-    uint16_t right_start_y, right_end_y;
-    uint16_t top_start_x, top_end_x;
-    uint16_t bottom_start_x, bottom_end_x;
-} strut_t;
-
 /* a key struct represents a combination of
  * mod      - a modifier mask
  * keysym   - and the key pressed
@@ -150,7 +141,6 @@ typedef struct client {
     unsigned int dim[2];
     int borderwidth;
     bool setfocus;
-    strut_t strut;
 } client;
 
 /* properties of each desktop
@@ -275,9 +265,25 @@ static client *wintoclient(xcb_window_t w);
 #include "config.h"
 
 #ifdef EWMH_TASKBAR
+typedef struct
+{
+    uint16_t left, right, top, bottom;
+//    uint16_t left_start_y, left_end_y;
+//    uint16_t right_start_y, right_end_y;
+//    uint16_t top_start_x, top_end_x;
+//    uint16_t bottom_start_x, bottom_end_x;
+} strut_t;
+
 static void Setup_EWMH_Taskbar_Support(void);
 static void Cleanup_EWMH_Taskbar_Support(void);
 static inline void Update_EWMH_Taskbar_Properties(void);
+static void Setup_Global_Strut(void);
+static void Cleanup_Global_Strut(void);
+static inline void Reset_Global_Strut(void);
+static void Update_Global_Strut(void);
+
+static strut_t gstrut;
+int wy = 0;
 #endif /* EWMH_TASKBAR */
 
 /* variables */
@@ -299,9 +305,6 @@ static desktop desktops[DESKTOPS];
 static lifo *miniq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
 static xcb_key_symbols_t *keysyms;
-#ifdef EWMH_TASKBAR
-static strut_t gstrut;
-#endif /* EWMH_TASKBAR */
 
 /* events array
  * on receival of a new event, call the appropriate function to handle it
@@ -843,6 +846,7 @@ void centerwindow(void)
 void cleanup(void)
 {
 #ifdef EWMH_TASKBAR
+    Cleanup_Global_Strut();
     Cleanup_EWMH_Taskbar_Support();
 #endif /* EWMH_TASKBAR */
 
@@ -1000,8 +1004,16 @@ void clientmessage(xcb_generic_event_t *e)
                 }
                 else {
                     if (c && ev->type == ewmh->_NET_WM_DESKTOP
-                          && ev->data.data32[0] < DESKTOPS)
+                          && ev->data.data32[0] < DESKTOPS) {
                         client_to_desktop(&(Arg){.i = ev->data.data32[0]});
+                    }
+#ifdef EWMH_TASKBAR
+                    else {
+                        if (ev->type == ewmh->_NET_WM_STRUT)
+                            tile();
+                    }
+#endif /* EWMH_TASKBAR */
+
                 }
             }
         }
@@ -2506,7 +2518,12 @@ int setup(int default_screen)
         err(EXIT_FAILURE, "error: cannot aquire screen\n");
 
     ww = screen->width_in_pixels;
-    wh = screen->height_in_pixels - PANEL_HEIGHT;
+    wh = screen->height_in_pixels;
+#ifndef EWMH_TASKBAR
+    wh -= PANEL_HEIGHT;
+#else
+    Reset_Global_Strut();   /* struts are not yet ready. */
+#endif /* EWMH_TASKBAR */
     borders = BORDER_WIDTH;
     gaps = USELESSGAP;
     for (unsigned int i = 0; i < DESKTOPS; i++) {
@@ -2618,7 +2635,6 @@ int setup(int default_screen)
     events[XCB_UNMAP_NOTIFY]        = unmapnotify;
 
     /* grab existing windows */
-    xcb_get_window_attributes_reply_t *attr;
     xcb_query_tree_reply_t *reply;
 
     reply = xcb_query_tree_reply(dis, xcb_query_tree(dis, screen->root), 0);
@@ -2628,6 +2644,7 @@ int setup(int default_screen)
         uint32_t cd = current_desktop;
         for (int i = 0; i < len; i++) {
             xcb_atom_t wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
+            xcb_get_window_attributes_reply_t *attr;
 
             if (check_if_window_is_alien(children[i], NULL, &wtype))
                 continue;
@@ -2744,6 +2761,7 @@ int setup(int default_screen)
 
 #ifdef EWMH_TASKBAR
     Setup_EWMH_Taskbar_Support();
+    Setup_Global_Strut();
 #endif
 
     return 0;
@@ -2943,8 +2961,13 @@ void tile(void)
     desktopinfo();
     if (!head)
         return; /* nothing to arange */
+#ifndef EWMH_TASKBAR
     layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT),
                                 (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
+#else
+    Update_Global_Strut();
+    layout[head->next ? mode : MONOCLE](wh, wy);
+#endif /* EWMH_TASKBAR */
 }
 
 /* reset the active window from floating to tiling, if not already */
@@ -3296,18 +3319,68 @@ static inline void Update_EWMH_Taskbar_Properties(void)
 #ifdef EWMH_TASKBAR
 static void Setup_Global_Strut(void)
 {
+    Update_Global_Strut();
 }
 
 static void Cleanup_Global_Strut(void)
 {
 }
 
-static void Update_Global_Strut(void)
+static inline void Reset_Global_Strut(void)
 {
+    memset(&gstrut, 0, sizeof(gstrut));
+    wy = 0;
 }
 
-static void Update_Client_Strut(client *c)
+static void Update_Global_Strut(void)
 {
+    /* TODO(?): Struts for each desktop. */
+
+    Reset_Global_Strut();
+
+    /* grab existing windows */
+    xcb_query_tree_reply_t *reply = xcb_query_tree_reply(dis,
+                                            xcb_query_tree(dis, screen->root), 0);
+    if (reply) {
+        int len = xcb_query_tree_children_length(reply);
+        xcb_window_t *children = xcb_query_tree_children(reply);
+        bool gstrut_modified = False;
+        for (int i = 0; i < len; i++) {
+            xcb_get_window_attributes_reply_t *attr = xcb_get_window_attributes_reply(dis,
+                            xcb_get_window_attributes(dis, children[i]), NULL);
+            if (!attr)
+                continue;
+
+            if (!(attr->map_state == XCB_MAP_STATE_UNMAPPED)) {
+                void *data;
+                xcb_get_property_reply_t *strut_r = xcb_get_property_reply(dis,
+                                    xcb_get_property_unchecked(dis, false, children[i],
+                                    ewmh->_NET_WM_STRUT, XCB_ATOM_CARDINAL, 0, 4), NULL);
+                if(strut_r && strut_r->value_len && (data = xcb_get_property_value(strut_r)))
+                {
+                    uint32_t *strut = data;
+
+                    if (gstrut.top < strut[2]) {
+                        gstrut.top = strut[2];
+                        gstrut_modified = True;
+                    }
+                    if (gstrut.bottom < strut[3]) {
+                        gstrut.bottom = strut[3];
+                        gstrut_modified = True;
+                    }
+                }
+            }
+            free(attr);
+        }
+        free(reply);
+        if (gstrut_modified) {
+            ww = screen->width_in_pixels;
+            wh = screen->height_in_pixels;
+            wh -= gstrut.top;
+            wh -= gstrut.bottom;
+            wy = gstrut.top;
+        }
+    }
 }
 #endif /* EWMH_TASKBAR */
 
