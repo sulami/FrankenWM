@@ -2581,6 +2581,8 @@ int setup(int default_screen)
     xcb_atom_t net_atoms[] = { ewmh->_NET_SUPPORTED,
 #ifdef EWMH_TASKBAR
                                ewmh->_NET_CLIENT_LIST,
+                               ewmh->_NET_WM_STRUT,
+                               ewmh->_NET_WM_STRUT_PARTIAL,
 #endif /* EWMH_TASKBAR */
                                ewmh->_NET_WM_STATE_FULLSCREEN,
                                ewmh->_NET_WM_STATE,
