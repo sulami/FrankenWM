@@ -2151,8 +2151,8 @@ void propertynotify(xcb_generic_event_t *e)
     DEBUG("xcb: property notify");
 
 #ifdef EWMH_TASKBAR
-    if (ev->atom == ewmh->_NET_WM_STRUT) {
-        DEBUG("_NET_WM_STRUT");
+    if (ev->atom == ewmh->_NET_WM_STRUT
+     || ev->atom == ewmh->_NET_WM_STRUT_PARTIAL) {
         tile();
         return;
     }
@@ -2594,6 +2594,8 @@ int setup(int default_screen)
     xcb_atom_t net_atoms[] = { ewmh->_NET_SUPPORTED,
 #ifdef EWMH_TASKBAR
                                ewmh->_NET_CLIENT_LIST,
+                               ewmh->_NET_WM_STRUT,
+                               ewmh->_NET_WM_STRUT_PARTIAL,
 #endif /* EWMH_TASKBAR */
                                ewmh->_NET_WM_STATE_FULLSCREEN,
                                ewmh->_NET_WM_STATE,
@@ -3376,13 +3378,22 @@ static void Update_Global_Strut(void)
 
             if (!(attr->map_state == XCB_MAP_STATE_UNMAPPED)) {
                 void *data;
-                xcb_get_property_reply_t *strut_r = xcb_get_property_reply(dis,
-                                    xcb_get_property_unchecked(dis, false, children[i],
-                                    ewmh->_NET_WM_STRUT, XCB_ATOM_CARDINAL, 0, 4), NULL);
+                xcb_get_property_reply_t *strut_r;
+/*
+ * Read newer _NET_WM_STRUT_PARTIAL property first. Only the first 4 values.
+ * Fall back to older _NET_WM_STRUT property.
+ */
+                strut_r = xcb_get_property_reply(dis,
+                          xcb_get_property_unchecked(dis, false, children[i],
+                          ewmh->_NET_WM_STRUT_PARTIAL, XCB_ATOM_CARDINAL, 0, 4), NULL);
+                if (strut_r->type == XCB_NONE) {
+                    strut_r = xcb_get_property_reply(dis,
+                              xcb_get_property_unchecked(dis, false, children[i],
+                              ewmh->_NET_WM_STRUT, XCB_ATOM_CARDINAL, 0, 4), NULL);
+                }
                 if(strut_r && strut_r->value_len && (data = xcb_get_property_value(strut_r)))
                 {
                     uint32_t *strut = data;
-
                     if (gstrut.top < strut[2]) {
                         gstrut.top = strut[2];
                         gstrut_modified = True;
