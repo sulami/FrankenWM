@@ -990,7 +990,7 @@ void clientmessage(xcb_generic_event_t *e)
             change_desktop(&(Arg){.i = ev->data.data32[0]});
         else {
             if (c && ev->type == ewmh->_NET_CLOSE_WINDOW)
-                removeclient(c);
+                killclient(c);
             else {
                 if (ev->type == ewmh->_NET_ACTIVE_WINDOW) {
                     if (c) {
