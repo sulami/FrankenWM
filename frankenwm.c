@@ -965,15 +965,23 @@ void clientmessage(xcb_generic_event_t *e)
                     setfullscreen(c, False);
                 break;
 
+                case _NET_WM_STATE_TOGGLE: {
+                    xcb_get_geometry_reply_t *wa = get_geometry(c->win);
+                    if (wa->x == 0
+                     && wa->y == 0
+                     && wa->width == screen->width_in_pixels
+                     && wa->height == screen->height_in_pixels) {
+                        setfullscreen(c, False);
+                        break;
+                    }
+                /* else fall thru to _NET_WM_STATE_ADD */
+                }
+
                 case _NET_WM_STATE_ADD:
                     xcb_raise_window(dis, c->win);
                     xcb_border_width(dis, c->win, 0);
                     xcb_move_resize(dis, c->win, 0, 0,
                         screen->width_in_pixels, screen->height_in_pixels);
-                break;
-
-                case _NET_WM_STATE_TOGGLE:
-/* TODO: */         setfullscreen(c, c->isfullscrn ? False : True);
                 break;
             }
         }
