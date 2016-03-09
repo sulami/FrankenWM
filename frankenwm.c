@@ -918,7 +918,7 @@ void change_desktop(const Arg *arg)
             xcb_move(dis, current, current->px, current->py);
         for (client *c = head; c; c = c->next) {
             if (c != current)
-                xcb_move(dis, c, current->px, current->py);
+                xcb_move(dis, c, c->px, c->py);
         }
     }
     select_desktop(previous_desktop);
@@ -1103,7 +1103,7 @@ void client_to_desktop(const Arg *arg)
     else
         p->next = c->next;
     c->next = NULL;
-    xcb_unmap_window(dis, c->win);
+    xcb_move(dis, c, -2 * ww, 0);
     update_current(prevfocus);
     xcb_ewmh_set_wm_desktop(ewmh, c->win, arg->i);
 
@@ -1159,7 +1159,8 @@ void clientmessage(xcb_generic_event_t *e)
 
                 case _NET_WM_STATE_ADD:
                     c->isfullscreen = True;
-                    create_display(c);
+                    if (!head->next)
+                        create_display(c);
                     xcb_lower_window(dis, c->win);
                     xcb_border_width(dis, c->win, 0);
                     xcb_move_resize(dis, c, 0, 0,
@@ -1365,6 +1366,8 @@ void destroynotify(xcb_generic_event_t *e)
     DEBUG("xcb: destroy notify");
 
     if (c) {
+        if (c->isfullscreen)
+            destroy_display(c);
         removeclient(c);
     }
     else if (USE_SCRATCHPAD && scrpd && ev->window == scrpd->win) {
@@ -1926,6 +1929,12 @@ void maprequest(xcb_generic_event_t *e)
             scrpd = create_client(ev->window, wtype);
             setwindefattr(scrpd->win);
             grabbuttons(scrpd);
+
+            xcb_get_geometry_reply_t *geometry = get_geometry(scrpd->win);
+            scrpd->px = scrpd->cx = geometry->x;
+            scrpd->py = scrpd->cy = geometry->y;
+            free(geometry);
+
             xcb_move(dis, scrpd, -2 * ww, 0);
             xcb_map_window(dis, scrpd->win);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
@@ -1991,18 +2000,18 @@ void maprequest(xcb_generic_event_t *e)
     if (cd != newdsk)
         select_desktop(cd);
     if (cd == newdsk) {
-        tile();
+        xcb_move(dis, c, -2 * ww, 0);
+        xcb_map_window(dis, c->win);
         if (show)
-            xcb_map_window(dis, c->win);
-        update_current(c);
-    } else if (follow) {
+            update_current(c);
+    }
+    else
+        if (follow) {
         change_desktop(&(Arg){.i = newdsk});
         update_current(c);
     }
     grabbuttons(c);
-
     xcb_ewmh_set_wm_desktop(ewmh, c->win, cd);
-
     desktopinfo();
 
     if (c->isfloating && AUTOCENTER)
@@ -2923,6 +2932,7 @@ int setup(int default_screen)
  * case 8: window has desktop property > DESKTOPS -> move window to last desktop
  * case 9: window has desktop property = -1 -> TODO: sticky window support.
  */
+                bool case7 = False;
                 if (!(xcb_ewmh_get_wm_desktop_reply(ewmh,
                       xcb_ewmh_get_wm_desktop(ewmh, children[i]), &dsk, NULL))) {
                     if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
@@ -2945,7 +2955,7 @@ int setup(int default_screen)
                         if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
                             { ; }                                               /* case 6 */
                         else
-                            xcb_unmap_window(dis, children[i]);                 /* case 7 */
+                            case7 = True;                                       /* case 7 */
                     }
                 }
                 if (cd != dsk)
@@ -2960,9 +2970,11 @@ int setup(int default_screen)
                 xcb_remove_property(dis, c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
                 if (doMinimize)
                     minimize_client(c);
+                if (case7)
+                    xcb_move(dis, c, -2 * ww, 0);
                 grabbuttons(c);
                 if (cd != dsk) {
-                    xcb_unmap_window(dis, c->win);
+                    xcb_move(dis, c, -2 * ww, 0);
                     select_desktop(cd);
                 }
             }
@@ -3002,10 +3014,9 @@ static void setwindefattr(xcb_window_t w)
 void showhide(void)
 {
     if ((show = !show)) {
+        for (client *c = displayq[current_desktop]->head; c; c = c->next)
+            xcb_move(dis, c, c->px, c->py);
         tile();
-        if (show)
-            for (client *c = displayq[current_desktop]->head; c; c = c->next)
-                xcb_map_window(dis, c->win);
         xcb_ewmh_set_showing_desktop(ewmh, default_screen, 1);
     } else {
         for (client *c = displayq[current_desktop]->head; c; c = c->next)
@@ -3270,6 +3281,8 @@ void unmapnotify(xcb_generic_event_t *e)
     DEBUG("xcb: unmap notify");
 
     if (c && on_current_desktop(c)) {
+        if (c->isfullscreen)
+            destroy_display(c);
         removeclient(c);
         desktopinfo();
     }
@@ -3332,33 +3345,13 @@ void update_current(client *newfocus)   // newfocus may be NULL
         return;
     }
 
-
-    client *c;
-    /* num of n:all fl:maximized ft:floating/transient windows */
-    int n = 0, fl = 0, ft = 0;
-    for (c = head; c; c = c->next, ++n)
-        if (ISFMFTM(c)) {
-            fl++;
-            if (!c->ismaximized)
-                ft++;
-        }
-    xcb_window_t w[n];
-    w[(current->isfloating || current->istransient) ? 0 : ft] = current->win;
-    for (fl += !ISFMFTM(current) ? 1 : 0, c = head; c; c = c->next) {
+    for (client *c = head; c; c = c->next) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                 (c == current ? &win_focus : &win_unfocus));
-        xcb_border_width(dis, c->win, (c->ismaximized ||
+        xcb_border_width(dis, c->win, (c->isfullscreen || c->ismaximized ||
                           (!MONOCLE_BORDERS && !head->next) ||
                           (mode == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
                           ) ? 0 : client_borders(c));
-        /*
-         * if (CLICK_TO_FOCUS) xcb_grab_button(dis, 1, c->win,
-         *     XCB_EVENT_MASK_BUTTON_PRESS, XCB_GRAB_MODE_ASYNC,
-         *     XCB_GRAB_MODE_ASYNC, screen->root, XCB_NONE, XCB_BUTTON_INDEX_1,
-         *     XCB_BUTTON_MASK_ANY);
-         */
-        if (c != current)
-            w[c->ismaximized ? --fl : ISFMFTM(c) ? --ft : --n] = c->win;
     }
 
     if (USE_SCRATCHPAD && SCRATCH_WIDTH && showscratchpad && scrpd) {
@@ -3368,22 +3361,24 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     }
 
-    /* restack */
-    if (!current->isfloating)
-        for (ft = 1; ft <= n; ++ft)
-            xcb_raise_window(dis, w[n-ft]);
-    else
-        xcb_raise_window(dis, current->win);
+    tile();
+
+    for (client *c = head; c; c = c->next) {
+        if (c->isfullscreen) {
+            xcb_lower_window(dis, c->win);
+            break;
+        }
+    }
 
     if (USE_SCRATCHPAD && showscratchpad && scrpd)
         xcb_raise_window(dis, scrpd->win);
 
-    tile();
-
-    if (check_head(&alienlist)) {
-        alien *a;
-        for(a=(alien *)get_head(&alienlist); a; a=(alien *)get_next((node *)a))
-            xcb_raise_window(dis, a->win);
+    if(current && !current->isfullscreen) {
+        if (check_head(&alienlist)) {
+            alien *a;
+            for(a=(alien *)get_head(&alienlist); a; a=(alien *)get_next((node *)a))
+                xcb_raise_window(dis, a->win);
+        }
     }
 
     if (current) {
@@ -3403,16 +3398,19 @@ void update_current(client *newfocus)   // newfocus may be NULL
 }
 
 /* find to which client the given window belongs to */
-client *wintoclient(xcb_window_t w)
+client *wintoclient(xcb_window_t win)
 {
-    client *c = NULL;
-    int d = 0, cd = current_desktop;
-    for (bool found = false; d < DESKTOPS && !found; ++d)
-        for (select_desktop(d), c = head; c && !(found = (w == c->win));
-             c = c->next);
-    if (cd != d-1)
-        select_desktop(cd);
-    return c;
+   for (int i = 0; i < DESKTOPS; i++) {
+        for (disq *d = displayq[i]; d; d = d->next) {
+            client *hp = (i == current_desktop) ? head : d->head;
+            for (client *c = hp; c; c = c->next) {
+                if (c->win == win) {
+                    return c;
+                }
+            }
+        }
+    }
+    return NULL;
 }
 
 void xerror(xcb_generic_event_t *e)
