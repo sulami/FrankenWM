@@ -141,6 +141,7 @@ typedef struct client {
     xcb_atom_t type;
     unsigned int dim[2];
     int borderwidth;
+    int px, cx, py, cy;
     bool setfocus;
 } client;
 
@@ -153,23 +154,27 @@ typedef struct client {
  * prevfocus    - the client that previously had focus
  * showpanel    - the visibility status of the panel
  */
+/*
 typedef struct {
     int mode, growth, gaps;
     float master_size;
     client *current, *prevfocus;
     bool showpanel, invert;
 } desktop;
+*/
+typedef struct disq {
+    struct disq *next;
+    int mode, growth, gaps;
+    float master_size;
+    client *head, *current, *prevfocus;
+    bool showpanel, invert;
+} disq;
 
 /* lifo for minimized clients */
 typedef struct lifo {
     client *c;
     struct lifo *next;
 } lifo;
-
-typedef struct disq {
-    client *head;
-    struct disq *next;
-} disq;
 
 /* define behavior of certain applications
  * configured in config.h
@@ -307,7 +312,6 @@ static list alienlist;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT];
-static desktop desktops[DESKTOPS];
 static lifo *miniq[DESKTOPS];
 static disq *displayq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
@@ -515,21 +519,27 @@ static inline xcb_atom_t xcb_internatom(xcb_connection_t *con, char *name, uint8
 }
 
 /* wrapper to move and resize window */
-static inline void xcb_move_resize(xcb_connection_t *con, xcb_window_t win,
-                                   int x, int y, int w, int h)
+static inline void xcb_move_resize(xcb_connection_t *con, client *c, int x, int y, int w, int h)
 {
     unsigned int pos[4] = { x, y, w, h };
 
-    xcb_configure_window(con, win, XCB_MOVE_RESIZE, pos);
+    c->px = c->cx;
+    c->py = c->cy;
+    c->cx = x;
+    c->cy = y;
+    xcb_configure_window(con, c->win, XCB_MOVE_RESIZE, pos);
 }
 
 /* wrapper to move window */
-static inline void xcb_move(xcb_connection_t *con, xcb_window_t win, int x,
-                            int y)
+static inline void xcb_move(xcb_connection_t *con, client *c, int x, int y)
 {
     unsigned int pos[2] = { x, y };
 
-    xcb_configure_window(con, win, XCB_MOVE, pos);
+    c->px = c->cx;
+    c->py = c->cy;
+    c->cx = x;
+    c->cy = y;
+    xcb_configure_window(con, c->win, XCB_MOVE, pos);
 }
 
 /* wrapper to resize window */
@@ -545,6 +555,14 @@ static inline void xcb_resize(xcb_connection_t *con, xcb_window_t win, int w,
 static inline void xcb_raise_window(xcb_connection_t *con, xcb_window_t win)
 {
     unsigned int arg[1] = { XCB_STACK_MODE_ABOVE };
+
+    xcb_configure_window(con, win, XCB_CONFIG_WINDOW_STACK_MODE, arg);
+}
+
+/* wrapper to lower window */
+static inline void xcb_lower_window(xcb_connection_t *con, xcb_window_t win)
+{
+    unsigned int arg[1] = { XCB_STACK_MODE_BELOW };
 
     xcb_configure_window(con, win, XCB_CONFIG_WINDOW_STACK_MODE, arg);
 }
@@ -657,28 +675,152 @@ static void setup_displayq(void)
 static void cleanup_displayq(void)
 {
     for (int i = 0; i < DESKTOPS; i++) {
-        for (disq *tmp = displayq[i]; tmp; ) {
-            disq *d_next = tmp->next;
-
-            if (tmp->head) {
-                for (client *c = tmp->head; c; ) {
-                    client *c_next = c->next;
-                    xcb_border_width(dis, c->win, 0);
-                    free(c);
-                    c = c_next;
-                }
+        for (disq *d = displayq[i]; d; ) {
+            disq *d_next = d->next;
+            for (client *c = d->head; c; ) {
+                client *c_next = c->next;
+                xcb_border_width(dis, c->win, 0);
+                free(c);
+                c = c_next;
             }
-            free(tmp);
-            tmp = d_next;
+            free(d);
+            d = d_next;
         }
     }
 }
 
-static void create_new_display(client *c)
+static void create_display(client *c)
 {
+    disq *d;
+
+    if (!c)
+        return;
+
+fprintf(stderr, "create_display();\n");
+
+    if (!(d = calloc(1, sizeof(disq))))
+        err(EXIT_FAILURE, "cannot allocate new display");
+
+/* unlink client from current client list. */
+    if (head == c)
+        head = c->next;
+    else {
+        for(client *p = head; p; p = p->next) {
+            if (p->next == c) {
+                p->next = c->next;
+                break;
+            }
+        }
+    }
+    c->next = NULL;
+
+/* hide current windows */
+    for(client *t = head; t; t = t->next)
+        xcb_move(dis, t, -2 * ww, 0);
+
+/* save current settings */
+    displayq[current_desktop]->master_size = master_size;
+    displayq[current_desktop]->mode        = mode;
+    displayq[current_desktop]->growth      = growth;
+    displayq[current_desktop]->head        = head;
+    displayq[current_desktop]->current     = current;
+    displayq[current_desktop]->showpanel   = showpanel;
+    displayq[current_desktop]->prevfocus   = prevfocus;
+    displayq[current_desktop]->gaps        = gaps;
+    displayq[current_desktop]->invert      = invert;
+
+    head = c;
+    prevfocus = NULL;
+    current = NULL;
+
+/* initialize new display with current settings */
+    d->master_size = master_size;
+    d->mode        = mode;
+    d->growth      = growth;
+    d->head        = c;
+    d->showpanel   = showpanel;
+    d->current     = NULL;
+    d->prevfocus   = NULL;
+    d->gaps        = gaps;
+    d->invert      = invert;
+
+/* push current display to the queue and set new display as head. */
+    d->next = displayq[current_desktop];
+    displayq[current_desktop] = d;
+    update_current(c);
 }
 
+/* restore the current desktop's properties */
+static void restore_desktop(void)
+{
+    master_size     = displayq[current_desktop]->master_size;
+    mode            = displayq[current_desktop]->mode;
+    growth          = displayq[current_desktop]->growth;
+    head            = displayq[current_desktop]->head;
+    current         = displayq[current_desktop]->current;
+    showpanel       = displayq[current_desktop]->showpanel;
+    prevfocus       = displayq[current_desktop]->prevfocus;
+    gaps            = displayq[current_desktop]->gaps;
+    invert          = displayq[current_desktop]->invert;
+}
 
+static void destroy_display(client *c)
+{
+    disq *d, *prevd=NULL;
+    uint16_t di;
+
+fprintf(stderr, "destroy_display();\n");
+
+/* find the client's display. */
+    for (di = 0; di < DESKTOPS; di++) {
+        for (d = displayq[di]; d; d = d->next) {
+            for (client *t = d->head; t; t = t->next) {
+                if (c == t)
+                    goto gotcha;
+            }
+            prevd = d;
+        }
+    }
+gotcha:     /* every good program needs one goto  :) */
+    if (!d          /* no display found. */
+     || !d->next)   /* cannot destroy the last display. */
+        return;
+
+/* find last client in next display. */
+    client *last;
+    for (last = d->next->head; last; last = last->next) {
+        if (last->next == NULL)
+            break;
+    }
+/* if last == NULL, then the next display is empty. */
+
+/* move all clients to next display. */
+    client *tmp = d->head;              /* get head from current display. */
+    if (last == NULL) {                 /* next display is empty. */
+        last = d->next->head = tmp;     /* set new head and update last. */
+        tmp = tmp->next;                /* set tmp to next client. */
+    }
+    while (tmp) {
+        client *tmp_next = tmp->next;   /* save pointer to next client. */
+        tmp->next = NULL;               /* delete pointer. */
+        last->next = tmp;               /* link client to next display. */
+        last = last->next;              /* update last. */
+        tmp = tmp_next;                 /* and restore next pointer. */
+    }
+
+    if (prevd)                          /* current display is not head display. */
+        prevd->next = d->next;          /* unlink current display. */
+    else {
+        displayq[di] = d->next;         /* set new current head. */
+    }
+
+    if (di == current_desktop) {        /* current display is active desktop. */
+        restore_desktop();              /* restore global pointers. */
+        update_current(c);              /* update tiling and focus. */
+    }
+
+    free (d);                           /* finally, free the display memory. */
+}
 
 /* create a new client and add the new window
  * window should notify of property change events
@@ -719,9 +861,9 @@ void adjust_gaps(const Arg *arg)
 
     if (GLOBALGAPS)
         for (int i = 0; i < DESKTOPS; i++)
-            desktops[i].gaps = gaps;
+            displayq[i]->gaps = gaps;
     else
-        desktops[current_desktop].gaps = gaps;
+        displayq[current_desktop]->gaps = gaps;
     tile();
 }
 
@@ -771,25 +913,23 @@ void change_desktop(const Arg *arg)
         return;
     previous_desktop = current_desktop;
     select_desktop(arg->i);
-    if (current && show)
-        xcb_map_window(dis, current->win);
-    for (client *c = head; c && show; c = c->next)
-        xcb_map_window(dis, c->win);
-    select_desktop(previous_desktop);
-    for (client *c = head; c; c = c->next)
-        if (c != current)
-            xcb_unmap_window(dis, c->win);
-    if (current) {
-        if(current != scrpd)
-            xcb_unmap_window(dis, current->win);
+    if (show) {
+        if (current && current != scrpd)
+            xcb_move(dis, current, current->px, current->py);
+        for (client *c = head; c; c = c->next) {
+            if (c != current)
+                xcb_move(dis, c, current->px, current->py);
+        }
     }
+    select_desktop(previous_desktop);
+    for(client *c = head; c; c = c->next) {
+        if (c != current)
+            xcb_move(dis, c, -2 * ww, 0);
+    }
+    if (current && current != scrpd) 
+        xcb_move(dis, current, -2 * ww, 0); 
     select_desktop(arg->i);
-    tile();
-
-    if(USE_SCRATCHPAD && !head && showscratchpad && scrpd)
-        update_current(scrpd);
-    else
-        update_current(current);
+    update_current(current);
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
 }
@@ -863,11 +1003,10 @@ static void centerfloating(client *c)
     if (!c || !c->isfloating)
         return;
 
-    xcb_get_geometry_reply_t *wa;
-    wa = get_geometry(c->win);
+    xcb_get_geometry_reply_t *wa = get_geometry(c->win);
     xcb_raise_window(dis, c->win);
-    xcb_move(dis, c->win, ((ww - wa->width) / 2) - c->borderwidth,
-                          ((wh - wa->height) / 2) - c->borderwidth);
+    xcb_move(dis, c, ((ww - wa->width) / 2) - c->borderwidth,
+                     ((wh - wa->height) / 2) - c->borderwidth);
     free(wa);
 }
 
@@ -902,7 +1041,7 @@ void cleanup(void)
         else {
             xcb_border_width(dis, scrpd->win, 0);
             xcb_get_geometry_reply_t *wa = get_geometry(scrpd->win);
-            xcb_move(dis, scrpd->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+            xcb_move(dis, scrpd, (ww - wa->width) / 2, (wh - wa->height) / 2);
             free(wa);
         }
         free(scrpd);
@@ -1000,7 +1139,8 @@ void clientmessage(xcb_generic_event_t *e)
           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN)) {
            switch (ev->data.data32[0]) {
                 case _NET_WM_STATE_REMOVE:
-                    setmaximize(c, False);
+                    c->isfullscreen = False;
+                    destroy_display(c);
                 break;
 
                 case _NET_WM_STATE_TOGGLE: {
@@ -1010,16 +1150,19 @@ void clientmessage(xcb_generic_event_t *e)
                      && wa->width == screen->width_in_pixels
                      && wa->height == screen->height_in_pixels) {
                         setmaximize(c, False);
+                        free(wa);
                         break;
                     }
+                    free(wa);
                 /* else fall thru to _NET_WM_STATE_ADD */
                 }
 
                 case _NET_WM_STATE_ADD:
                     c->isfullscreen = True;
-                    xcb_raise_window(dis, c->win);
+                    create_display(c);
+                    xcb_lower_window(dis, c->win);
                     xcb_border_width(dis, c->win, 0);
-                    xcb_move_resize(dis, c->win, 0, 0,
+                    xcb_move_resize(dis, c, 0, 0,
                         screen->width_in_pixels, screen->height_in_pixels);
                 break;
             }
@@ -1264,7 +1407,7 @@ void dualstack(int hh, int cy)
         return;
     } else if (!n) {
         int borders = client_borders(c);
-        xcb_move_resize(dis, c->win, gaps, cy + gaps,
+        xcb_move_resize(dis, c, gaps, cy + gaps,
                         ww - 2 * (borders + gaps),
                         hh - 2 * (borders + gaps));
         return;
@@ -1273,13 +1416,13 @@ void dualstack(int hh, int cy)
     /* tile the first non-floating, non-maximize window to cover the master area */
     int borders = client_borders(c);
     if (invert)
-        xcb_move_resize(dis, c->win, gaps,
+        xcb_move_resize(dis, c, gaps,
                         cy + (hh - ma) / 2 + gaps,
                         ww - 2 * (borders + gaps),
                         n > 1 ? ma - 2 * gaps - 2 * borders
                               : ma + (hh - ma) / 2 - 2 * borders - 2 * gaps);
     else
-        xcb_move_resize(dis, c->win, (ww - ma) / 2 + borders + gaps,
+        xcb_move_resize(dis, c, (ww - ma) / 2 + borders + gaps,
                         cy + gaps,
                         n > 1 ? ma - 4 * borders - 2 * gaps
                               : ma + (ww - ma) / 2 - 3 * borders - 2 * gaps,
@@ -1301,7 +1444,7 @@ void dualstack(int hh, int cy)
                 cx = gaps;
             if (d > 1 && d != l + 1)
                 cx += (ww - gaps) / (d <= l ? l : r);
-            xcb_move_resize(dis, c->win,
+            xcb_move_resize(dis, c,
                         cx, (d <= l) ? cy : cy + (hh - ma) / 2 + ma - gaps,
                         (ww - gaps) / (d <= l ? l : r) - 2 * borders - gaps,
                         (hh - ma) / 2 - 2 * borders - gaps);
@@ -1310,7 +1453,7 @@ void dualstack(int hh, int cy)
                 cy = cb + gaps;
             if (d > 1 && d != l + 1)
                 cy += (ch - gaps) / (d <= l ? l : r);
-            xcb_move_resize(dis, c->win,
+            xcb_move_resize(dis, c,
                         d <= l ? cx : ww - cw - 2 * borders - gaps, cy, cw,
                         (ch - gaps) / (d <= l ? l : r) - 2 * borders - gaps);
         }
@@ -1370,12 +1513,12 @@ void equal(int h, int y)
         else
             j++;
         if (invert)
-            xcb_move_resize(dis, c->win, gaps,
+            xcb_move_resize(dis, c, gaps,
                             y + h / n * j + (c == head ? gaps : 0),
                             ww - 2 * borders - 2 * gaps,
                             h / n - 2 * borders - (c == head ? 2 : 1) * gaps);
         else
-            xcb_move_resize(dis, c->win, ww / n * j + (c == head ? gaps : 0),
+            xcb_move_resize(dis, c, ww / n * j + (c == head ? gaps : 0),
                             y + gaps,
                             ww / n - 2 * borders - (c == head ? 2 : 1) * gaps,
                             h - 2 * borders - 2 * gaps);
@@ -1433,7 +1576,7 @@ void fibonacci(int h, int y)
 
         /* if the window does not fit in the stack, do not jam it in there */
         if (j <= tt + 1)
-            xcb_move_resize(dis, c->win, x, y + gaps, cw, ch);
+            xcb_move_resize(dis, c, x, y + gaps, cw, ch);
     }
 }
 
@@ -1472,7 +1615,7 @@ void float_x(const Arg *arg)
 
     r = get_geometry(current->win);
     r->x += arg->i;
-    xcb_move(dis, current->win, r->x, r->y);
+    xcb_move(dis, current, r->x, r->y);
     free(r);
 }
 
@@ -1493,7 +1636,7 @@ void float_y(const Arg *arg)
 
     r = get_geometry(current->win);
     r->y += arg->i;
-    xcb_move(dis, current->win, r->x, r->y);
+    xcb_move(dis, current, r->x, r->y);
     free(r);
 }
 
@@ -1636,7 +1779,7 @@ void grid(int hh, int cy)
             ++i;
         if (i / rows + 1 > cols - n % cols)
             rows = n / cols + 1;
-        xcb_move_resize(dis, c->win, cn * cw + gaps,
+        xcb_move_resize(dis, c, cn * cw + gaps,
                         cy + rn * ch / rows + gaps,
                         cw - 2 * borders - gaps,
                         ch / rows - 2 * borders - gaps);
@@ -1651,7 +1794,7 @@ void grid(int hh, int cy)
 void invertstack()
 {
     if ((invert = !invert))
-        desktops[current_desktop].invert = invert;
+        displayq[current_desktop]->invert = invert;
     tile();
 }
 
@@ -1751,7 +1894,6 @@ void maprequest(xcb_generic_event_t *e)
 {
     xcb_map_request_event_t            *ev = (xcb_map_request_event_t *)e;
     xcb_window_t                       transient = 0;
-    xcb_get_geometry_reply_t           *geometry;
     xcb_get_property_reply_t           *prop_reply;
     xcb_get_property_cookie_t          cookie;
     xcb_ewmh_get_utf8_strings_reply_t  wtitle;
@@ -1784,7 +1926,7 @@ void maprequest(xcb_generic_event_t *e)
             scrpd = create_client(ev->window, wtype);
             setwindefattr(scrpd->win);
             grabbuttons(scrpd);
-            xcb_move(dis, scrpd->win, -2 * ww, 0);
+            xcb_move(dis, scrpd, -2 * ww, 0);
             xcb_map_window(dis, scrpd->win);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
 
@@ -1808,16 +1950,17 @@ void maprequest(xcb_generic_event_t *e)
         xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
     }
 
-    /* might be useful in future */
-    geometry = get_geometry(ev->window);
-    DEBUGP("geom: %ux%u+%d+%d\n", geometry->width, geometry->height,
-                                  geometry->x,     geometry->y);
-    free(geometry);
-
     if (cd != newdsk)
         select_desktop(newdsk);
     client *c = addwindow(ev->window, wtype);
 
+    /* might be useful in future */
+    xcb_get_geometry_reply_t *geometry = get_geometry(c->win);
+    c->px = c->cx = geometry->x;
+    c->py = c->cy = geometry->y;
+//    DEBUGP("geom: %ux%u+%d+%d\n", geometry->width, geometry->height,
+//                                  geometry->x,     geometry->y);
+    free(geometry);
 
     xcb_icccm_get_wm_transient_for_reply(dis,
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
@@ -1894,7 +2037,7 @@ void maximize()
     }
     free(r);
 
-    xcb_move_resize(dis, current->win, gaps, cy + gaps,
+    xcb_move_resize(dis, current, gaps, cy + gaps,
                     ww - 2 * gaps - 2 * borders, hh - 2 * gaps - 2 * borders);
 }
 
@@ -1915,7 +2058,7 @@ void minimize_client(client *c)
     miniq[current_desktop] = new;
 
     new->c->isminimized = true;
-    xcb_move(dis, new->c->win, -2 * ww, 0);
+    xcb_move(dis, new->c, -2 * ww, 0);
     xcb_add_property(dis, new->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     client *t = head;
@@ -1952,7 +2095,7 @@ void mousemotion(const Arg *arg)
     xcb_grab_pointer_reply_t  *grab_reply;
     int mx, my, winx, winy, winw, winh, xw, yh;
 
-    if (!current)
+    if (!current || current->isfullscreen)
         return;
     geometry = get_geometry(current->win);
     winx = geometry->x;     winy = geometry->y;
@@ -2005,7 +2148,7 @@ void mousemotion(const Arg *arg)
                 if (arg->i == RESIZE) xcb_resize(dis, current->win,
                                       xw > MINWSZ ? xw : winw,
                                       yh > MINWSZ ? yh : winh);
-                else if (arg->i == MOVE) xcb_move(dis, current->win, xw, yh);
+                else if (arg->i == MOVE) xcb_move(dis, current, xw, yh);
                 xcb_flush(dis);
                 break;
             case XCB_KEY_PRESS:
@@ -2030,7 +2173,7 @@ void monocle(int hh, int cy)
 
     for (client *c = head; c; c = c->next)
         if (!ISFMFTM(c))
-            xcb_move_resize(dis, c->win, gaps, cy + gaps,
+            xcb_move_resize(dis, c, gaps, cy + gaps,
                             ww - 2 * gaps - b, hh - 2 * gaps - b);
 }
 
@@ -2294,7 +2437,7 @@ void resize_x(const Arg *arg)
         return;
 
     r->width += arg->i;
-    xcb_move_resize(dis, current->win, r->x, r->y, r->width, r->height);
+    xcb_move_resize(dis, current, r->x, r->y, r->width, r->height);
     free(r);
 }
 
@@ -2318,7 +2461,7 @@ void resize_y(const Arg *arg)
         return;
 
     r->height += arg->i;
-    xcb_move_resize(dis, current->win, r->x, r->y, r->width, r->height);
+    xcb_move_resize(dis, current, r->x, r->y, r->width, r->height);
     free(r);
 }
 
@@ -2460,15 +2603,15 @@ void save_desktop(int i)
 {
     if (i < 0 || i >= DESKTOPS)
         return;
-    desktops[i].master_size = master_size;
-    desktops[i].mode        = mode;
-    desktops[i].growth      = growth;
-    displayq[i]->head       = head;
-    desktops[i].current     = current;
-    desktops[i].showpanel   = showpanel;
-    desktops[i].prevfocus   = prevfocus;
-    desktops[i].gaps        = gaps;
-    desktops[i].invert      = invert;
+    displayq[i]->master_size = master_size;
+    displayq[i]->mode        = mode;
+    displayq[i]->growth      = growth;
+    displayq[i]->head        = head;
+    displayq[i]->current     = current;
+    displayq[i]->showpanel   = showpanel;
+    displayq[i]->prevfocus   = prevfocus;
+    displayq[i]->gaps        = gaps;
+    displayq[i]->invert      = invert;
 }
 
 /* set the specified desktop's properties */
@@ -2477,15 +2620,15 @@ void select_desktop(int i)
     if (i < 0 || i >= DESKTOPS)
         return;
     save_desktop(current_desktop);
-    master_size     = desktops[i].master_size;
-    mode            = desktops[i].mode;
-    growth          = desktops[i].growth;
+    master_size     = displayq[i]->master_size;
+    mode            = displayq[i]->mode;
+    growth          = displayq[i]->growth;
     head            = displayq[i]->head;
-    current         = desktops[i].current;
-    showpanel       = desktops[i].showpanel;
-    prevfocus       = desktops[i].prevfocus;
-    gaps            = desktops[i].gaps;
-    invert          = desktops[i].invert;
+    current         = displayq[i]->current;
+    showpanel       = displayq[i]->showpanel;
+    prevfocus       = displayq[i]->prevfocus;
+    gaps            = displayq[i]->gaps;
+    invert          = displayq[i]->invert;
     current_desktop = i;
 }
 
@@ -2519,7 +2662,7 @@ void setmaximize(client *c, bool fullscrn)
                             c->win, ewmh->_NET_WM_STATE, XCB_ATOM_ATOM, 32,
                             fullscrn, data);
     if ((c->ismaximized = fullscrn))
-        xcb_move_resize(dis, c->win, 0, 0, ww, wh + PANEL_HEIGHT);
+        xcb_move_resize(dis, c, 0, 0, ww, wh + PANEL_HEIGHT);
     xcb_border_width(dis, c->win,
                      (!head->next ||
                      c->ismaximized ||
@@ -2597,14 +2740,14 @@ int setup(int default_screen)
     gaps = USELESSGAP;
     for (unsigned int i = 0; i < DESKTOPS; i++) {
         if (wh > ww) {      /* Pivot monitor support */
-            if (desktops[i].mode == TILE)
-                desktops[i].mode = BSTACK;
+            if (displayq[i]->mode == TILE)
+                displayq[i]->mode = BSTACK;
             else {
-                if (desktops[i].mode == BSTACK)
-                    desktops[i].mode = TILE;
+                if (displayq[i]->mode == BSTACK)
+                    displayq[i]->mode = TILE;
             }
         }
-        desktops[i].gaps = USELESSGAP;
+        displayq[i]->gaps = USELESSGAP;
         save_desktop(i);
     }
 
@@ -2744,13 +2887,12 @@ int setup(int default_screen)
                             scrpd = create_client(children[i], wtype);
                             setwindefattr(scrpd->win);
                             grabbuttons(scrpd);
-                            xcb_move(dis, scrpd->win, -2 * ww, 0);
+                            xcb_move(dis, scrpd, -2 * ww, 0);
                             showscratchpad = False;
                             continue;
                         }
                     }
                 }
-
 
                 xcb_get_property_reply_t *prop_reply;
                 bool isHidden = False, doMinimize = False;
@@ -2809,6 +2951,12 @@ int setup(int default_screen)
                 if (cd != dsk)
                     select_desktop(dsk);
                 client *c = addwindow(children[i], wtype);
+
+                xcb_get_geometry_reply_t *geometry = get_geometry(c->win);
+                c->px = c->cx = geometry->x;
+                c->py = c->cy = geometry->y;
+                free(geometry);
+
                 xcb_remove_property(dis, c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
                 if (doMinimize)
                     minimize_client(c);
@@ -2861,7 +3009,7 @@ void showhide(void)
         xcb_ewmh_set_showing_desktop(ewmh, default_screen, 1);
     } else {
         for (client *c = displayq[current_desktop]->head; c; c = c->next)
-            xcb_move(dis, c->win, -2 * ww, 0);
+            xcb_move(dis, c, -2 * ww, 0);
         xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
     }
 }
@@ -2937,7 +3085,7 @@ void stack(int hh, int cy)
         return;
     } else if (!n) {
         int borders = client_borders(c);
-        xcb_move_resize(dis, c->win, gaps, cy + gaps,
+        xcb_move_resize(dis, c, gaps, cy + gaps,
                         ww - 2 * (borders + gaps),
                         hh - 2 * (borders + gaps));
         return;
@@ -2948,12 +3096,12 @@ void stack(int hh, int cy)
     /* tile the first non-floating, non-maximize window to cover the master area */
     int borders = client_borders(c);
     if (b)
-        xcb_move_resize(dis, c->win, gaps,
+        xcb_move_resize(dis, c, gaps,
                         invert ? (cy + hh - ma + gaps) : (cy + gaps),
                         ww - 2 * (borders + gaps),
                         ma - 2 * (borders + gaps));
     else
-        xcb_move_resize(dis, c->win, invert ? (ww - ma + gaps) : gaps,
+        xcb_move_resize(dis, c, invert ? (ww - ma + gaps) : gaps,
                         cy + gaps,
                         ma - 2 * (borders + gaps),
                         hh - 2 * (borders + gaps));
@@ -2965,10 +3113,10 @@ void stack(int hh, int cy)
         cw = (b ? hh : ww) - 2 * borders - ma - gaps,
         ch = z - 2 * borders - gaps;
     if (b)
-        xcb_move_resize(dis, c->win, cx += gaps, cy += invert ? gaps : ma,
+        xcb_move_resize(dis, c, cx += gaps, cy += invert ? gaps : ma,
                         ch - gaps + d, cw);
     else
-        xcb_move_resize(dis, c->win, cx, cy += gaps, cw, ch - gaps + d);
+        xcb_move_resize(dis, c, cx, cy += gaps, cw, ch - gaps + d);
 
     /* tile the rest of the non-floating, non-maximize stack windows */
     for (b ? (cx += z + d - gaps) : (cy += z + d - gaps),
@@ -2976,9 +3124,9 @@ void stack(int hh, int cy)
         if (ISFMFTM(c))
             continue;
         if (b) {
-            xcb_move_resize(dis, c->win, cx, cy, ch, cw); cx += z;
+            xcb_move_resize(dis, c, cx, cy, ch, cw); cx += z;
         } else {
-            xcb_move_resize(dis, c->win, cx, cy, cw, ch); cy += z;
+            xcb_move_resize(dis, c, cx, cy, cw, ch); cy += z;
         }
     }
 }
@@ -3076,12 +3224,12 @@ void togglescratchpad()
 
     if (showscratchpad) {
         xcb_get_geometry_reply_t *wa = get_geometry(scrpd->win);
-        xcb_move(dis, scrpd->win, (ww - wa->width) / 2, (wh - wa->height) / 2);
+        xcb_move(dis, scrpd, (ww - wa->width) / 2, (wh - wa->height) / 2);
         free(wa);
         update_current(scrpd);
         xcb_raise_window(dis, scrpd->win);
     } else {
-        xcb_move(dis, scrpd->win, -2 * ww, 0);
+        xcb_move(dis, scrpd, -2 * ww, 0);
         if(current == scrpd) {
             if(!prevfocus)
                 update_current(head);
@@ -3094,14 +3242,12 @@ void togglescratchpad()
 /* tile a floating client and save its size for re-floating */
 void unfloat_client(client *c)
 {
-    xcb_get_geometry_reply_t *r;
-
     if (!c)
         return;
 
     c->isfloating = false;
 
-    r = get_geometry(c->win);
+    xcb_get_geometry_reply_t *r = get_geometry(c->win);
     c->dim[0] = r->width;
     c->dim[1] = r->height;
     free(r);
