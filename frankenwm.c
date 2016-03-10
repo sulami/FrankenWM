@@ -730,38 +730,23 @@ fprintf(stderr, "create_display();\n");
     displayq[current_desktop]->invert      = invert;
 
     head = c;
-    prevfocus = NULL;
-    current = NULL;
+    prevfocus = current = NULL;
 
 /* initialize new display with current settings */
     d->master_size = master_size;
     d->mode        = mode;
     d->growth      = growth;
     d->head        = c;
-    d->showpanel   = showpanel;
     d->current     = NULL;
     d->prevfocus   = NULL;
+    d->showpanel   = showpanel;
     d->gaps        = gaps;
     d->invert      = invert;
 
 /* push current display to the queue and set new display as head. */
     d->next = displayq[current_desktop];
     displayq[current_desktop] = d;
-    update_current(c);
-}
-
-/* restore the current desktop's properties */
-static void restore_desktop(void)
-{
-    master_size     = displayq[current_desktop]->master_size;
-    mode            = displayq[current_desktop]->mode;
-    growth          = displayq[current_desktop]->growth;
-    head            = displayq[current_desktop]->head;
-    current         = displayq[current_desktop]->current;
-    showpanel       = displayq[current_desktop]->showpanel;
-    prevfocus       = displayq[current_desktop]->prevfocus;
-    gaps            = displayq[current_desktop]->gaps;
-    invert          = displayq[current_desktop]->invert;
+    update_current(head);
 }
 
 static void destroy_display(client *c)
@@ -781,6 +766,9 @@ fprintf(stderr, "destroy_display();\n");
             prevd = d;
         }
     }
+/* if prevd == NULL, then d is head display. */
+/* if d == NULL, then no display found. */
+
 gotcha:     /* every good program needs one goto  :) */
     if (!d          /* no display found. */
      || !d->next)   /* cannot destroy the last display. */
@@ -794,30 +782,30 @@ gotcha:     /* every good program needs one goto  :) */
     }
 /* if last == NULL, then the next display is empty. */
 
-/* move all clients to next display. */
-    client *tmp = d->head;              /* get head from current display. */
-    if (last == NULL) {                 /* next display is empty. */
-        last = d->next->head = tmp;     /* set new head and update last. */
-        tmp = tmp->next;                /* set tmp to next client. */
-    }
-    while (tmp) {
-        client *tmp_next = tmp->next;   /* save pointer to next client. */
-        tmp->next = NULL;               /* delete pointer. */
-        last->next = tmp;               /* link client to next display. */
-        last = last->next;              /* update last. */
-        tmp = tmp_next;                 /* and restore next pointer. */
-    }
+/* relink entire clientlist to the tail (or head) of next display clientlist. */
+    if (last == NULL)                   /* next display is empty. */
+        d->next->head = d->head;        /* set clientlist as new head. */
+	else
+        last->next = d->head;           /* link clientlist to the tail. */
 
-    if (prevd)                          /* current display is not head display. */
-        prevd->next = d->next;          /* unlink current display. */
-    else {
-        displayq[di] = d->next;         /* set new current head. */
+/* unlink display. */
+    if (displayq[di] == d) {            /* current display is head display. */
+        displayq[di] = d->next;         /* set new head display. */
+        if (di == current_desktop) {    /* current display is active desktop. */
+            master_size = displayq[di]->master_size;
+            mode        = displayq[di]->mode;
+            growth      = displayq[di]->growth;
+            head        = displayq[di]->head;
+            current     = NULL;
+            prevfocus   = NULL;
+            showpanel   = displayq[di]->showpanel;
+            gaps        = displayq[di]->gaps;
+            invert      = displayq[di]->invert;
+            update_current(c);          /* update tiling and focus. */
+        }
     }
-
-    if (di == current_desktop) {        /* current display is active desktop. */
-        restore_desktop();              /* restore global pointers. */
-        update_current(c);              /* update tiling and focus. */
-    }
+    else
+        prevd->next = d->next;
 
     free (d);                           /* finally, free the display memory. */
 }
@@ -1159,8 +1147,7 @@ void clientmessage(xcb_generic_event_t *e)
 
                 case _NET_WM_STATE_ADD:
                     c->isfullscreen = True;
-                    if (!head->next)
-                        create_display(c);
+                    create_display(c);
                     xcb_lower_window(dis, c->win);
                     xcb_border_width(dis, c->win, 0);
                     xcb_move_resize(dis, c, 0, 0,
@@ -3331,7 +3318,7 @@ void update_current(client *newfocus)   // newfocus may be NULL
             current = prevfocus;
             prevfocus = prev_client(current);       // get previous client in list, may be NULL
         }
-        else if (newfocus != current) {
+        else {
             prevfocus = current;
             current = newfocus;
         }
@@ -3373,12 +3360,10 @@ void update_current(client *newfocus)   // newfocus may be NULL
     if (USE_SCRATCHPAD && showscratchpad && scrpd)
         xcb_raise_window(dis, scrpd->win);
 
-    if(current && !current->isfullscreen) {
-        if (check_head(&alienlist)) {
-            alien *a;
-            for(a=(alien *)get_head(&alienlist); a; a=(alien *)get_next((node *)a))
-                xcb_raise_window(dis, a->win);
-        }
+    if (check_head(&alienlist)) {
+        alien *a;
+        for(a=(alien *)get_head(&alienlist); a; a=(alien *)get_next((node *)a))
+            xcb_raise_window(dis, a->win);
     }
 
     if (current) {
@@ -3400,6 +3385,7 @@ void update_current(client *newfocus)   // newfocus may be NULL
 /* find to which client the given window belongs to */
 client *wintoclient(xcb_window_t win)
 {
+   displayq[current_desktop]->head = head;
    for (int i = 0; i < DESKTOPS; i++) {
         for (disq *d = displayq[i]; d; d = d->next) {
             client *hp = (i == current_desktop) ? head : d->head;
