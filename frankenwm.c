@@ -51,6 +51,8 @@ enum { _NET_WM_STATE_REMOVE, _NET_WM_STATE_ADD, _NET_WM_STATE_TOGGLE };
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
 #define ISFMFTM(c)      (c->isfullscreen || c->ismaximized || c->isfloating || c->istransient || c->isminimized)
 #define USAGE           "usage: frankenwm [-h] [-v]"
+/* future enhancements */
+#define MONITORS 1
 
 enum { RESIZE, MOVE };
 enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, DUALSTACK, EQUAL, MODES };
@@ -71,8 +73,8 @@ struct list {
 typedef struct list list;
 
 struct node {
-    struct node *next;
     struct node *prev;
+    struct node *next;
     struct list *parent;
 };
 typedef struct node node;
@@ -115,8 +117,7 @@ typedef struct {
 /* a client is a wrapper to a window that additionally
  * holds some properties for that window
  *
- * next          - the client after this one, or NULL if the current is the last
- *                 client
+ * link          - doubly linked list node
  * isurgent      - set when the window received an urgent hint
  * istransient   - set when the window is transient
  * isfullscreen  - set when the window is fullscreen (not maximized)
@@ -134,8 +135,8 @@ typedef struct {
 /*
  * Developer reminder: do not forget to update create_client();
  */
-typedef struct client {
-    struct client *next;
+typedef struct {
+    node link;  /* must be first */
     bool isurgent, istransient, isfullscreen, ismaximized, isfloating, isminimized;
     xcb_window_t win;
     xcb_atom_t type;
@@ -146,29 +147,36 @@ typedef struct client {
 } client;
 
 /* properties of each desktop
- * master_size  - the size of the master window
- * mode         - the desktop's tiling layout mode
- * growth       - growth factor of the first stack window
- * head         - the start of the client list
  * current      - the currently highlighted window
  * prevfocus    - the client that previously had focus
+ * mode         - the desktop's tiling layout mode
+ * growth       - growth factor of the first stack window
+ * master_size  - the size of the master window
  * showpanel    - the visibility status of the panel
  */
-/*
 typedef struct {
-    int mode, growth, gaps;
-    float master_size;
     client *current, *prevfocus;
+    int mode, growth, gaps, master_size;
     bool showpanel, invert;
+} displayinfo;
+
+/* display */
+typedef struct {
+    node link;      /* must be first */
+    list clients;
+    displayinfo di;
+} display;
+
+typedef struct {
+    node link;      /* must be first */
+    list displays;  /* display queue */
+} monitor;
+
+/* desktop */
+typedef struct {
+    node link;      /* must be first */
+    list monitors;  /* monitor queue */
 } desktop;
-*/
-typedef struct disq {
-    struct disq *next;
-    int mode, growth, gaps;
-    float master_size;
-    client *head, *current, *prevfocus;
-    bool showpanel, invert;
-} disq;
 
 /* lifo for minimized clients */
 typedef struct lifo {
@@ -301,19 +309,20 @@ int wy = 0;
 static bool running = true, showpanel = SHOW_PANEL, show = true,
             invert = INVERT, showscratchpad = false;
 static int default_screen, previous_desktop, current_desktop, retval;
-static int wh, ww, mode = DEFAULT_MODE, master_size, growth, borders, gaps;
+static int wh, ww, borders;
 static unsigned int numlockmask, win_unfocus, win_focus, win_scratch;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
 static uint32_t checkwin;
 static xcb_atom_t scrpd_atom;
-static client *head = NULL, *prevfocus = NULL, *current = NULL, *scrpd = NULL;
-static list alienlist;
+static display *current_display = NULL;
+static client *scrpd = NULL;
+static list desktops;
+static list aliens;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT];
 static lifo *miniq[DESKTOPS];
-static disq *displayq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
 static xcb_key_symbols_t *keysyms;
 
@@ -362,6 +371,8 @@ static void unlink_node(node *n)
             n->next->prev = n->prev;
         }
     }
+    n->prev = n->next = NULL;
+    n->parent = NULL;
 }
 
 static void destroy_node(node *n)
@@ -397,6 +408,17 @@ static void add_tail(list *l, node *n)
         l->tail = n;
     }
     n->parent = l;
+}
+
+static void append_node(list *l, node *p, node *n)
+{
+    if (!p) {
+        add_tail(l, n);
+        return;
+    }
+    n->next = p->next;
+    n->next->prev = n;
+    p->next =n;
 }
 
 /*
@@ -664,150 +686,133 @@ static int xcb_checkotherwm(void)
 }
 
 
-static void setup_displayq(void)
+static void setup_display(void)
 {
-    for (int i = 0; i < DESKTOPS; i++) {
-        if (!(displayq[i] = calloc(1, sizeof(disq))))
-            err(EXIT_FAILURE, "cannot allocate displayq"); 
+    memset(&desktops, 0, sizeof(desktop));
+    for (int d = 0; d < DESKTOPS; d++) {
+        desktop *desk;
+        if (!(desk = calloc(1, sizeof(desktop))))
+            err(EXIT_FAILURE, "cannot allocate desktop");
+        add_tail(&desktops, &desk->link);
+
+        for (int m = 0; m < MONITORS; m++) {
+            monitor *moni;
+            display *disp;
+            if (!(moni = calloc(1, sizeof(monitor))))
+                err(EXIT_FAILURE, "cannot allocate monitor");
+            add_tail(&desk->monitors, &moni->link);
+
+            if (!(disp = calloc(1, sizeof(display))))
+                err(EXIT_FAILURE, "cannot allocate display");
+            add_tail(&moni->displays, &disp->link);
+        }
     }
 }
 
-static void cleanup_displayq(void)
+static void cleanup_display(void)
 {
-    for (int i = 0; i < DESKTOPS; i++) {
-        for (disq *d = displayq[i]; d; ) {
-            disq *d_next = d->next;
-            for (client *c = d->head; c; ) {
-                client *c_next = c->next;
-                xcb_border_width(dis, c->win, 0);
-                free(c);
-                c = c_next;
+    desktop *desk;
+    for (desk = (desktop *)get_head(&desktops); desk; desk = (desktop *)get_head(&desktops)) {
+        monitor *moni;
+        for (moni = (monitor *)get_head(&desk->monitors); moni; moni = (monitor *)get_head(&desk->monitors)) {
+            display *disp;
+            for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_head(&moni->displays)) {
+                client *c;
+                for (c = (client *)get_head(&disp->clients); c; c = (client *)get_head(&disp->clients)) {
+                    xcb_border_width(dis, c->win, 0);
+                    destroy_node(&c->link);
+                }
+                destroy_node(&disp->link);
             }
-            free(d);
-            d = d_next;
+            destroy_node(&moni->link);
         }
+        destroy_node(&desk->link);
     }
 }
 
 static void create_display(client *c)
 {
-    disq *d;
+    display *disp;
 
     if (!c)
         return;
 
 fprintf(stderr, "create_display();\n");
 
-    if (!(d = calloc(1, sizeof(disq))))
+    if (!(disp = calloc(1, sizeof(display))))
         err(EXIT_FAILURE, "cannot allocate new display");
 
 /* unlink client from current client list. */
-    if (head == c)
-        head = c->next;
-    else {
-        for(client *p = head; p; p = p->next) {
-            if (p->next == c) {
-                p->next = c->next;
-                break;
-            }
-        }
-    }
-    c->next = NULL;
+    unlink_node(&c->link);
 
 /* hide current windows */
-    for(client *t = head; t; t = t->next)
+    for(client *t = (client *)get_head(&current_display->clients); t; t = (client *)get_next(&t->link))
         xcb_move(dis, t, -2 * ww, 0);
 
-/* save current settings */
-    displayq[current_desktop]->master_size = master_size;
-    displayq[current_desktop]->mode        = mode;
-    displayq[current_desktop]->growth      = growth;
-    displayq[current_desktop]->head        = head;
-    displayq[current_desktop]->current     = current;
-    displayq[current_desktop]->showpanel   = showpanel;
-    displayq[current_desktop]->prevfocus   = prevfocus;
-    displayq[current_desktop]->gaps        = gaps;
-    displayq[current_desktop]->invert      = invert;
+/* set client as new head */
+    add_head(&disp->clients, &c->link);
 
-    head = c;
-    prevfocus = current = NULL;
+/* copy settings */
+    disp->di.master_size = current_display->di.master_size;
+    disp->di.mode        = current_display->di.mode;
+    disp->di.growth      = current_display->di.growth;
+    disp->di.current     = NULL;
+    disp->di.prevfocus   = NULL;
+    disp->di.showpanel   = current_display->di.showpanel;
+    disp->di.gaps        = current_display->di.gaps;
+    disp->di.invert      = current_display->di.invert;
 
-/* initialize new display with current settings */
-    d->master_size = master_size;
-    d->mode        = mode;
-    d->growth      = growth;
-    d->head        = c;
-    d->current     = NULL;
-    d->prevfocus   = NULL;
-    d->showpanel   = showpanel;
-    d->gaps        = gaps;
-    d->invert      = invert;
 
-/* push current display to the queue and set new display as head. */
-    d->next = displayq[current_desktop];
-    displayq[current_desktop] = d;
-    update_current(head);
+/* set new display as head. */
+    add_head(current_display->link.parent, &disp->link);
+
+/* update current display pointer */
+    current_display = disp;
+
+/* update focus and tiling */
+    update_current(NULL);
+}
+
+static void getparents(client *c, display **di, monitor **mo, desktop **de)
+{
+    if (!c) return;
+    display *disp = (display *)c->link.parent;
+    monitor *moni = (monitor *)disp->link.parent;
+    desktop *desk = (desktop *)moni->link.parent;
+    if (di) *di = disp;
+    if (mo) *mo = moni;
+    if (de) *de = desk;
 }
 
 static void destroy_display(client *c)
 {
-    disq *d, *prevd=NULL;
-    uint16_t di;
+    desktop *desk=NULL;
+    monitor *moni=NULL;
+    display *disp=NULL, *next;
 
 fprintf(stderr, "destroy_display();\n");
 
-/* find the client's display. */
-    for (di = 0; di < DESKTOPS; di++) {
-        for (d = displayq[di]; d; d = d->next) {
-            for (client *t = d->head; t; t = t->next) {
-                if (c == t)
-                    goto gotcha;
-            }
-            prevd = d;
-        }
+/* find the client's display, desktop and monitor. */
+    getparents(c, &disp, &moni, &desk);
+
+    if (!(next = (display *)get_next(&disp->link)))
+        return;     /* cannot destroy the last display. */
+
+/* relink entire clientlist to the next display clientlist. */
+    for (client *t = (client *)get_head(&disp->clients); t; t = (client *)get_head(&disp->clients)) {
+        unlink_node(&t->link);
+        add_tail(&next->clients, &t->link);
     }
-/* if prevd == NULL, then d is head display. */
-/* if d == NULL, then no display found. */
 
-gotcha:     /* every good program needs one goto  :) */
-    if (!d          /* no display found. */
-     || !d->next)   /* cannot destroy the last display. */
-        return;
+/* unlink empty display */
+    unlink_node(&disp->link);
 
-/* find last client in next display. */
-    client *last;
-    for (last = d->next->head; last; last = last->next) {
-        if (last->next == NULL)
-            break;
+    if (current_display == disp) {
+        current_display = next;
+        update_current(c);
     }
-/* if last == NULL, then the next display is empty. */
 
-/* relink entire clientlist to the tail (or head) of next display clientlist. */
-    if (last == NULL)                   /* next display is empty. */
-        d->next->head = d->head;        /* set clientlist as new head. */
-	else
-        last->next = d->head;           /* link clientlist to the tail. */
-
-/* unlink display. */
-    if (displayq[di] == d) {            /* current display is head display. */
-        displayq[di] = d->next;         /* set new head display. */
-        if (di == current_desktop) {    /* current display is active desktop. */
-            master_size = displayq[di]->master_size;
-            mode        = displayq[di]->mode;
-            growth      = displayq[di]->growth;
-            head        = displayq[di]->head;
-            current     = NULL;
-            prevfocus   = NULL;
-            showpanel   = displayq[di]->showpanel;
-            gaps        = displayq[di]->gaps;
-            invert      = displayq[di]->invert;
-            update_current(c);          /* update tiling and focus. */
-        }
-    }
-    else
-        prevd->next = d->next;
-
-    free (d);                           /* finally, free the display memory. */
+    free(disp);
 }
 
 /* create a new client and add the new window
@@ -815,17 +820,17 @@ gotcha:     /* every good program needs one goto  :) */
  */
 client *addwindow(xcb_window_t win, xcb_atom_t wtype)
 {
-    client *c = create_client(win, wtype), *t = prev_client(head);
+    client *c = create_client(win, wtype), *t = prev_client(get_head(&current_display->clients));
 
 /* c is valid, else we would not get here */
-    if (!head) {
-        head = c;
-    } else if (!ATTACH_ASIDE) {
-        c->next = head; head = c;
-    } else if (t) {
-        t->next = c;
-    } else {
-        head->next = c;
+    if (!check_head(&current_display->clients)) {
+        add_head(&current_display->clients, &c->link);
+    }
+    else {
+        if (!ATTACH_ASIDE)
+            add_head(&current_display->clients, &c->link);
+        else /* if t == NULL, then add_tail, else append. */
+            append_node(&current_display->clients, &t->link, &c->link);
     }
     DEBUG("client added");
     setwindefattr(win);
@@ -838,20 +843,33 @@ void adjust_borders(const Arg *arg)
     if (arg->i > 0 || borders >= -arg->i)
         borders += arg->i;
     tile();
-    update_current(current);
+    update_current(current_display->di.current);
 }
 
 /* change the size of the useless gaps on the fly and re-tile */
 void adjust_gaps(const Arg *arg)
 {
+    int gaps = current_display->di.gaps;
     if (arg->i > 0 || gaps >= -arg->i)
         gaps += arg->i;
-
-    if (GLOBALGAPS)
-        for (int i = 0; i < DESKTOPS; i++)
-            displayq[i]->gaps = gaps;
     else
-        displayq[current_desktop]->gaps = gaps;
+        return;
+
+    if (GLOBALGAPS) {
+        desktop *desk;
+        for (desk = (desktop *)get_head(&desktops); desk; desk = (desktop *)get_next(&desk->link)) {
+            monitor *moni;
+            for (moni = (monitor *)get_head(&desk->monitors); moni; moni = (monitor *)get_next(&moni->link)) {
+                display *disp;
+                for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_next(&disp->link)) {
+                    disp->di.gaps = gaps;
+                }
+            }
+        }
+    }
+    else
+        current_display->di.gaps = gaps;
+
     tile();
 }
 
@@ -869,14 +887,14 @@ void buttonpress(xcb_generic_event_t *e)
             return;
     }
 
-    if (CLICK_TO_FOCUS && current != c && ev->detail == XCB_BUTTON_INDEX_1)
+    if (CLICK_TO_FOCUS && current_display->di.current != c && ev->detail == XCB_BUTTON_INDEX_1)
         update_current(c);
 
     if (c != scrpd) {
         for (unsigned int i = 0; i < LENGTH(buttons); i++)
             if (buttons[i].func && buttons[i].button == ev->detail &&
                 CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state)) {
-                if (current != c)
+                if (current_display->di.current != c)
                     update_current(c);
                 buttons[i].func(&(buttons[i].arg));
             }
@@ -902,22 +920,26 @@ void change_desktop(const Arg *arg)
     previous_desktop = current_desktop;
     select_desktop(arg->i);
     if (show) {
-        if (current && current != scrpd)
-            xcb_move(dis, current, current->px, current->py);
-        for (client *c = head; c; c = c->next) {
-            if (c != current)
+        if (current_display->di.current
+         && current_display->di.current != scrpd)
+            xcb_move(dis, current_display->di.current,
+                          current_display->di.current->px,
+                          current_display->di.current->py);
+        for (client *c = (client *)get_head(&current_display->clients); c; c = (client *)get_next(&c->link)) {
+            if (c != current_display->di.current)
                 xcb_move(dis, c, c->px, c->py);
         }
     }
     select_desktop(previous_desktop);
-    for(client *c = head; c; c = c->next) {
-        if (c != current)
+    for(client *c = (client *)get_head(&current_display->clients); c; c = (client *)get_next(&c->link)) {
+        if (c != current_display->di.current)
             xcb_move(dis, c, -2 * ww, 0);
     }
-    if (current && current != scrpd) 
-        xcb_move(dis, current, -2 * ww, 0); 
+    if (current_display->di.current
+     && current_display->di.current != scrpd) 
+        xcb_move(dis, current_display->di.current, -2 * ww, 0); 
     select_desktop(arg->i);
-    update_current(current);
+    update_current(current_display->di.current);
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
 }
@@ -976,7 +998,7 @@ static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_ato
     if (isAlien) {
         alien *a;
         if ((a = create_alien(win)))
-            add_tail(&alienlist, (node *)a);
+            add_tail(&aliens, &a->link);
         xcb_raise_window(dis, win);
         xcb_map_window(dis, win);
     }
@@ -1003,15 +1025,16 @@ static void centerfloating(client *c)
  */
 void centerwindow(void)
 {
-    if (!current)
+    if (!current_display->di.current)
         return;
 
-    if (!current->isfloating && !current->istransient) {
-        float_client(current);
+    if (!current_display->di.current->isfloating
+     && !current_display->di.current->istransient) {
+        float_client(current_display->di.current);
         tile();
     }
 
-    centerfloating(current);
+    centerfloating(current_display->di.current);
 }
 
 /* remove all windows in all desktops by sending a delete message */
@@ -3385,13 +3408,17 @@ void update_current(client *newfocus)   // newfocus may be NULL
 /* find to which client the given window belongs to */
 client *wintoclient(xcb_window_t win)
 {
-   displayq[current_desktop]->head = head;
-   for (int i = 0; i < DESKTOPS; i++) {
-        for (disq *d = displayq[i]; d; d = d->next) {
-            client *hp = (i == current_desktop) ? head : d->head;
-            for (client *c = hp; c; c = c->next) {
-                if (c->win == win) {
-                    return c;
+    desktop *desk;
+    for (desk = (desktop *)get_head(&desktoplist); desk; desk = (desktop *)get_next(&desk->link)) {
+        monitor *moni;
+        for (moni = (moni *)get_head(&desk->monitors); desk; desk = (desktop *)get_next(&desk->link)) {
+            display *disp;
+            for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_next(&disp->link)) {
+                client *c;
+                for (c = (client *)get_head(&disp->clients); c; c = (client *)get_next(&c->link)) {
+                    if (c->win == win) {
+                        return c;
+                    }
                 }
             }
         }
