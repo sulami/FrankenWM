@@ -155,27 +155,42 @@ typedef struct {
  * showpanel    - the visibility status of the panel
  */
 typedef struct {
-    client *current, *prevfocus;
-    int mode, growth, gaps, master_size;
+    float master_size;
+    int mode, growth, gaps;
     bool showpanel, invert;
 } displayinfo;
+#define M_MASTER_SIZE (current_display->di.master_size)
+#define M_MODE        (current_display->di.mode)
+#define M_GROWTH      (current_display->di.growth)
+#define M_GAPS        (current_display->di.gaps)
+#define M_SHOWPANEL   (current_display->di.showpanel)
+#define M_INVERT      (current_display->di.invert)
 
-/* display */
+/* properties of each display
+ * current      - the currently highlighted window
+ */
 typedef struct {
     node link;      /* must be first */
     list clients;
+    client *current, *prevfocus;
     displayinfo di;
 } display;
+#define M_CURRENT     (current_display->current)
+#define M_PREVFOCUS   (current_display->prevfocus)
 
 typedef struct {
     node link;      /* must be first */
     list displays;  /* display queue */
+    unsigned int num;
+    unsigned int ww, wh;
+    int wy;
 } monitor;
 
 /* desktop */
 typedef struct {
     node link;      /* must be first */
     list monitors;  /* monitor queue */
+    unsigned int num;
 } desktop;
 
 /* lifo for minimized clients */
@@ -243,7 +258,6 @@ static void move_down();
 static void move_up();
 static void mousemotion(const Arg *arg);
 static void next_win();
-static client *prev_client();
 static void prev_win();
 static void propertynotify(xcb_generic_event_t *e);
 static void quit(const Arg *arg);
@@ -259,7 +273,6 @@ static void rotate_client(const Arg *arg);
 static void rotate_filled(const Arg *arg);
 static void rotate_mode(const Arg *arg);
 static void run(void);
-static void save_desktop(int i);
 static void select_desktop(int i);
 static bool sendevent(xcb_window_t win, xcb_atom_t proto);
 static void setmaximize(client *c, bool fullscrn);
@@ -302,23 +315,31 @@ static inline void Reset_Global_Strut(void);
 static void Update_Global_Strut(void);
 
 static strut_t gstrut;
-int wy = 0;
 #endif /* EWMH_TASKBAR */
 
 /* variables */
-static bool running = true, showpanel = SHOW_PANEL, show = true,
-            invert = INVERT, showscratchpad = false;
-static int default_screen, previous_desktop, current_desktop, retval;
-static int wh, ww, borders;
+static bool running = true, show = true, showscratchpad = false;
+static int default_screen, previous_desktop, current_desktop_number, retval;
+static int borders;
 static unsigned int numlockmask, win_unfocus, win_focus, win_scratch;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
 static uint32_t checkwin;
 static xcb_atom_t scrpd_atom;
-static display *current_display = NULL;
 static client *scrpd = NULL;
 static list desktops;
 static list aliens;
+
+static desktop *current_desktop = NULL;
+
+static monitor *current_monitor = NULL;
+#define M_WW          (current_monitor->ww)
+#define M_WH          (current_monitor->wh)
+#define M_WY          (current_monitor->wy)
+
+static display *current_display = NULL;
+#define M_HEAD 		  ((client *)(current_display->clients.head))
+#define M_TAIL 		  ((client *)(current_display->clients.tail))
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT];
@@ -410,15 +431,23 @@ static void add_tail(list *l, node *n)
     n->parent = l;
 }
 
-static void append_node(list *l, node *p, node *n)
+static void insert_node_after(list *l, node *p, node *n)
 {
-    if (!p) {
+    if (!p)
         add_tail(l, n);
-        return;
+    else {
+        n->next = p->next;
+        n->next->prev = n;
+        p->next =n;
     }
-    n->next = p->next;
-    n->next->prev = n;
-    p->next =n;
+}
+
+static void insert_node_before(list *l, node *p, node *n)
+{
+    if (!p->prev)
+        add_head(l, n);
+    else
+        insert_node_after(l, p->prev, n);
 }
 
 /*
@@ -437,6 +466,9 @@ static inline node *get_node_tail(node *n) { return (n && n->parent) ? n->parent
 static inline node *get_next(node *n) { return (n) ? n->next : NULL; }
 
 static inline node *get_prev(node *n) { return (n) ? n->prev : NULL; }
+
+#define M_GETNEXT(c)  ((client *)get_next(&c->link))
+#define M_GETPREV(c)  ((client *)get_prev(&c->link))
 
 static alien *wintoalien(list *l, xcb_window_t win)
 {
@@ -685,6 +717,15 @@ static int xcb_checkotherwm(void)
     return 0;
 }
 
+/* find desktop by number */
+static desktop *find_desktop(int n)
+{
+    for (desktop *d = (desktop *)get_head(&desktops); d; d = (desktop *)get_next(&d->link)) {
+        if (d->num == n)
+            return d;
+    }
+    return NULL;
+}
 
 static void setup_display(void)
 {
@@ -701,10 +742,33 @@ static void setup_display(void)
             if (!(moni = calloc(1, sizeof(monitor))))
                 err(EXIT_FAILURE, "cannot allocate monitor");
             add_tail(&desk->monitors, &moni->link);
+/* TODO: multi monitor support */
+            moni->num = 0;
+            moni->ww = screen->width_in_pixels;
+            moni->wh = screen->height_in_pixels;
+#ifndef EWMH_TASKBAR
+            moni->wh -= PANEL_HEIGHT;
+#endif /* EWMH_TASKBAR */
 
+/* each monitor gets 1 default display. */
             if (!(disp = calloc(1, sizeof(display))))
                 err(EXIT_FAILURE, "cannot allocate display");
             add_tail(&moni->displays, &disp->link);
+            /* disp->di.master_size = MASTER_SIZE; */
+            disp->di.gaps = USELESSGAP;
+            disp->di.mode = DEFAULT_MODE;
+            disp->di.showpanel = SHOW_PANEL;
+            disp->di.invert = INVERT;
+
+/* Pivot monitor support */
+            if (moni->wh > moni->ww) {
+                if (disp->di.mode == TILE)
+                    disp->di.mode = BSTACK;
+                else {
+                    if (disp->di.mode == BSTACK)
+                        disp->di.mode = TILE;
+                }
+            }
         }
     }
 }
@@ -746,22 +810,14 @@ fprintf(stderr, "create_display();\n");
     unlink_node(&c->link);
 
 /* hide current windows */
-    for(client *t = (client *)get_head(&current_display->clients); t; t = (client *)get_next(&t->link))
-        xcb_move(dis, t, -2 * ww, 0);
+    for (client *t = M_HEAD; t; t = M_GETNEXT(t))
+        xcb_move(dis, t, -2 * M_WW, 0);
 
 /* set client as new head */
     add_head(&disp->clients, &c->link);
 
 /* copy settings */
-    disp->di.master_size = current_display->di.master_size;
-    disp->di.mode        = current_display->di.mode;
-    disp->di.growth      = current_display->di.growth;
-    disp->di.current     = NULL;
-    disp->di.prevfocus   = NULL;
-    disp->di.showpanel   = current_display->di.showpanel;
-    disp->di.gaps        = current_display->di.gaps;
-    disp->di.invert      = current_display->di.invert;
-
+    memcpy(&disp->di, &current_display->di, sizeof(displayinfo));
 
 /* set new display as head. */
     add_head(current_display->link.parent, &disp->link);
@@ -820,7 +876,7 @@ fprintf(stderr, "destroy_display();\n");
  */
 client *addwindow(xcb_window_t win, xcb_atom_t wtype)
 {
-    client *c = create_client(win, wtype), *t = prev_client(get_head(&current_display->clients));
+    client *c = create_client(win, wtype);
 
 /* c is valid, else we would not get here */
     if (!check_head(&current_display->clients)) {
@@ -829,8 +885,8 @@ client *addwindow(xcb_window_t win, xcb_atom_t wtype)
     else {
         if (!ATTACH_ASIDE)
             add_head(&current_display->clients, &c->link);
-        else /* if t == NULL, then add_tail, else append. */
-            append_node(&current_display->clients, &t->link, &c->link);
+        else
+            add_tail(&current_display->clients, &c->link);
     }
     DEBUG("client added");
     setwindefattr(win);
@@ -843,13 +899,14 @@ void adjust_borders(const Arg *arg)
     if (arg->i > 0 || borders >= -arg->i)
         borders += arg->i;
     tile();
-    update_current(current_display->di.current);
+    update_current(M_CURRENT);
 }
 
 /* change the size of the useless gaps on the fly and re-tile */
 void adjust_gaps(const Arg *arg)
 {
-    int gaps = current_display->di.gaps;
+    int gaps = M_GAPS;
+
     if (arg->i > 0 || gaps >= -arg->i)
         gaps += arg->i;
     else
@@ -868,7 +925,7 @@ void adjust_gaps(const Arg *arg)
         }
     }
     else
-        current_display->di.gaps = gaps;
+        M_GAPS = gaps;
 
     tile();
 }
@@ -887,14 +944,14 @@ void buttonpress(xcb_generic_event_t *e)
             return;
     }
 
-    if (CLICK_TO_FOCUS && current_display->di.current != c && ev->detail == XCB_BUTTON_INDEX_1)
+    if (CLICK_TO_FOCUS && M_CURRENT != c && ev->detail == XCB_BUTTON_INDEX_1)
         update_current(c);
 
     if (c != scrpd) {
         for (unsigned int i = 0; i < LENGTH(buttons); i++)
             if (buttons[i].func && buttons[i].button == ev->detail &&
                 CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state)) {
-                if (current_display->di.current != c)
+                if (M_CURRENT != c)
                     update_current(c);
                 buttons[i].func(&(buttons[i].arg));
             }
@@ -915,31 +972,27 @@ void buttonpress(xcb_generic_event_t *e)
  * first all others then the current */
 void change_desktop(const Arg *arg)
 {
-    if (arg->i == current_desktop || arg->i > DESKTOPS-1)
+    if (arg->i == current_desktop_number || arg->i > DESKTOPS-1)
         return;
-    previous_desktop = current_desktop;
+    previous_desktop = current_desktop_number;
     select_desktop(arg->i);
     if (show) {
-        if (current_display->di.current
-         && current_display->di.current != scrpd)
-            xcb_move(dis, current_display->di.current,
-                          current_display->di.current->px,
-                          current_display->di.current->py);
-        for (client *c = (client *)get_head(&current_display->clients); c; c = (client *)get_next(&c->link)) {
-            if (c != current_display->di.current)
+        if (M_CURRENT && M_CURRENT != scrpd)
+            xcb_move(dis, M_CURRENT, M_CURRENT->px, M_CURRENT->py);
+        for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
+            if (c != M_CURRENT)
                 xcb_move(dis, c, c->px, c->py);
         }
     }
     select_desktop(previous_desktop);
-    for(client *c = (client *)get_head(&current_display->clients); c; c = (client *)get_next(&c->link)) {
-        if (c != current_display->di.current)
-            xcb_move(dis, c, -2 * ww, 0);
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
+        if (c != M_CURRENT)
+            xcb_move(dis, c, -2 * M_WW, 0);
     }
-    if (current_display->di.current
-     && current_display->di.current != scrpd) 
-        xcb_move(dis, current_display->di.current, -2 * ww, 0); 
+    if (M_CURRENT && M_CURRENT != scrpd) 
+        xcb_move(dis, M_CURRENT, -2 * M_WW, 0); 
     select_desktop(arg->i);
-    update_current(current_display->di.current);
+    update_current(M_CURRENT);
     desktopinfo();
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
 }
@@ -1015,8 +1068,8 @@ static void centerfloating(client *c)
 
     xcb_get_geometry_reply_t *wa = get_geometry(c->win);
     xcb_raise_window(dis, c->win);
-    xcb_move(dis, c, ((ww - wa->width) / 2) - c->borderwidth,
-                     ((wh - wa->height) / 2) - c->borderwidth);
+    xcb_move(dis, c, ((M_WW - wa->width) / 2) - c->borderwidth,
+                     ((M_WH - wa->height) / 2) - c->borderwidth);
     free(wa);
 }
 
@@ -1025,16 +1078,16 @@ static void centerfloating(client *c)
  */
 void centerwindow(void)
 {
-    if (!current_display->di.current)
+    if (!M_CURRENT)
         return;
 
-    if (!current_display->di.current->isfloating
-     && !current_display->di.current->istransient) {
-        float_client(current_display->di.current);
+    if (!M_CURRENT->isfloating
+     && !M_CURRENT->istransient) {
+        float_client(M_CURRENT);
         tile();
     }
 
-    centerfloating(current_display->di.current);
+    centerfloating(M_CURRENT);
 }
 
 /* remove all windows in all desktops by sending a delete message */
@@ -1052,7 +1105,7 @@ void cleanup(void)
         else {
             xcb_border_width(dis, scrpd->win, 0);
             xcb_get_geometry_reply_t *wa = get_geometry(scrpd->win);
-            xcb_move(dis, scrpd, (ww - wa->width) / 2, (wh - wa->height) / 2);
+            xcb_move(dis, scrpd, (M_WW - wa->width) / 2, (M_WH - wa->height) / 2);
             free(wa);
         }
         free(scrpd);
@@ -1075,10 +1128,10 @@ void cleanup(void)
         }
     }
 
-    cleanup_displayq();
+    cleanup_display();
 
-    while (check_head(&alienlist)) {
-        destroy_node(get_head(&alienlist));
+    while (check_head(&aliens)) {
+        destroy_node(get_head(&aliens));
     }
 }
 
@@ -1099,29 +1152,23 @@ int client_borders(const client *c)
  * and add it as last client of the new desktop's client list */
 void client_to_desktop(const Arg *arg)
 {
-    if (!current || arg->i == current_desktop || arg->i > DESKTOPS-1)
+    if (!M_CURRENT || arg->i == current_desktop_number || arg->i > DESKTOPS-1)
         return;
-    int cd = current_desktop;
-    client *p = prev_client(current), *c = current;
+    int cd = current_desktop_number;
+    client *c = M_CURRENT;
 
+    unlink_node(&c->link);
     select_desktop(arg->i);
-    client *l = prev_client(head);
-    update_current(l ? (l->next = c) : head ? (head->next = c) : (head = c));
-
+    add_tail(&current_display->clients, &c->link);
     select_desktop(cd);
-    if (c == head || !p)
-        head = c->next;
-    else
-        p->next = c->next;
-    c->next = NULL;
-    xcb_move(dis, c, -2 * ww, 0);
-    update_current(prevfocus);
+    xcb_move(dis, c, -2 * M_WW, 0);
     xcb_ewmh_set_wm_desktop(ewmh, c->win, arg->i);
 
     if (FOLLOW_WINDOW)
         change_desktop(arg);
     else
-        tile();
+        update_current(M_PREVFOCUS);
+
     desktopinfo();
 }
 
@@ -1209,7 +1256,7 @@ void clientmessage(xcb_generic_event_t *e)
                 if (ev->type == ewmh->_NET_ACTIVE_WINDOW) {
                     if (c) {
                         client *t = NULL;
-                        for (t = head; t && t != c; t = t->next)
+                        for (t = M_HEAD; t && t != c; t = M_GETNEXT(t))
                             ;
                         if (t)
                             update_current(c);
@@ -1256,16 +1303,16 @@ void configurerequest(xcb_generic_event_t *e)
 #ifndef EWMH_TASKBAR
                 if (showpanel && TOP_PANEL && y < PANEL_HEIGHT)
 #else
-                if (y < wy)
+                if (y < M_WY)
 #endif /* EWMH_TASKBAR */
                      y = PANEL_HEIGHT;
             }
             v[i++] = y;
         }
         if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
-            v[i++] = (ev->width < ww - borders) ? ev->width : ww + borders;
+            v[i++] = (ev->width < M_WW - borders) ? ev->width : M_WW + borders;
         if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
-            v[i++] = (ev->height < wh - borders) ? ev->height : wh + borders;
+            v[i++] = (ev->height < M_WH - borders) ? ev->height : M_WH + borders;
         if (ev->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
             v[i++] = ev->border_width;
         if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING)
@@ -1287,7 +1334,6 @@ static client *create_client(xcb_window_t win, xcb_atom_t wtype)
     client *c = calloc(1, sizeof(client));
     if (!c)
         err(EXIT_FAILURE, "cannot allocate client");
-    c->next = NULL;
     c->isurgent = False;
     c->istransient = False;
     c->ismaximized = False;
@@ -1303,7 +1349,6 @@ static client *create_client(xcb_window_t win, xcb_atom_t wtype)
         c->setfocus = (hints.input) ? True : False;
     return c;
 }
-
 
 /* close the window */
 bool deletewindow(xcb_window_t win)
@@ -1330,7 +1375,7 @@ void desktopinfo(void)
 {
 #ifndef EWMH_TASKBAR
     bool urgent = false;
-    int cd = current_desktop, n = 0, d = 0;
+    int cd = current_desktop_number, n = 0, d = 0;
     xcb_get_property_cookie_t cookie;
     xcb_ewmh_get_utf8_strings_reply_t wtitle;
     wtitle.strings = NULL;
@@ -1341,14 +1386,14 @@ void desktopinfo(void)
     }
 
     for (client *c; d < DESKTOPS; d++) {
-        for (select_desktop(d), c = head, n = 0, urgent = false;
-             c; c = c->next, ++n)
+        for (select_desktop(d), c = M_HEAD, n = 0, urgent = false;
+             c; c = M_GETNEXT(c), ++n)
             if (c->isurgent)
                 urgent = true;
-        fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, mode, current_desktop == cd,
+        fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, mode, current_desktop_number == cd,
                 urgent);
         if (d + 1 == DESKTOPS)
-            fprintf(stdout, "%s\n", current && OUTPUT_TITLE && wtitle.strings ?
+            fprintf(stdout, "%s\n", M_CURRENT && OUTPUT_TITLE && wtitle.strings ?
                     wtitle.strings : "");
     }
 
@@ -1383,12 +1428,12 @@ void destroynotify(xcb_generic_event_t *e)
     else if (USE_SCRATCHPAD && scrpd && ev->window == scrpd->win) {
         free(scrpd);
         scrpd = NULL;
-        update_current(head);
+        update_current(M_CURRENT);
     }
    else {
         alien *a;
 
-        if((a = wintoalien(&alienlist, ev->window))) {
+        if((a = wintoalien(&aliens, ev->window))) {
             DEBUG("unlink selfmapped window");
             destroy_node(&a->link);
         }
@@ -1401,10 +1446,10 @@ void dualstack(int hh, int cy)
 {
     client *c = NULL, *t = NULL;
     int n = 0, z = hh, d = 0, l = 0, r = 0, cb = cy,
-        ma = (invert ? wh : ww) * MASTER_SIZE + master_size;
+        ma = (M_INVERT ? M_WH : M_WW) * MASTER_SIZE + M_MASTER_SIZE;
 
     /* count stack windows and grab first non-floating, non-maximize window */
-    for (t = head; t; t = t->next) {
+    for (t = M_HEAD; t; t = M_GETNEXT(t)) {
         if (!ISFMFTM(t)) {
             if (c)
                 ++n;
@@ -1420,55 +1465,55 @@ void dualstack(int hh, int cy)
         return;
     } else if (!n) {
         int borders = client_borders(c);
-        xcb_move_resize(dis, c, gaps, cy + gaps,
-                        ww - 2 * (borders + gaps),
-                        hh - 2 * (borders + gaps));
+        xcb_move_resize(dis, c, M_GAPS, cy + M_GAPS,
+                        M_WW - 2 * (borders + M_GAPS),
+                        hh - 2 * (borders + M_GAPS));
         return;
     }
 
     /* tile the first non-floating, non-maximize window to cover the master area */
     int borders = client_borders(c);
-    if (invert)
-        xcb_move_resize(dis, c, gaps,
-                        cy + (hh - ma) / 2 + gaps,
-                        ww - 2 * (borders + gaps),
-                        n > 1 ? ma - 2 * gaps - 2 * borders
-                              : ma + (hh - ma) / 2 - 2 * borders - 2 * gaps);
+    if (current_display->di.invert)
+        xcb_move_resize(dis, c, M_GAPS,
+                        cy + (hh - ma) / 2 + M_GAPS,
+                        M_WW - 2 * (borders + M_GAPS),
+                        n > 1 ? ma - 2 * M_GAPS - 2 * borders
+                              : ma + (hh - ma) / 2 - 2 * borders - 2 * M_GAPS);
     else
-        xcb_move_resize(dis, c, (ww - ma) / 2 + borders + gaps,
-                        cy + gaps,
-                        n > 1 ? ma - 4 * borders - 2 * gaps
-                              : ma + (ww - ma) / 2 - 3 * borders - 2 * gaps,
-                        hh - 2 * (borders + gaps));
+        xcb_move_resize(dis, c, (M_WW - ma) / 2 + borders + M_GAPS,
+                        cy + M_GAPS,
+                        n > 1 ? (ma - 4 * borders - 2 * M_GAPS)
+                              : (ma + (M_WW - ma) / 2 - 3 * borders - 2 * M_GAPS),
+                        hh - 2 * (borders + M_GAPS));
 
-    int cx = gaps,
-        cw = (ww - ma) / 2 - borders - gaps,
+    int cx = M_GAPS,
+        cw = (M_WW - ma) / 2 - borders - M_GAPS,
         ch = z;
-        cy += gaps;
+        cy += M_GAPS;
 
     /* tile the non-floating, non-maximize stack windows */
-    for (c = c->next; c; c = c->next) {
-        for (d = 0, t = head; t != c; t = t->next, d++);
+    for (c = M_GETNEXT(c); c; c = M_GETNEXT(c)) {
+        for (d = 0, t = M_HEAD; t != c; t = M_GETNEXT(t), d++);
         if (ISFMFTM(c))
             continue;
         int borders = client_borders(c);
-        if (invert) {
+        if (M_INVERT) {
             if (d == l + 1) /* we are on the -right- bottom stack, reset cy */
-                cx = gaps;
+                cx = M_GAPS;
             if (d > 1 && d != l + 1)
-                cx += (ww - gaps) / (d <= l ? l : r);
+                cx += (M_WW - M_GAPS) / (d <= l ? l : r);
             xcb_move_resize(dis, c,
-                        cx, (d <= l) ? cy : cy + (hh - ma) / 2 + ma - gaps,
-                        (ww - gaps) / (d <= l ? l : r) - 2 * borders - gaps,
-                        (hh - ma) / 2 - 2 * borders - gaps);
+                        cx, (d <= l) ? cy : cy + (hh - ma) / 2 + ma - M_GAPS,
+                        (M_WW - M_GAPS) / (d <= l ? l : r) - 2 * borders - M_GAPS,
+                        (hh - ma) / 2 - 2 * borders - M_GAPS);
         } else {
             if (d == l + 1) /* we are on the right stack, reset cy */
-                cy = cb + gaps;
+                cy = cb + M_GAPS;
             if (d > 1 && d != l + 1)
-                cy += (ch - gaps) / (d <= l ? l : r);
+                cy += (ch - M_GAPS) / (d <= l ? l : r);
             xcb_move_resize(dis, c,
-                        d <= l ? cx : ww - cw - 2 * borders - gaps, cy, cw,
-                        (ch - gaps) / (d <= l ? l : r) - 2 * borders - gaps);
+                        d <= l ? cx : M_WW - cw - 2 * borders - M_GAPS, cy, cw,
+                        (ch - M_GAPS) / (d <= l ? l : r) - 2 * borders - M_GAPS);
         }
     }
 }
@@ -1495,9 +1540,10 @@ void enternotify(xcb_generic_event_t *e)
     else {
         client *c = wintoclient(ev->event);
 
-        if (c && ev->mode == XCB_NOTIFY_MODE_NORMAL
-            && current != c
-            && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) {
+        if (c
+         && ev->mode == XCB_NOTIFY_MODE_NORMAL
+         && c != M_CURRENT
+         && ev->detail != XCB_NOTIFY_DETAIL_INFERIOR) {
             update_current(c);
         }
     }
@@ -1513,28 +1559,28 @@ void equal(int h, int y)
 {
     int n = 0, j = -1;
 
-    for (client *c = head; c; c = c->next) {
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
         if (ISFMFTM(c))
             continue;
         n++;
     }
 
-    for (client *c = head; c; c = c->next) {
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
         int borders = client_borders(c);
         if (ISFMFTM(c))
             continue;
         else
             j++;
-        if (invert)
-            xcb_move_resize(dis, c, gaps,
-                            y + h / n * j + (c == head ? gaps : 0),
-                            ww - 2 * borders - 2 * gaps,
-                            h / n - 2 * borders - (c == head ? 2 : 1) * gaps);
+        if (M_INVERT)
+            xcb_move_resize(dis, c, M_GAPS,
+                            y + h / n * j + (c == M_HEAD ? M_GAPS : 0),
+                            M_WW - 2 * borders - 2 * M_GAPS,
+                            h / n - 2 * borders - (c == M_HEAD ? 2 : 1) * M_GAPS);
         else
-            xcb_move_resize(dis, c, ww / n * j + (c == head ? gaps : 0),
-                            y + gaps,
-                            ww / n - 2 * borders - (c == head ? 2 : 1) * gaps,
-                            h - 2 * borders - 2 * gaps);
+            xcb_move_resize(dis, c, M_WW / n * j + (c == M_HEAD ? M_GAPS : 0),
+                            y + M_GAPS,
+                            M_WW / n - 2 * borders - (c == M_HEAD ? 2 : 1) * M_GAPS,
+                            h - 2 * borders - 2 * M_GAPS);
     }
 }
 
@@ -1548,20 +1594,20 @@ void equal(int h, int y)
 void fibonacci(int h, int y)
 {
     int borders = borders;
-    if (head)
-        borders = client_borders(head);
+    if (M_HEAD)
+        borders = client_borders(M_HEAD);
 
-    int j = -1, x = gaps, tt = 0,
-        cw = ww - 2 * gaps - 2 * borders,
-        ch = h - 2 * gaps - 2 * borders;
+    int j = -1, x = M_GAPS, tt = 0,
+        cw = M_WW - 2 * M_GAPS - 2 * borders,
+        ch = h - 2 * M_GAPS - 2 * borders;
 
-    for (client *n, *c = head; c; c = c->next) {
+    for (client *n, *c = M_HEAD; c; c = M_GETNEXT(c)) {
         int borders = client_borders(c);
         if (ISFMFTM(c))
             continue;
         else
             j++;
-        for (n = c->next; n; n = n->next)
+        for (n = M_GETNEXT(c); n; n = M_GETNEXT(n))
             if (!ISFMFTM(n))
                 break;
 
@@ -1570,26 +1616,26 @@ void fibonacci(int h, int y)
          * check if we have too many windows to keep them larger than MINWSZ
          */
         if (n
-            && ch > MINWSZ * 2 + borders + gaps
-            && cw > MINWSZ * 2 + borders + gaps) {
-            (j & 1) ? (ch = ch / 2 - borders - gaps / 2)
-                    : (cw = cw / 2 - borders - gaps / 2);
+            && ch > MINWSZ * 2 + borders + M_GAPS
+            && cw > MINWSZ * 2 + borders + M_GAPS) {
+            (j & 1) ? (ch = ch / 2 - borders - M_GAPS / 2)
+                    : (cw = cw / 2 - borders - M_GAPS / 2);
             tt = j;
         }
 
         /* not the master client ? -> shift client right or down (or up) */
         if (j) {
-            (j & 1) ? (x = x + cw + 2 * borders + gaps)
-                    : (y = invert ? (y - ch - 2 * borders - gaps)
-                                  : (y + ch + 2 * borders + gaps));
+            (j & 1) ? (x = x + cw + 2 * borders + M_GAPS)
+                    : (y = M_INVERT ? (y - ch - 2 * borders - M_GAPS)
+                                    : (y + ch + 2 * borders + M_GAPS));
 
-            if (j & 1 && n && invert)
-                y += ch + 2 * borders + gaps;
+            if (j & 1 && n && M_INVERT)
+                y += ch + 2 * borders + M_GAPS;
         }
 
         /* if the window does not fit in the stack, do not jam it in there */
         if (j <= tt + 1)
-            xcb_move_resize(dis, c, x, y + gaps, cw, ch);
+            xcb_move_resize(dis, c, x, y + M_GAPS, cw, ch);
     }
 }
 
@@ -1618,17 +1664,17 @@ void float_x(const Arg *arg)
 {
     xcb_get_geometry_reply_t *r;
 
-    if (!arg->i || !current)
+    if (!arg->i || !M_CURRENT)
         return;
 
-    if (!current->isfloating) {
-        float_client(current);
+    if (!M_CURRENT->isfloating) {
+        float_client(M_CURRENT);
         tile();
     }
 
-    r = get_geometry(current->win);
+    r = get_geometry(M_CURRENT->win);
     r->x += arg->i;
-    xcb_move(dis, current, r->x, r->y);
+    xcb_move(dis, M_CURRENT, r->x, r->y);
     free(r);
 }
 
@@ -1639,17 +1685,17 @@ void float_y(const Arg *arg)
 {
     xcb_get_geometry_reply_t *r;
 
-    if (!arg->i || !current)
+    if (!arg->i || !M_CURRENT)
         return;
 
-    if (!current->isfloating) {
-        float_client(current);
+    if (!M_CURRENT->isfloating) {
+        float_client(M_CURRENT);
         tile();
     }
 
-    r = get_geometry(current->win);
+    r = get_geometry(M_CURRENT->win);
     r->y += arg->i;
-    xcb_move(dis, current, r->x, r->y);
+    xcb_move(dis, M_CURRENT, r->x, r->y);
     free(r);
 }
 
@@ -1659,18 +1705,21 @@ void float_y(const Arg *arg)
  */
 void focusmaster()
 {
-    if (!head || !current || (current == head && !head->next)
-        || !prevfocus || prevfocus->isminimized)
+    if (!M_HEAD
+     || !M_CURRENT
+     || (M_CURRENT == M_HEAD && !M_GETNEXT(M_HEAD))
+     || !M_PREVFOCUS
+     ||  M_PREVFOCUS->isminimized)
         return;
 
     /* fix for glitchy toggle behaviour between head and head->next */
-    if (current == head->next)
-        prevfocus = current;
+    if (M_CURRENT == M_GETNEXT(M_HEAD))
+        M_PREVFOCUS = M_CURRENT;
 
-    if (current == head)
-        update_current(prevfocus);
+    if (M_CURRENT == M_HEAD)
+        update_current(M_PREVFOCUS);
     else
-        update_current(head);
+        update_current(M_HEAD);
 }
 
 /* find and focus the client which received
@@ -1678,16 +1727,16 @@ void focusmaster()
 void focusurgent()
 {
     client *c;
-    int cd = current_desktop, d = 0;
+    int cd = current_desktop_number, d = 0;
 
-    for (c = head; c && !c->isurgent; c = c->next);
+    for (c = M_HEAD; c && !c->isurgent; c = M_GETNEXT(c));
     if (c) {
         update_current(c);
         return;
     } else {
         for (bool f = false; d < DESKTOPS && !f; d++) {
-            for (select_desktop(d), c = head; c && !(f = c->isurgent);
-            c = c->next);
+            for (select_desktop(d), c = M_HEAD; c && !(f = c->isurgent); c = M_GETNEXT(c))
+                ;
         }
     }
     select_desktop(cd);
@@ -1770,7 +1819,8 @@ void grabkeys(void)
 void grid(int hh, int cy)
 {
     int n = 0, cols = 0, cn = 0, rn = 0, i = -1;
-    for (client *c = head; c; c = c->next)
+
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c))
         if (!ISFMFTM(c))
             ++n;
     if (!n)
@@ -1782,9 +1832,9 @@ void grid(int hh, int cy)
         cols = 2;
 
     int rows = n / cols,
-        ch = hh - gaps,
-        cw = (ww - gaps) / (cols ? cols : 1);
-    for (client *c = head; c; c = c->next) {
+        ch = hh - M_GAPS,
+        cw = (M_WW - M_GAPS) / (cols ? cols : 1);
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
         int borders = client_borders(c);
         if (ISFMFTM(c))
             continue;
@@ -1792,10 +1842,10 @@ void grid(int hh, int cy)
             ++i;
         if (i / rows + 1 > cols - n % cols)
             rows = n / cols + 1;
-        xcb_move_resize(dis, c, cn * cw + gaps,
-                        cy + rn * ch / rows + gaps,
-                        cw - 2 * borders - gaps,
-                        ch / rows - 2 * borders - gaps);
+        xcb_move_resize(dis, c, cn * cw + M_GAPS,
+                        cy + rn * ch / rows + M_GAPS,
+                        cw - 2 * borders - M_GAPS,
+                        ch / rows - 2 * borders - M_GAPS);
         if (++rn >= rows) {
             rn = 0;
             cn++;
@@ -1806,8 +1856,7 @@ void grid(int hh, int cy)
 /* invert v-stack left-right */
 void invertstack()
 {
-    if ((invert = !invert))
-        displayq[current_desktop]->invert = invert;
+    M_INVERT = !M_INVERT;
     tile();
 }
 
@@ -1829,14 +1878,16 @@ void keypress(xcb_generic_event_t *e)
  * send a delete message and remove the client */
 void killclient()
 {
-    if (!deletewindow(current->win)) {
-        xcb_kill_client(dis, current->win);
+    if (!M_CURRENT)
+        return;
+    if (!deletewindow(M_CURRENT->win)) {
+        xcb_kill_client(dis, M_CURRENT->win);
         DEBUG("client killed");
     }
     else {
         DEBUG("client deleted");
     }
-    removeclient(current);
+    removeclient(M_CURRENT);
 }
 
 static bool check_wmproto(xcb_window_t win, xcb_atom_t proto)
@@ -1878,12 +1929,12 @@ void mapnotify(xcb_generic_event_t *e)
     if (!attr[0])
         return;     /* dead on arrival */
     if (attr[0]->override_redirect) {
-        if (!(wintoalien(&alienlist, ev->window))) {
+        if (!(wintoalien(&aliens, ev->window))) {
             alien *a;
             if ((a = create_alien(ev->window))) {
                 xcb_raise_window(dis, ev->window);
                 DEBUG("caught a new selfmapped window");
-                add_tail(&alienlist, (node *)a);
+                add_tail(&aliens, &a->link);
             }
             else {
                 DEBUG("alien window already in list");
@@ -1928,7 +1979,7 @@ void maprequest(xcb_generic_event_t *e)
     DEBUG("event is valid");
 
     bool follow = false;
-    int cd = current_desktop, newdsk = current_desktop, border_width = -1;
+    int cd = current_desktop_number, newdsk = current_desktop_number, border_width = -1;
 
     cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, ev->window);
 
@@ -1945,7 +1996,7 @@ void maprequest(xcb_generic_event_t *e)
             scrpd->py = scrpd->cy = geometry->y;
             free(geometry);
 
-            xcb_move(dis, scrpd, -2 * ww, 0);
+            xcb_move(dis, scrpd, -2 * M_WW, 0);
             xcb_map_window(dis, scrpd->win);
             xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
 
@@ -1959,7 +2010,7 @@ void maprequest(xcb_generic_event_t *e)
             if (!regexec(&appruleregex[i], &wtitle.strings[0], 0, NULL, 0)) {
                 follow = rules[i].follow;
                 newdsk = (rules[i].desktop < 0 ||
-                          rules[i].desktop >= DESKTOPS) ? current_desktop
+                          rules[i].desktop >= DESKTOPS) ? current_desktop_number
                                                         : rules[i].desktop;
                 isFloating = rules[i].floating;
                 border_width = rules[i].border_width;
@@ -2010,7 +2061,7 @@ void maprequest(xcb_generic_event_t *e)
     if (cd != newdsk)
         select_desktop(cd);
     if (cd == newdsk) {
-        xcb_move(dis, c, -2 * ww, 0);
+        xcb_move(dis, c, -2 * M_WW, 0);
         xcb_map_window(dis, c->win);
         if (show)
             update_current(c);
@@ -2034,30 +2085,30 @@ void maximize()
     xcb_get_geometry_reply_t *r;
     int hh, cy;
 
-    if (!current)
+    if (!M_CURRENT)
         return;
 
-    hh = wh + (showpanel ? 0 : PANEL_HEIGHT);
-    cy = (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0);
+    hh = M_WH + (M_SHOWPANEL ? 0 : PANEL_HEIGHT);
+    cy = (TOP_PANEL && M_SHOWPANEL ? PANEL_HEIGHT : 0);
 
     /* TODO: save floating geo before maximizing to reinstate floating ? */
     /* if we float, reinstate tiling layout to exit maximize */
-    if (current->isfloating)
-        switch_mode(&(Arg){.i = mode});
+    if (M_CURRENT->isfloating)
+        switch_mode(&(Arg){.i = M_MODE});
 
     /* check if we are already maximized, using actual window size to check */
-    r = get_geometry(current->win);
-    int borders = client_borders(current);
-    if (r->width == ww - 2 * gaps - 2 * borders
-        && r->height == hh - 2 * gaps - 2 * borders) {
+    r = get_geometry(M_CURRENT->win);
+    int borders = client_borders(M_CURRENT);
+    if (r->width == M_WW - 2 * M_GAPS - 2 * borders
+        && r->height == hh - 2 * M_GAPS - 2 * borders) {
         tile();
         free(r);
         return;
     }
     free(r);
 
-    xcb_move_resize(dis, current, gaps, cy + gaps,
-                    ww - 2 * gaps - 2 * borders, hh - 2 * gaps - 2 * borders);
+    xcb_move_resize(dis, M_CURRENT, M_GAPS, cy + M_GAPS,
+                    M_WW - 2 * M_GAPS - 2 * borders, hh - 2 * M_GAPS - 2 * borders);
 }
 
 /* push the current client down the miniq and minimize the window */
@@ -2073,18 +2124,18 @@ void minimize_client(client *c)
         return;
 
     new->c = c;
-    new->next = miniq[current_desktop];
-    miniq[current_desktop] = new;
+    new->next = miniq[current_desktop_number];
+    miniq[current_desktop_number] = new;
 
     new->c->isminimized = true;
-    xcb_move(dis, new->c, -2 * ww, 0);
+    xcb_move(dis, new->c, -2 * M_WW, 0);
     xcb_add_property(dis, new->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
-    client *t = head;
+    client *t = M_HEAD;
     while (t) {
         if (t && !t->isminimized)
             break;
-        t = t->next;
+        t = M_GETNEXT(t);
     }
     if (t)
         update_current(t);
@@ -2095,7 +2146,7 @@ void minimize_client(client *c)
 /* minimize_client(); wrapper */
 void minimize()
 {
-    minimize_client(current);
+    minimize_client(M_CURRENT);
 }
 
 /* grab the pointer and get it's current position
@@ -2114,9 +2165,9 @@ void mousemotion(const Arg *arg)
     xcb_grab_pointer_reply_t  *grab_reply;
     int mx, my, winx, winy, winw, winh, xw, yh;
 
-    if (!current || current->isfullscreen)
+    if (!M_CURRENT || M_CURRENT->isfullscreen)
         return;
-    geometry = get_geometry(current->win);
+    geometry = get_geometry(M_CURRENT->win);
     winx = geometry->x;     winy = geometry->y;
     winw = geometry->width; winh = geometry->height;
     free(geometry);
@@ -2141,12 +2192,11 @@ void mousemotion(const Arg *arg)
         free(grab_reply);
     }
 
-    if (current->ismaximized)
-        setmaximize(current, False);
-    if (!current->isfloating)
-        float_client(current);
-    tile();
-    update_current(current);
+    if (M_CURRENT->ismaximized)
+        setmaximize(M_CURRENT, False);
+    if (!M_CURRENT->isfloating)
+        float_client(M_CURRENT);
+    update_current(M_CURRENT);
 
     xcb_generic_event_t *e = NULL;
     xcb_motion_notify_event_t *ev = NULL;
@@ -2164,10 +2214,10 @@ void mousemotion(const Arg *arg)
                 ev = (xcb_motion_notify_event_t *)e;
                 xw = (arg->i == MOVE ? winx : winw) + ev->root_x - mx;
                 yh = (arg->i == MOVE ? winy : winh) + ev->root_y - my;
-                if (arg->i == RESIZE) xcb_resize(dis, current->win,
+                if (arg->i == RESIZE) xcb_resize(dis, M_CURRENT->win,
                                       xw > MINWSZ ? xw : winw,
                                       yh > MINWSZ ? yh : winh);
-                else if (arg->i == MOVE) xcb_move(dis, current, xw, yh);
+                else if (arg->i == MOVE) xcb_move(dis, M_CURRENT, xw, yh);
                 xcb_flush(dis);
                 break;
             case XCB_KEY_PRESS:
@@ -2178,7 +2228,7 @@ void mousemotion(const Arg *arg)
         }
         if (e)
             free(e);
-    } while (!ungrab && current);
+    } while (!ungrab && M_CURRENT);
     DEBUG("xcb: ungrab");
     xcb_ungrab_pointer(dis, XCB_CURRENT_TIME);
 
@@ -2188,59 +2238,25 @@ void mousemotion(const Arg *arg)
 /* each window should cover all the available screen space */
 void monocle(int hh, int cy)
 {
-    unsigned int b = MONOCLE_BORDERS ? 2 * client_borders(current) : 0;
+    unsigned int b = MONOCLE_BORDERS ? 2 * client_borders(M_CURRENT) : 0;
 
-    for (client *c = head; c; c = c->next)
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c))
         if (!ISFMFTM(c))
-            xcb_move_resize(dis, c, gaps, cy + gaps,
-                            ww - 2 * gaps - b, hh - 2 * gaps - b);
+            xcb_move_resize(dis, c, M_GAPS, cy + M_GAPS,
+                            M_WW - 2 * M_GAPS - b, hh - 2 * M_GAPS - b);
 }
 
 /* move the current client, to current->next
  * and current->next to current client's position */
 void move_down()
 {
-    if (!current)
+    if (!M_CURRENT || !M_GETNEXT(M_CURRENT))
         return;
-    /* p is previous, c is current, n is next, if current is head n is last */
-    client *p = NULL, *n = (current->next) ? current->next : head;
-    if (!(p = prev_client(current)))
-        return;
-    /*
-     * if c is head, swapping with n should update head to n
-     * [c]->[n]->..  ==>  [n]->[c]->..
-     *  ^head              ^head
-     *
-     * else there is a previous client and p->next should be what's after c
-     * ..->[p]->[c]->[n]->..  ==>  ..->[p]->[n]->[c]->..
-     */
-    if (current == head)
-        head = n;
-    else
-        p->next = current->next;
-    /*
-     * if c is the last client, c will be the current head
-     * [n]->..->[p]->[c]->NULL  ==>  [c]->[n]->..->[p]->NULL
-     *  ^head                         ^head
-     * else c will take the place of n, so c-next will be n->next
-     * ..->[p]->[c]->[n]->..  ==>  ..->[p]->[n]->[c]->..
-     */
-    current->next = (current->next) ? n->next : n;
-    /*
-     * if c was swapped with n then they now point to the same ->next.
-     * n->next should be c
-     * ..->[p]->[c]->[n]->..  ==>  ..->[p]->[n]->..  ==>  ..->[p]->[n]->[c]->..
-     *                                        [c]-^
-     *
-     * else c is the last client and n is head,
-     * so c will be move to be head, no need to update n->next
-     * [n]->..->[p]->[c]->NULL  ==>  [c]->[n]->..->[p]->NULL
-     *  ^head                         ^head
-     */
-    if (current->next == n->next)
-        n->next = current;
-    else
-        head = current;
+    client *c = M_CURRENT;
+    client *n = M_GETNEXT(c);
+    list *l = c->link.parent;
+    unlink_node(&c->link);
+    insert_node_after(l, &n->link, &c->link);
     tile();
 }
 
@@ -2248,47 +2264,13 @@ void move_down()
  * the previous from  current to current client's position */
 void move_up()
 {
-    client *pp = NULL, *p;
-    /* p is previous from current or last if current is head */
-    if (!(p = prev_client(current)))
+    if (!M_CURRENT || !M_GETPREV(M_CURRENT))
         return;
-    /* pp is previous from p, or null if current is head and thus p is last */
-    if (p->next)
-        for (pp = head; pp && pp->next != p; pp = pp->next);
-    /*
-     * if p has a previous client then the next client should be current
-     * (current is c)
-     * ..->[pp]->[p]->[c]->..  ==>  ..->[pp]->[c]->[p]->..
-     *
-     * if p doesn't have a previous client, then p might be head, so head must
-     * change to c
-     * [p]->[c]->..  ==>  [c]->[p]->..
-     *  ^head              ^head
-     * if p is not head, then c is head (and p is last), so the new head is
-     * next of c
-     * [c]->[n]->..->[p]->NULL  ==>  [n]->..->[p]->[c]->NULL
-     *  ^head         ^last           ^head         ^last
-     */
-    if (pp)
-        pp->next = current;
-    else
-        head = (current == head) ? current->next : current;
-    /*
-     * next of p should be next of c
-     * ..->[pp]->[p]->[c]->[n]->..  ==>  ..->[pp]->[c]->[p]->[n]->..
-     * except if c was head (now c->next is head), so next of p should be c
-     * [c]->[n]->..->[p]->NULL  ==>  [n]->..->[p]->[c]->NULL
-     *  ^head         ^last           ^head         ^last
-     */
-    p->next = (current->next == head) ? current : current->next;
-    /*
-     * next of c should be p
-     * ..->[pp]->[p]->[c]->[n]->..  ==>  ..->[pp]->[c]->[p]->[n]->..
-     * except if c was head (now c->next is head), so c is must be last
-     * [c]->[n]->..->[p]->NULL  ==>  [n]->..->[p]->[c]->NULL
-     *  ^head         ^last           ^head         ^last
-     */
-    current->next = (current->next == head) ? NULL : p;
+    client *c = M_CURRENT;
+    client *p = M_GETPREV(c);
+    list *l = c->link.parent;
+    unlink_node(&c->link);
+    insert_node_before(l, &p->link, &c->link);
     tile();
 }
 
@@ -2296,55 +2278,45 @@ void move_up()
  * if the window is the last on stack, focus head */
 void next_win()
 {
-    client *t = current;
+    client *t = M_CURRENT;
 
-    if (!current || !head->next)
+    if (!M_CURRENT || !M_GETNEXT(M_HEAD))
         return;
 
     while (1) {
-        if (!t->next)
-            t = head;
+        if (!M_GETNEXT(t))
+            t = M_HEAD;
         else
-            t = t->next;
+            t = M_GETNEXT(t);
         if (!t->isminimized)
             break;
-        if (t == current)
+        if (t == M_CURRENT)
             break;
     }
 
-    prevfocus = current;
+    M_PREVFOCUS = M_CURRENT;
     update_current(t);
-}
-
-/* get the previous client from the given
- * if no such client, return NULL */
-client *prev_client(client *c)
-{
-    if (!c || !head->next)
-        return NULL;
-    client *p;
-    for (p = head; p->next && p->next != c; p = p->next);
-    return p;
 }
 
 /* cyclic focus the previous window
  * if the window is the head, focus the last stack window */
 void prev_win()
 {
-    client *t = current;
+    client *t = M_CURRENT;
 
-    if (!current || !head->next)
+    if (!M_CURRENT || !M_GETNEXT(M_HEAD))
         return;
 
-    while (1) {
-        t = prev_client(t);
+    for (;;) {
+        if(!(t = M_GETPREV(t)))
+            t = M_TAIL;
         if (!t->isminimized)
             break;
-        if (t == current)
+        if (t == M_CURRENT)
             break;
     }
 
-    prevfocus = current;
+    M_PREVFOCUS = M_CURRENT;
     update_current(t);
 }
 
@@ -2375,7 +2347,7 @@ void propertynotify(xcb_generic_event_t *e)
                                      xcb_icccm_get_wm_hints(dis, ev->window),
                                                             &wmh, NULL))
                                      /* TODO: error handling */
-        c->isurgent = c != current &&
+        c->isurgent = c != M_CURRENT &&
                            (wmh.flags & XCB_ICCCM_WM_HINT_X_URGENCY);
     desktopinfo();
 }
@@ -2397,17 +2369,15 @@ void quit(const Arg *arg)
  * else if c was the current one, current must be updated. */
 void removeclient(client *c)
 {
-    client **p = NULL;
-    int nd = 0, cd = current_desktop;
+    int nd = 0, cd = current_desktop_number;
 
-    for (bool found = false; nd < DESKTOPS && !found; nd++)
-        for (select_desktop(nd), p = &head; *p && !(found = *p == c);
-             p = &(*p)->next);
-    *p = c->next;
-    if (c == prevfocus)
-        prevfocus = prev_client(current);
-    if (c == current || !head->next)
-        update_current(prevfocus);
+    if (!c)
+        return;
+    unlink_node(&c->link);
+    if (c == M_PREVFOCUS)
+        M_PREVFOCUS = M_GETPREV(M_CURRENT);
+    if (c == M_CURRENT || !M_GETNEXT(M_HEAD))
+        update_current(M_PREVFOCUS);
     free(c);
     c = NULL;
     if (cd == nd - 1)
@@ -2421,18 +2391,18 @@ void removeclient(client *c)
  */
 void resize_master(const Arg *arg)
 {
-    int msz = (mode == BSTACK ? wh : ww) * MASTER_SIZE + master_size + arg->i;
+    int msz = (M_MODE == BSTACK ? M_WH : M_WW) * MASTER_SIZE + M_MASTER_SIZE + arg->i;
 
-    if (msz < MINWSZ || (mode == BSTACK ? wh : ww) - msz < MINWSZ)
+    if (msz < MINWSZ || (M_MODE == BSTACK ? M_WH : M_WW) - msz < MINWSZ)
         return;
-    master_size += arg->i;
+    M_MASTER_SIZE += arg->i;
     tile();
 }
 
 /* resize the first stack window - no boundary checks */
 void resize_stack(const Arg *arg)
 {
-    growth += arg->i;
+    M_GROWTH += arg->i;
     tile();
 }
 
@@ -2443,20 +2413,20 @@ void resize_x(const Arg *arg)
 {
     xcb_get_geometry_reply_t *r;
 
-    if (!arg->i || !current)
+    if (!arg->i || !M_CURRENT)
         return;
 
-    if (!current->isfloating) {
-        float_client(current);
+    if (!M_CURRENT->isfloating) {
+        float_client(M_CURRENT);
         tile();
     }
 
-    r = get_geometry(current->win);
+    r = get_geometry(M_CURRENT->win);
     if (r->width + arg->i < MINWSZ || r->width + arg->i <= 0)
         return;
 
     r->width += arg->i;
-    xcb_move_resize(dis, current, r->x, r->y, r->width, r->height);
+    xcb_move_resize(dis, M_CURRENT, r->x, r->y, r->width, r->height);
     free(r);
 }
 
@@ -2467,20 +2437,20 @@ void resize_y(const Arg *arg)
 {
     xcb_get_geometry_reply_t *r;
 
-    if (!arg->i || !current)
+    if (!arg->i || !M_CURRENT)
         return;
 
-    if (!current->isfloating) {
-        float_client(current);
+    if (!M_CURRENT->isfloating) {
+        float_client(M_CURRENT);
         tile();
     }
 
-    r = get_geometry(current->win);
+    r = get_geometry(M_CURRENT->win);
     if (r->height + arg->i < MINWSZ || r->height + arg->i <= 0)
         return;
 
     r->height += arg->i;
-    xcb_move_resize(dis, current, r->x, r->y, r->width, r->height);
+    xcb_move_resize(dis, M_CURRENT, r->x, r->y, r->width, r->height);
     free(r);
 }
 
@@ -2489,22 +2459,22 @@ void restore_client(client *c)
 {
     lifo *tmp;
 
-    if (!miniq[current_desktop])
+    if (!miniq[current_desktop_number])
         return;
 
     if (c == NULL) {
-        tmp = miniq[current_desktop];
-        miniq[current_desktop] = miniq[current_desktop]->next;
+        tmp = miniq[current_desktop_number];
+        miniq[current_desktop_number] = miniq[current_desktop_number]->next;
     }
     else {
         lifo *prev = NULL;
 
-        for(tmp = miniq[current_desktop]; tmp; tmp = tmp->next) {
+        for (tmp = miniq[current_desktop_number]; tmp; tmp = tmp->next) {
             if (tmp->c == c) {
                 if (prev)
                     prev->next = tmp->next;
                 else
-                    miniq[current_desktop] = tmp->next;
+                    miniq[current_desktop_number] = tmp->next;
                 break;
             }
             prev = tmp;
@@ -2537,14 +2507,14 @@ void restore()
 void rotate(const Arg *arg)
 {
     change_desktop(&(Arg)
-                   {.i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS});
+                   {.i = (DESKTOPS + current_desktop_number + arg->i) % DESKTOPS});
 }
 
 /* jump and focus the next or previous desktop
  * and take the current client with us. */
 void rotate_client(const Arg *arg)
 {
-    int i = (DESKTOPS + current_desktop + arg->i) % DESKTOPS;
+    int i = (DESKTOPS + current_desktop_number + arg->i) % DESKTOPS;
 
     client_to_desktop(&(Arg){.i = i});
     change_desktop(&(Arg){.i = i});
@@ -2553,11 +2523,32 @@ void rotate_client(const Arg *arg)
 /* jump and focus the next or previous desktop that has clients */
 void rotate_filled(const Arg *arg)
 {
-    int n = arg->i;
+    desktop *newdesk;
 
-    while (n < DESKTOPS && !displayq[(DESKTOPS + current_desktop + n) % DESKTOPS]->head)
-        (n += arg->i);
-    change_desktop(&(Arg){.i = (DESKTOPS + current_desktop + n) % DESKTOPS});
+    if (arg->i > 0) {   /* forward */
+        for (newdesk = (desktop *)get_next(&current_desktop->link);;) {
+            if (!newdesk)
+                newdesk = (desktop *)get_head(&desktops);
+            if (newdesk == current_desktop) {
+                newdesk = NULL;
+                break;
+            }
+            newdesk = (desktop *)get_next(&newdesk->link);
+        }
+    }
+    else {
+        for (newdesk = (desktop *)get_prev(&current_desktop->link);;) {
+            if (!newdesk)
+                newdesk = (desktop *)get_tail(&desktops);
+            if (newdesk == current_desktop) {
+                newdesk = NULL;
+                break;
+            }
+            newdesk = (desktop *)get_prev(&newdesk->link);
+        }
+    }
+    if (newdesk)
+        change_desktop(&(Arg){.i = newdesk->num});
 }
 
 /*
@@ -2617,38 +2608,17 @@ void run(void)
     }
 }
 
-/* save specified desktop's properties */
-void save_desktop(int i)
-{
-    if (i < 0 || i >= DESKTOPS)
-        return;
-    displayq[i]->master_size = master_size;
-    displayq[i]->mode        = mode;
-    displayq[i]->growth      = growth;
-    displayq[i]->head        = head;
-    displayq[i]->current     = current;
-    displayq[i]->showpanel   = showpanel;
-    displayq[i]->prevfocus   = prevfocus;
-    displayq[i]->gaps        = gaps;
-    displayq[i]->invert      = invert;
-}
-
 /* set the specified desktop's properties */
 void select_desktop(int i)
 {
     if (i < 0 || i >= DESKTOPS)
         return;
-    save_desktop(current_desktop);
-    master_size     = displayq[i]->master_size;
-    mode            = displayq[i]->mode;
-    growth          = displayq[i]->growth;
-    head            = displayq[i]->head;
-    current         = displayq[i]->current;
-    showpanel       = displayq[i]->showpanel;
-    prevfocus       = displayq[i]->prevfocus;
-    gaps            = displayq[i]->gaps;
-    invert          = displayq[i]->invert;
-    current_desktop = i;
+    current_desktop = find_desktop(i);
+    if (!current_desktop)
+        current_desktop = (desktop *)get_head(&desktops);
+    current_desktop_number = current_desktop->num;
+    current_monitor = (monitor *)get_head(&current_desktop->monitors);
+    current_display = (display *)get_head(&current_monitor->displays);
 }
 
 static bool sendevent(xcb_window_t win, xcb_atom_t proto)
@@ -2681,11 +2651,11 @@ void setmaximize(client *c, bool fullscrn)
                             c->win, ewmh->_NET_WM_STATE, XCB_ATOM_ATOM, 32,
                             fullscrn, data);
     if ((c->ismaximized = fullscrn))
-        xcb_move_resize(dis, c, 0, 0, ww, wh + PANEL_HEIGHT);
+        xcb_move_resize(dis, c, 0, 0, M_WW, M_WH + PANEL_HEIGHT);
     xcb_border_width(dis, c->win,
-                     (!head->next ||
+                     (!M_GETNEXT(M_HEAD) ||
                      c->ismaximized ||
-                     (mode == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
+                     (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
                      ) ? 0:client_borders(c));
     update_current(c);
 }
@@ -2746,32 +2716,16 @@ int setup(int default_screen)
     if (!screen)
         err(EXIT_FAILURE, "error: cannot aquire screen\n");
 
-    setup_displayq();
+    setup_display();
+    select_desktop(0);      /* initialize global pointers */
 
-    ww = screen->width_in_pixels;
-    wh = screen->height_in_pixels;
-#ifndef EWMH_TASKBAR
-    wh -= PANEL_HEIGHT;
-#else
+#ifdef EWMH_TASKBAR
     Reset_Global_Strut();   /* struts are not yet ready. */
 #endif /* EWMH_TASKBAR */
     borders = BORDER_WIDTH;
-    gaps = USELESSGAP;
-    for (unsigned int i = 0; i < DESKTOPS; i++) {
-        if (wh > ww) {      /* Pivot monitor support */
-            if (displayq[i]->mode == TILE)
-                displayq[i]->mode = BSTACK;
-            else {
-                if (displayq[i]->mode == BSTACK)
-                    displayq[i]->mode = TILE;
-            }
-        }
-        displayq[i]->gaps = USELESSGAP;
-        save_desktop(i);
-    }
-
-    alienlist.head = NULL;
-    alienlist.tail = NULL;
+ 
+    aliens.head = NULL;
+    aliens.tail = NULL;
 
     win_focus   = getcolor(FOCUS);
     win_unfocus = getcolor(UNFOCUS);
@@ -2823,7 +2777,7 @@ int setup(int default_screen)
 
     xcb_ewmh_coordinates_t viewports[2] = {{ 0, 0 }};
     /* TODO: calculate workarea properly by substracting optional panel space */
-    xcb_ewmh_geometry_t workarea[2] = {{ 0, 0, ww, wh }};
+    xcb_ewmh_geometry_t workarea[2] = {{ 0, 0, M_WW, M_WH }};
 
     /* functionless window required by the EWMH standard */
     uint32_t noevents = 0;
@@ -2836,7 +2790,7 @@ int setup(int default_screen)
     xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, checkwin);
     xcb_ewmh_set_number_of_desktops(ewmh, default_screen, DESKTOPS);
     xcb_ewmh_set_current_desktop(ewmh, default_screen, DEFAULT_DESKTOP);
-    xcb_ewmh_set_desktop_geometry(ewmh, default_screen, ww, wh);
+    xcb_ewmh_set_desktop_geometry(ewmh, default_screen, M_WW, M_WH);
     xcb_ewmh_set_desktop_viewport(ewmh, default_screen, 1, viewports);
     xcb_ewmh_set_workarea(ewmh, default_screen, 1, workarea);
     xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
@@ -2874,7 +2828,7 @@ int setup(int default_screen)
     if (reply) {
         int len = xcb_query_tree_children_length(reply);
         xcb_window_t *children = xcb_query_tree_children(reply);
-        uint32_t cd = current_desktop;
+        uint32_t cd = current_desktop_number;
         for (int i = 0; i < len; i++) {
             xcb_atom_t wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
             xcb_get_window_attributes_reply_t *attr;
@@ -2906,7 +2860,7 @@ int setup(int default_screen)
                             scrpd = create_client(children[i], wtype);
                             setwindefattr(scrpd->win);
                             grabbuttons(scrpd);
-                            xcb_move(dis, scrpd, -2 * ww, 0);
+                            xcb_move(dis, scrpd, -2 * M_WW, 0);
                             showscratchpad = False;
                             continue;
                         }
@@ -2981,10 +2935,10 @@ int setup(int default_screen)
                 if (doMinimize)
                     minimize_client(c);
                 if (case7)
-                    xcb_move(dis, c, -2 * ww, 0);
+                    xcb_move(dis, c, -2 * M_WW, 0);
                 grabbuttons(c);
                 if (cd != dsk) {
-                    xcb_move(dis, c, -2 * ww, 0);
+                    xcb_move(dis, c, -2 * M_WW, 0);
                     select_desktop(cd);
                 }
             }
@@ -3024,13 +2978,13 @@ static void setwindefattr(xcb_window_t w)
 void showhide(void)
 {
     if ((show = !show)) {
-        for (client *c = displayq[current_desktop]->head; c; c = c->next)
+        for (client *c = (client *)get_node_head(&M_HEAD->link); c; c = M_GETNEXT(c))
             xcb_move(dis, c, c->px, c->py);
         tile();
         xcb_ewmh_set_showing_desktop(ewmh, default_screen, 1);
     } else {
-        for (client *c = displayq[current_desktop]->head; c; c = c->next)
-            xcb_move(dis, c, -2 * ww, 0);
+        for (client *c = (client *)get_node_head(&M_HEAD->link); c; c = M_GETNEXT(c))
+            xcb_move(dis, c, -2 * M_WW, 0);
         xcb_ewmh_set_showing_desktop(ewmh, default_screen, 0);
     }
 }
@@ -3057,12 +3011,12 @@ void spawn(const Arg *arg)
 /* arrange windows in normal or bottom stack tile */
 void stack(int hh, int cy)
 {
-    client *c = NULL, *t = NULL; bool b = mode == BSTACK;
-    int n = 0, d = 0, z = b ? ww : hh,
-        ma = (mode == BSTACK ? wh : ww) * MASTER_SIZE + master_size;
+    client *c = NULL, *t = NULL; bool b = M_MODE == BSTACK;
+    int n = 0, d = 0, z = b ? M_WW : hh,
+        ma = (M_MODE == BSTACK ? M_WH : M_WW) * MASTER_SIZE + M_MASTER_SIZE;
 
     /* count stack windows and grab first non-floating, non-maximize window */
-    for (t = head; t; t = t->next) {
+    for (t = M_HEAD; t; t = M_GETNEXT(t)) {
         if (!ISFMFTM(t)) {
             if (c)
                 ++n;
@@ -3106,42 +3060,42 @@ void stack(int hh, int cy)
         return;
     } else if (!n) {
         int borders = client_borders(c);
-        xcb_move_resize(dis, c, gaps, cy + gaps,
-                        ww - 2 * (borders + gaps),
-                        hh - 2 * (borders + gaps));
+        xcb_move_resize(dis, c, M_GAPS, cy + M_GAPS,
+                        M_WW - 2 * (borders + M_GAPS),
+                        hh - 2 * (borders + M_GAPS));
         return;
     } else if (n > 1) {
-        d = (z - growth) % n + growth; z = (z - growth) / n;
+        d = (z - M_GROWTH) % n + M_GROWTH; z = (z - M_GROWTH) / n;
     }
 
     /* tile the first non-floating, non-maximize window to cover the master area */
     int borders = client_borders(c);
     if (b)
-        xcb_move_resize(dis, c, gaps,
-                        invert ? (cy + hh - ma + gaps) : (cy + gaps),
-                        ww - 2 * (borders + gaps),
-                        ma - 2 * (borders + gaps));
+        xcb_move_resize(dis, c, M_GAPS,
+                        M_INVERT ? (cy + hh - ma + M_GAPS) : (cy + M_GAPS),
+                        M_WW - 2 * (borders + M_GAPS),
+                        ma - 2 * (borders + M_GAPS));
     else
-        xcb_move_resize(dis, c, invert ? (ww - ma + gaps) : gaps,
-                        cy + gaps,
-                        ma - 2 * (borders + gaps),
-                        hh - 2 * (borders + gaps));
+        xcb_move_resize(dis, c, M_INVERT ? (M_WW - ma + M_GAPS) : M_GAPS,
+                        cy + M_GAPS,
+                        ma - 2 * (borders + M_GAPS),
+                        hh - 2 * (borders + M_GAPS));
 
     /* tile the next non-floating, non-maximize (first) stack window with growth|d */
-    for (c = c->next; c && ISFMFTM(c); c = c->next);
+    for (c = M_GETNEXT(c); c && ISFMFTM(c); c = M_GETNEXT(c));
     borders = client_borders(c);
-    int cx = b ? 0 : (invert ? gaps : ma),
-        cw = (b ? hh : ww) - 2 * borders - ma - gaps,
-        ch = z - 2 * borders - gaps;
+    int cx = b ? 0 : (M_INVERT ? M_GAPS : ma),
+        cw = (b ? hh : M_WW) - 2 * borders - ma - M_GAPS,
+        ch = z - 2 * borders - M_GAPS;
     if (b)
-        xcb_move_resize(dis, c, cx += gaps, cy += invert ? gaps : ma,
-                        ch - gaps + d, cw);
+        xcb_move_resize(dis, c, cx += M_GAPS, cy += M_INVERT ? M_GAPS : ma,
+                        ch - M_GAPS + d, cw);
     else
-        xcb_move_resize(dis, c, cx, cy += gaps, cw, ch - gaps + d);
+        xcb_move_resize(dis, c, cx, cy += M_GAPS, cw, ch - M_GAPS + d);
 
     /* tile the rest of the non-floating, non-maximize stack windows */
-    for (b ? (cx += z + d - gaps) : (cy += z + d - gaps),
-         c = c->next; c; c = c->next) {
+    for (b ? (cx += z + d - M_GAPS) : (cy += z + d - M_GAPS),
+         c = M_GETNEXT(c); c; c = M_GETNEXT(c)) {
         if (ISFMFTM(c))
             continue;
         if (b) {
@@ -3159,14 +3113,19 @@ void stack(int hh, int cy)
  * are the head */
 void swap_master()
 {
-    if (!current || !head->next)
+    if (!M_CURRENT || !M_GETNEXT(M_HEAD))
         return;
-    if (current == head)
-        move_down();
-    else
-        while (current != head)
-            move_up();
-    update_current(head);
+    if (M_CURRENT == M_HEAD) {
+        client *c = M_HEAD;
+        unlink_node(&c->link);
+        insert_node_after(&current_display->clients, &M_HEAD->link, &c->link);
+    }
+    else {
+        client *c = M_CURRENT;
+        unlink_node(&c->link);
+        add_head(&current_display->clients, &c->link);
+    }
+    update_current(M_HEAD);
 }
 
 /* switch the tiling mode and reset all floating windows */
@@ -3174,12 +3133,12 @@ void switch_mode(const Arg *arg)
 {
     if (!show)
         showhide();
-    if (mode == arg->i)
-        for (client *c = head; c; c = c->next)
+    if (M_MODE == arg->i)
+        for (client *c = M_HEAD; c; c = M_GETNEXT(c))
             unfloat_client(c);
-    mode = arg->i;
+    M_MODE = arg->i;
     tile();
-    update_current(current);
+    update_current(M_CURRENT);
     desktopinfo();
 }
 
@@ -3189,9 +3148,9 @@ void rotate_mode(const Arg *arg)
 {
     if (!show)
         showhide();
-    mode = (mode + arg->i + MODES) % MODES;
+    M_MODE = (M_MODE + arg->i + MODES) % MODES;
     tile();
-    update_current(current);
+    update_current(M_CURRENT);
     desktopinfo();
 }
 
@@ -3199,30 +3158,30 @@ void rotate_mode(const Arg *arg)
 void tile(void)
 {
     desktopinfo();
-    if (!head)
+    if (!M_HEAD)
         return; /* nothing to arange */
 #ifndef EWMH_TASKBAR
-    layout[head->next ? mode : MONOCLE](wh + (showpanel ? 0 : PANEL_HEIGHT),
+    layout[head->next ? mode : MONOCLE](M_WH + (showpanel ? 0 : PANEL_HEIGHT),
                                 (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
 #else
     Update_Global_Strut();
-    layout[head->next ? mode : MONOCLE](wh, wy);
+    layout[M_GETNEXT(M_HEAD) ? M_MODE : MONOCLE](M_WH, M_WY);
 #endif /* EWMH_TASKBAR */
 }
 
 /* reset the active window from floating to tiling, if not already */
 void tilemize()
 {
-    if (!current || !current->isfloating)
+    if (!M_CURRENT || !M_CURRENT->isfloating)
         return;
-    unfloat_client(current);
-    update_current(current);
+    unfloat_client(M_CURRENT);
+    update_current(M_CURRENT);
 }
 
 /* toggle visibility state of the panel */
 void togglepanel()
 {
-    showpanel = !showpanel;
+    M_SHOWPANEL = !M_SHOWPANEL;
     tile();
 }
 
@@ -3245,17 +3204,17 @@ void togglescratchpad()
 
     if (showscratchpad) {
         xcb_get_geometry_reply_t *wa = get_geometry(scrpd->win);
-        xcb_move(dis, scrpd, (ww - wa->width) / 2, (wh - wa->height) / 2);
+        xcb_move(dis, scrpd, (M_WW - wa->width) / 2, (M_WH - wa->height) / 2);
         free(wa);
         update_current(scrpd);
         xcb_raise_window(dis, scrpd->win);
     } else {
-        xcb_move(dis, scrpd, -2 * ww, 0);
-        if(current == scrpd) {
-            if(!prevfocus)
-                update_current(head);
+        xcb_move(dis, scrpd, -2 * M_WW, 0);
+        if(M_CURRENT == scrpd) {
+            if(!M_PREVFOCUS)
+                update_current(M_HEAD);
             else
-                update_current(prevfocus->isminimized ? head : prevfocus);
+                update_current(M_PREVFOCUS->isminimized ? M_HEAD : M_PREVFOCUS);
         }
     }
 }
@@ -3276,7 +3235,8 @@ void unfloat_client(client *c)
 
 static inline bool on_current_desktop(client *c) {
     client *p;
-    for (p = head; p && p != c; p = p->next) ;
+    for (p = M_HEAD; p && p != c; p = M_GETNEXT(p))
+        ;
     return (p != NULL);
 }
 
@@ -3320,60 +3280,60 @@ static inline void nada(void)
 {
         xcb_delete_property(dis, screen->root, ewmh->_NET_ACTIVE_WINDOW);
         xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, screen->root, XCB_CURRENT_TIME);
-        prevfocus = current = NULL;
+        M_PREVFOCUS = M_CURRENT = NULL;
 }
 void update_current(client *newfocus)   // newfocus may be NULL
 {
-    if(!head && USE_SCRATCHPAD && !showscratchpad) {                // empty desktop. no clients, no scratchpad.
+    if(!M_HEAD && USE_SCRATCHPAD && !showscratchpad) {                // empty desktop. no clients, no scratchpad.
         nada();
         return;
     }
 
     if(!newfocus) {
-        if(prevfocus)
-            current = prevfocus;
+        if(M_PREVFOCUS)
+            M_CURRENT = M_PREVFOCUS;
         else
-            current = head;
-        prevfocus = prev_client(current);           // get previous client in list, may be NULL
+            M_CURRENT = M_HEAD;
+        M_PREVFOCUS = M_GETPREV(M_CURRENT);             // get previous client in list, may be NULL
     }
     else {
-        if(newfocus == prevfocus) {
-            current = prevfocus;
-            prevfocus = prev_client(current);       // get previous client in list, may be NULL
+        if(newfocus == M_PREVFOCUS) {
+            M_CURRENT = M_PREVFOCUS;
+            M_PREVFOCUS = M_GETPREV(M_CURRENT);         // get previous client in list, may be NULL
         }
         else {
-            prevfocus = current;
-            current = newfocus;
+            M_PREVFOCUS = M_CURRENT;
+            M_CURRENT = newfocus;
         }
     }
 
-    if(!current && (USE_SCRATCHPAD && showscratchpad && scrpd))     // focus scratchpad, if visible
-        current = scrpd;
+    if(!M_CURRENT && (USE_SCRATCHPAD && showscratchpad && scrpd))     // focus scratchpad, if visible
+        M_CURRENT = scrpd;
 
-    if(!current) {  // there is really really really nothing to focus.
+    if(!M_CURRENT) {  // there is really really really nothing to focus.
         nada();
         return;
     }
 
-    for (client *c = head; c; c = c->next) {
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
         xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
-                                (c == current ? &win_focus : &win_unfocus));
+                                (c == M_CURRENT ? &win_focus : &win_unfocus));
         xcb_border_width(dis, c->win, (c->isfullscreen || c->ismaximized ||
-                          (!MONOCLE_BORDERS && !head->next) ||
-                          (mode == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
+                          (!MONOCLE_BORDERS && !M_GETNEXT(M_HEAD)) ||
+                          (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
                           ) ? 0 : client_borders(c));
     }
 
     if (USE_SCRATCHPAD && SCRATCH_WIDTH && showscratchpad && scrpd) {
         xcb_change_window_attributes(dis, scrpd->win, XCB_CW_BORDER_PIXEL,
-                            (current == scrpd ? &win_scratch : &win_unfocus));
+                            (M_CURRENT == scrpd ? &win_scratch : &win_unfocus));
         xcb_border_width(dis, scrpd->win, SCRATCH_WIDTH);
 
     }
 
     tile();
 
-    for (client *c = head; c; c = c->next) {
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
         if (c->isfullscreen) {
             xcb_lower_window(dis, c->win);
             break;
@@ -3383,23 +3343,23 @@ void update_current(client *newfocus)   // newfocus may be NULL
     if (USE_SCRATCHPAD && showscratchpad && scrpd)
         xcb_raise_window(dis, scrpd->win);
 
-    if (check_head(&alienlist)) {
+    if (check_head(&aliens)) {
         alien *a;
-        for(a=(alien *)get_head(&alienlist); a; a=(alien *)get_next((node *)a))
+        for (a=(alien *)get_head(&aliens); a; a=(alien *)get_next(&a->link))
             xcb_raise_window(dis, a->win);
     }
 
-    if (current) {
-        if (current->setfocus) {
+    if (M_CURRENT) {
+        if (M_CURRENT->setfocus) {
             xcb_change_property(dis, XCB_PROP_MODE_REPLACE, screen->root,
                                 ewmh->_NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, 32, 1,
-                                &current->win);
-            xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, current->win,
+                                &M_CURRENT->win);
+            xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, M_CURRENT->win,
                                 XCB_CURRENT_TIME);
             DEBUG("xcb_set_input_focus();");
         }
         else {
-            sendevent(current->win, wmatoms[WM_TAKE_FOCUS]);
+            sendevent(M_CURRENT->win, wmatoms[WM_TAKE_FOCUS]);
             DEBUG("send WM_TAKE_FOCUS");
         }
     }
@@ -3409,9 +3369,9 @@ void update_current(client *newfocus)   // newfocus may be NULL
 client *wintoclient(xcb_window_t win)
 {
     desktop *desk;
-    for (desk = (desktop *)get_head(&desktoplist); desk; desk = (desktop *)get_next(&desk->link)) {
+    for (desk = (desktop *)get_head(&desktops); desk; desk = (desktop *)get_next(&desk->link)) {
         monitor *moni;
-        for (moni = (moni *)get_head(&desk->monitors); desk; desk = (desktop *)get_next(&desk->link)) {
+        for (moni = (monitor *)get_head(&desk->monitors); desk; desk = (desktop *)get_next(&desk->link)) {
             display *disp;
             for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_next(&disp->link)) {
                 client *c;
@@ -3523,7 +3483,7 @@ static inline void Update_EWMH_Taskbar_Properties(void)
 
     if(showscratchpad && scrpd)
         num++;
-    for(c=head; c!=NULL; c=c->next)
+    for (c = M_HEAD; c; c = M_GETNEXT(c))
         num++;
 
     if((wins = (xcb_window_t *)calloc(num, sizeof(xcb_window_t))))
@@ -3531,7 +3491,7 @@ static inline void Update_EWMH_Taskbar_Properties(void)
         num = 0;
         if(showscratchpad && scrpd)
             wins[num++] = scrpd->win;
-        for(c=head; c!=NULL; c=c->next)
+        for (c = M_HEAD; c; c = M_GETNEXT(c))
             wins[num++] = c->win;
         xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
                             screen->root, ewmh->_NET_CLIENT_LIST,
@@ -3557,9 +3517,9 @@ static void Cleanup_Global_Strut(void)
 static inline void Reset_Global_Strut(void)
 {
     gstrut.left = gstrut.right = gstrut.top = gstrut.bottom = 0;
-    ww = screen->width_in_pixels;
-    wh = screen->height_in_pixels;
-    wy = 0;
+    M_WW = screen->width_in_pixels;
+    M_WH = screen->height_in_pixels;
+    M_WY = 0;
 }
 
 static void Update_Global_Strut(void)
@@ -3613,11 +3573,11 @@ static void Update_Global_Strut(void)
         }
         free(reply);
         if (gstrut_modified) {
-            ww = screen->width_in_pixels;
-            wh = screen->height_in_pixels;
-            wh -= gstrut.top;
-            wh -= gstrut.bottom;
-            wy = gstrut.top;
+            M_WW = screen->width_in_pixels;
+            M_WH = screen->height_in_pixels;
+            M_WH -= gstrut.top;
+            M_WH -= gstrut.bottom;
+            M_WY = gstrut.top;
         }
     }
 }
