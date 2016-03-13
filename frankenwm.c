@@ -277,6 +277,7 @@ static void run(void);
 static void select_desktop(int i);
 static bool sendevent(xcb_window_t win, xcb_atom_t proto);
 static void setmaximize(client *c, bool fullscrn);
+void setfullscreen(client *c, bool fullscrn);
 static int setup(int default_screen);
 static void setwindefattr(xcb_window_t w);
 static void showhide();
@@ -731,6 +732,21 @@ static int xcb_checkotherwm(void)
     return 0;
 }
 
+static bool window_is_override(xcb_window_t win)
+{
+    xcb_get_window_attributes_reply_t *attr[1];
+    xcb_window_t windows[] = {win};
+    bool override = True;
+
+    xcb_get_attributes(windows, attr, 1);
+    if (attr[0]) {
+        if (!attr[0]->override_redirect)
+            override = False;
+        free(attr[0]);
+    }
+    return override;
+}
+
 /* find desktop by number */
 static desktop *find_desktop(unsigned int n)
 {
@@ -1043,6 +1059,30 @@ void change_desktop(const Arg *arg)
     xcb_ewmh_set_current_desktop(ewmh, default_screen, arg->i);
 }
 
+static void print_window_type(xcb_window_t w, xcb_atom_t a)
+{
+    char *s;
+
+    if      (a == ewmh->_NET_WM_WINDOW_TYPE_DESKTOP)        s = "_NET_WM_WINDOW_TYPE_DESKTOP";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_DOCK)           s = "_NET_WM_WINDOW_TYPE_DOCK";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLBAR)        s = "_NET_WM_WINDOW_TYPE_TOOLBAR";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_MENU)           s = "_NET_WM_WINDOW_TYPE_MENU";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_UTILITY)        s = "_NET_WM_WINDOW_TYPE_UTILITY";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_SPLASH)         s = "_NET_WM_WINDOW_TYPE_SPLASH";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_DIALOG)         s = "_NET_WM_WINDOW_TYPE_DIALOG";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_DROPDOWN_MENU)  s = "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_POPUP_MENU)     s = "_NET_WM_WINDOW_TYPE_POPUP_MENU";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_TOOLTIP)        s = "_NET_WM_WINDOW_TYPE_TOOLTIP";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_NOTIFICATION)   s = "_NET_WM_WINDOW_TYPE_NOTIFICATION";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_COMBO)          s = "_NET_WM_WINDOW_TYPE_COMBO";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_DND)            s = "_NET_WM_WINDOW_TYPE_DND";
+    else if (a == ewmh->_NET_WM_WINDOW_TYPE_NORMAL)         s = "_NET_WM_WINDOW_TYPE_NORMAL";
+    else s = "undefined window type";
+
+    if (s)
+        fprintf(stderr, "window %lx has type %s\n", w, s);
+}
+
 /*
  * returns:
  * True if window is alien
@@ -1054,6 +1094,8 @@ static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_ato
     xcb_window_t windows[] = {win};
     xcb_ewmh_get_atoms_reply_t type;
     bool isAlien = False;
+
+    return False;
 
 /* isFloating may be NULL */
 
@@ -1079,6 +1121,7 @@ static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_ato
         if (wtype)
             *wtype = type.atoms[0];
         for (unsigned int i = 0; i < type.atoms_len; i++) {
+print_window_type(win, type.atoms[i]);
             if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
                 if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG) {
                     if (isFloating)
@@ -1248,6 +1291,10 @@ void clientmessage(xcb_generic_event_t *e)
     if (c && ev->type == ewmh->_NET_WM_STATE) {
         if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_FULLSCREEN
           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN)) {
+            setfullscreen(c, (ev->data.data32[0] == 1 ||
+                             (ev->data.data32[0] == 2 &&
+                             !c->isfullscreen)));
+#ifdef blah
            switch (ev->data.data32[0]) {
                 case _NET_WM_STATE_REMOVE:
                     c->isfullscreen = False;
@@ -1277,6 +1324,7 @@ void clientmessage(xcb_generic_event_t *e)
                         screen->width_in_pixels, screen->height_in_pixels);
                 break;
             }
+#endif /* blah */
         }
         if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_HIDDEN
           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_HIDDEN)) {
@@ -1354,7 +1402,7 @@ void configurerequest(xcb_generic_event_t *e)
             int y = ev->y;
             if (c && c->type == ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
 #ifndef EWMH_TASKBAR
-                if (showpanel && TOP_PANEL && y < PANEL_HEIGHT)
+                if (M_SHOWPANEL && TOP_PANEL && y < PANEL_HEIGHT)
 #else
                 if (y < M_WY)
 #endif /* EWMH_TASKBAR */
@@ -1433,8 +1481,8 @@ void desktopinfo(void)
     xcb_ewmh_get_utf8_strings_reply_t wtitle;
     wtitle.strings = NULL;
 
-    if (current) {
-        cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, current->win);
+    if (M_CURRENT) {
+        cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, M_CURRENT->win);
         xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0);
     }
 
@@ -1443,7 +1491,7 @@ void desktopinfo(void)
              c; c = M_GETNEXT(c), ++n)
             if (c->isurgent)
                 urgent = true;
-        fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, mode, current_desktop_number == cd,
+        fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, M_MODE, current_desktop_number == cd,
                 urgent);
         if (d + 1 == DESKTOPS)
             fprintf(stdout, "%s\n", M_CURRENT && OUTPUT_TITLE && wtitle.strings ?
@@ -1994,6 +2042,8 @@ void mapnotify(xcb_generic_event_t *e)
 {
     xcb_map_notify_event_t *ev = (xcb_map_notify_event_t *)e;
 
+    return;
+
     DEBUG("xcb: map notify");
 
     if (wintoclient(ev->window) || (scrpd && scrpd->win == ev->window))
@@ -2043,15 +2093,18 @@ void maprequest(xcb_generic_event_t *e)
 
     DEBUG("xcb: map request");
 
-    xcb_remove_property(dis, ev->window, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+fprintf(stderr, "maprequest(%lx);\n", ev->window);
 
     if (wintoclient(ev->window)) {
         xcb_map_window(dis, ev->window);
         return;
     }
 
-    if (check_if_window_is_alien(ev->window, &isFloating, &wtype))
+    if (window_is_override(ev->window))
+//    if (check_if_window_is_alien(ev->window, &isFloating, &wtype))
         return;
+
+    xcb_remove_property(dis, ev->window, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     DEBUG("event is valid");
 
@@ -2785,6 +2838,26 @@ int setup_keyboard(void)
     return 0;
 }
 
+/* set or unset fullscreen state of client */
+void setfullscreen(client *c, bool fullscrn)
+{
+    DEBUGP("xcb: set fullscreen: %d\n", fullscrn);
+    long data[] = { fullscrn ? ewmh->_NET_WM_STATE_FULLSCREEN : XCB_NONE };
+
+    if (fullscrn != c->isfullscreen)
+        xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
+                            c->win, ewmh->_NET_WM_STATE, XCB_ATOM_ATOM, 32,
+                            fullscrn, data);
+    if ((c->isfullscreen = fullscrn))
+        xcb_move_resize(dis, c, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+    xcb_border_width(dis, c->win,
+                     (!M_GETNEXT(M_HEAD) ||
+                      c->isfullscreen ||
+                      (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
+                     ) ? 0:client_borders(c));
+    update_current(c);
+}
+
 /* set initial values
  * root window - screen height/width - atoms - xerror handler
  * set masks for reporting events handled by the wm
@@ -2915,7 +2988,8 @@ int setup(int default_screen)
             xcb_atom_t wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
             xcb_get_window_attributes_reply_t *attr;
 
-            if (check_if_window_is_alien(children[i], NULL, &wtype))
+            if (window_is_override(children[i]))
+//            if (check_if_window_is_alien(children[i], NULL, &wtype))
                 continue;
 
             attr = xcb_get_window_attributes_reply(dis,
@@ -3244,8 +3318,8 @@ void tile(void)
     if (!M_HEAD)
         return; /* nothing to arange */
 #ifndef EWMH_TASKBAR
-    layout[head->next ? mode : MONOCLE](M_WH + (showpanel ? 0 : PANEL_HEIGHT),
-                                (TOP_PANEL && showpanel ? PANEL_HEIGHT : 0));
+    layout[M_GETNEXT(M_HEAD) ? M_MODE : MONOCLE](M_WH + (M_SHOWPANEL ? 0 : PANEL_HEIGHT),
+                                (TOP_PANEL && M_SHOWPANEL ? PANEL_HEIGHT : 0));
 #else
     Update_Global_Strut();
     layout[M_GETNEXT(M_HEAD) ? M_MODE : MONOCLE](M_WH, M_WY);
