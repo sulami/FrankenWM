@@ -7,7 +7,7 @@ MANPREFIX = ${PREFIX}/share/man
 INCS = -I. -I${PREFIX}/include -I/usr/X11R6/include
 LIBS = -lc -lX11 `pkg-config --libs xcb xcb-aux xcb-icccm xcb-keysyms xcb-ewmh`
 
-CFLAGS   += -std=c99 -pedantic -Wall -Wextra ${INCS} ${CPPFLAGS}
+CFLAGS   += -std=c99 -pedantic -Wfatal-errors -Wall -Wextra ${INCS} ${CPPFLAGS}
 LDFLAGS  += ${LIBS}
 
 EXEC = ${WMNAME}

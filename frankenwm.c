@@ -1083,11 +1083,18 @@ static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_ato
                 if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG) {
                     if (isFloating)
                         *isFloating = True;
+                    isAlien = False;
                 }
                 else {
-                    unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE}; 
-                    isAlien = True;
-                    xcb_change_window_attributes(dis, win, XCB_CW_EVENT_MASK, values);
+                    if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_UTILITY) {
+                        /* I look at you, palemoon! */
+                        isAlien = False;
+                    }
+                    else {
+                        unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE}; 
+                        xcb_change_window_attributes(dis, win, XCB_CW_EVENT_MASK, values);
+                        isAlien = True;
+                    }
                 }
             }
         }
@@ -2344,7 +2351,6 @@ fprintf(stderr, "valid\n");
     client *c = M_CURRENT;
     client *p = M_GETPREV(c);
     list   *l = c->link.parent;
-fprintf(stderr, "l=%lx, c=%lx, p=%lx\n", l, c, p);
     unlink_node(&c->link);
     insert_node_before(l, &p->link, &c->link);
     tile();
