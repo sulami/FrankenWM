@@ -1291,40 +1291,18 @@ void clientmessage(xcb_generic_event_t *e)
     if (c && ev->type == ewmh->_NET_WM_STATE) {
         if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_FULLSCREEN
           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN)) {
-            setfullscreen(c, (ev->data.data32[0] == 1 ||
-                             (ev->data.data32[0] == 2 &&
-                             !c->isfullscreen)));
-#ifdef blah
-           switch (ev->data.data32[0]) {
-                case _NET_WM_STATE_REMOVE:
-                    c->isfullscreen = False;
-                    destroy_display(c);
-                break;
+            uint32_t mode = ev->data.data32[0];
 
-                case _NET_WM_STATE_TOGGLE: {
-                    xcb_get_geometry_reply_t *wa = get_geometry(c->win);
-                    if (wa->x == 0
-                     && wa->y == 0
-                     && wa->width == screen->width_in_pixels
-                     && wa->height == screen->height_in_pixels) {
-                        setmaximize(c, False);
-                        free(wa);
-                        break;
-                    }
-                    free(wa);
-                /* else fall thru to _NET_WM_STATE_ADD */
-                }
+            if (mode == _NET_WM_STATE_TOGGLE)
+                mode = (c->isfullscreen) ? _NET_WM_STATE_REMOVE : _NET_WM_STATE_ADD;
 
-                case _NET_WM_STATE_ADD:
-                    c->isfullscreen = True;
-                    create_display(c);
-                    xcb_border_width(dis, c->win, 0);
-                    xcb_lower_window(dis, c->win);
-                    xcb_move_resize(dis, c, 0, 0,
-                        screen->width_in_pixels, screen->height_in_pixels);
-                break;
+            if (mode == _NET_WM_STATE_REMOVE) {
+                destroy_display(c);
             }
-#endif /* blah */
+            else {  /* _NET_WM_STATE_ADD */
+                create_display(c);
+            }
+            setfullscreen(c, mode == _NET_WM_STATE_ADD);
         }
         if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_HIDDEN
           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_HIDDEN)) {
