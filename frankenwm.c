@@ -69,6 +69,7 @@ typedef union {
 struct list {
     struct node *head;
     struct node *tail;
+    void        *master;    /* backpointer to the list's owner */
 };
 typedef struct list list;
 
@@ -171,7 +172,7 @@ typedef struct {
  */
 typedef struct {
     node link;      /* must be first */
-    list clients;
+    list clients;   /* must be second */
     client *current, *prevfocus;
     displayinfo di;
 } display;
@@ -180,16 +181,16 @@ typedef struct {
 
 typedef struct {
     node link;      /* must be first */
-    list displays;  /* display queue */
+    list displays;  /* must be second */
     unsigned int num;
-    unsigned int ww, wh;
+    int ww, wh;
     int wy;
 } monitor;
 
 /* desktop */
 typedef struct {
     node link;      /* must be first */
-    list monitors;  /* monitor queue */
+    list monitors;  /* must be second */
     unsigned int num;
 } desktop;
 
@@ -338,8 +339,8 @@ static monitor *current_monitor = NULL;
 #define M_WY          (current_monitor->wy)
 
 static display *current_display = NULL;
-#define M_HEAD 		  ((client *)(current_display->clients.head))
-#define M_TAIL 		  ((client *)(current_display->clients.tail))
+#define M_HEAD        ((client *)(current_display->clients.head))
+#define M_TAIL        ((client *)(current_display->clients.tail))
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT];
@@ -405,49 +406,62 @@ static void destroy_node(node *n)
     free(n);
 }
 
-static void add_head(list *l, node *n)
+static void add_head(list *l, node *i)
 {
-    if (l->head == NULL) {
-        l->head = n;
-        l->tail = n;
+    node *o = l->head;
+    if (o == NULL) {
+        l->head = i;
+        l->tail = i;
     }
     else {
-        l->head->prev = n;
-        n->next = l->head;
-        l->head = n;
+        l->head = i;
+        i->prev = NULL;
+        i->next = o;
+        o->prev = i;
     }
-    n->parent = l;
+    i->parent = l;
 }
 
-static void add_tail(list *l, node *n)
+static void add_tail(list *l, node *i)
 {
     if(l->head == NULL)
-        add_head(l, n);
+        add_head(l, i);
     else {
-        l->tail->next = n;
-        n->prev = l->tail;
-        l->tail = n;
+        node *o = l->tail;
+        l->tail = i;
+        o->next = i;
+        i->prev = o;
+        i->next = NULL;
     }
-    n->parent = l;
+    i->parent = l;
 }
 
-static void insert_node_after(list *l, node *p, node *n)
+static void insert_node_after(list *l, node *c, node *i)
 {
-    if (!p)
-        add_tail(l, n);
+    node *n;
+    if (!c || !(n = c->next))
+        add_tail(l, i);
     else {
-        n->next = p->next;
-        n->next->prev = n;
-        p->next =n;
+        c->next = i;
+        i->prev = c;
+        i->next = n;
+        n->prev = i;
     }
+    i->parent = l;
 }
 
-static void insert_node_before(list *l, node *p, node *n)
+static void insert_node_before(list *l, node *c, node *i)
 {
-    if (!p->prev)
-        add_head(l, n);
-    else
-        insert_node_after(l, p->prev, n);
+    node *p;
+    if (!c || !(p = c->prev))
+        add_head(l, i);
+    else {
+        p->next = i;
+        i->prev = p;
+        i->next = c;
+        c->prev = i;
+    }
+    i->parent = l;
 }
 
 /*
@@ -718,7 +732,7 @@ static int xcb_checkotherwm(void)
 }
 
 /* find desktop by number */
-static desktop *find_desktop(int n)
+static desktop *find_desktop(unsigned int n)
 {
     for (desktop *d = (desktop *)get_head(&desktops); d; d = (desktop *)get_next(&d->link)) {
         if (d->num == n)
@@ -729,12 +743,14 @@ static desktop *find_desktop(int n)
 
 static void setup_display(void)
 {
-    memset(&desktops, 0, sizeof(desktop));
+    desktops.head = desktops.tail = NULL;
     for (int d = 0; d < DESKTOPS; d++) {
         desktop *desk;
         if (!(desk = calloc(1, sizeof(desktop))))
             err(EXIT_FAILURE, "cannot allocate desktop");
         add_tail(&desktops, &desk->link);
+        desk->monitors.master = desk;
+        desk->num = d;
 
         for (int m = 0; m < MONITORS; m++) {
             monitor *moni;
@@ -742,8 +758,10 @@ static void setup_display(void)
             if (!(moni = calloc(1, sizeof(monitor))))
                 err(EXIT_FAILURE, "cannot allocate monitor");
             add_tail(&desk->monitors, &moni->link);
+            moni->displays.master = moni;
+
 /* TODO: multi monitor support */
-            moni->num = 0;
+            moni->num = m;
             moni->ww = screen->width_in_pixels;
             moni->wh = screen->height_in_pixels;
 #ifndef EWMH_TASKBAR
@@ -754,6 +772,8 @@ static void setup_display(void)
             if (!(disp = calloc(1, sizeof(display))))
                 err(EXIT_FAILURE, "cannot allocate display");
             add_tail(&moni->displays, &disp->link);
+            disp->clients.master = disp;
+
             /* disp->di.master_size = MASTER_SIZE; */
             disp->di.gaps = USELESSGAP;
             disp->di.mode = DEFAULT_MODE;
@@ -771,6 +791,9 @@ static void setup_display(void)
             }
         }
     }
+    current_desktop = (desktop *)get_head(&desktops);
+    current_monitor = (monitor *)get_head(&current_desktop->monitors);
+    current_display = (display *)get_head(&current_monitor->displays);
 }
 
 static void cleanup_display(void)
@@ -794,50 +817,71 @@ static void cleanup_display(void)
     }
 }
 
-static void create_display(client *c)
+static void getparents(client *c, display **di, monitor **mo, desktop **de)
 {
     display *disp;
+    monitor *moni;
+    desktop *desk;
+    list *l;
+
+/* backpointer mambo-jambo */
+    if (!c) return;
+    l = c->link.parent;
+    disp = l->master;
+    l = disp->link.parent;
+    moni = l->master;
+    l = moni->link.parent;
+    desk = l->master;
+
+    if (di)
+        *di = disp;
+    if (mo)
+        *mo = moni;
+    if (de)
+        *de = desk;
+}
+
+static void create_display(client *c)
+{
+    desktop *desk=NULL;
+    monitor *moni=NULL;
+    display *disp=NULL, *new;
 
     if (!c)
         return;
 
+    getparents(c, &disp, &moni, &desk);
+
 fprintf(stderr, "create_display();\n");
 
-    if (!(disp = calloc(1, sizeof(display))))
+    if (!(new = calloc(1, sizeof(display))))
         err(EXIT_FAILURE, "cannot allocate new display");
+    new->clients.master = new;  /* backpointer */
 
-/* unlink client from current client list. */
+/* unlink client from its display client list. */
     unlink_node(&c->link);
 
 /* hide current windows */
     for (client *t = M_HEAD; t; t = M_GETNEXT(t))
         xcb_move(dis, t, -2 * M_WW, 0);
 
-/* set client as new head */
-    add_head(&disp->clients, &c->link);
-
-/* copy settings */
-    memcpy(&disp->di, &current_display->di, sizeof(displayinfo));
+/* set client as head in new display */
+    add_head(&new->clients, &c->link);
 
 /* set new display as head. */
-    add_head(current_display->link.parent, &disp->link);
+    add_head(&moni->displays, &new->link);
+
+/* update global pointers */
+    select_desktop(current_desktop_number);
+
+/* copy settings */
+    memcpy(&new->di, &disp->di, sizeof(displayinfo));
 
 /* update current display pointer */
-    current_display = disp;
+    current_display = new;
 
 /* update focus and tiling */
     update_current(NULL);
-}
-
-static void getparents(client *c, display **di, monitor **mo, desktop **de)
-{
-    if (!c) return;
-    display *disp = (display *)c->link.parent;
-    monitor *moni = (monitor *)disp->link.parent;
-    desktop *desk = (desktop *)moni->link.parent;
-    if (di) *di = disp;
-    if (mo) *mo = moni;
-    if (de) *de = desk;
 }
 
 static void destroy_display(client *c)
@@ -863,8 +907,10 @@ fprintf(stderr, "destroy_display();\n");
 /* unlink empty display */
     unlink_node(&disp->link);
 
-    if (current_display == disp) {
-        current_display = next;
+/* update global pointers */
+    select_desktop(current_desktop_number);
+
+    if (current_display == next) {
         update_current(c);
     }
 
@@ -1218,8 +1264,8 @@ void clientmessage(xcb_generic_event_t *e)
                 case _NET_WM_STATE_ADD:
                     c->isfullscreen = True;
                     create_display(c);
-                    xcb_lower_window(dis, c->win);
                     xcb_border_width(dis, c->win, 0);
+                    xcb_lower_window(dis, c->win);
                     xcb_move_resize(dis, c, 0, 0,
                         screen->width_in_pixels, screen->height_in_pixels);
                 break;
@@ -1770,6 +1816,29 @@ unsigned int getcolor(char *color)
 /* set the given client to listen to button events (presses / releases) */
 void grabbuttons(client *c)
 {
+    unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
+                                 numlockmask|XCB_MOD_MASK_LOCK };
+    if (!c)
+        return;
+
+    xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
+    for (unsigned int b = 0; b < LENGTH(buttons); b++)
+        for (unsigned int m = 0; m < LENGTH(modifiers); m++)
+            if (CLICK_TO_FOCUS)
+                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                                XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
+            else
+                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
+                                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                                buttons[b].button,
+                                buttons[b].mask|modifiers[m]);
+}
+/*
+void grabbuttons(client *c)
+{
     if (!c)
         return;
 
@@ -1795,6 +1864,7 @@ void grabbuttons(client *c)
         }
     }
 }
+*/
 
 /* the wm should listen to key presses */
 void grabkeys(void)
@@ -2247,31 +2317,38 @@ void monocle(int hh, int cy)
 }
 
 /* move the current client, to current->next
- * and current->next to current client's position */
+* and current->next to current client's position */
 void move_down()
 {
+fprintf(stderr, "move_down();\n");
     if (!M_CURRENT || !M_GETNEXT(M_CURRENT))
         return;
+fprintf(stderr, "valid\n");
     client *c = M_CURRENT;
     client *n = M_GETNEXT(c);
-    list *l = c->link.parent;
+    list   *l = c->link.parent;
     unlink_node(&c->link);
     insert_node_after(l, &n->link, &c->link);
     tile();
+fprintf(stderr, "finished\n");
 }
 
 /* move the current client, to the previous from current and
- * the previous from  current to current client's position */
+* the previous from current to current client's position */
 void move_up()
 {
+fprintf(stderr, "move_up();\n");
     if (!M_CURRENT || !M_GETPREV(M_CURRENT))
         return;
+fprintf(stderr, "valid\n");
     client *c = M_CURRENT;
     client *p = M_GETPREV(c);
-    list *l = c->link.parent;
+    list   *l = c->link.parent;
+fprintf(stderr, "l=%lx, c=%lx, p=%lx\n", l, c, p);
     unlink_node(&c->link);
     insert_node_before(l, &p->link, &c->link);
     tile();
+fprintf(stderr, "finished\n");
 }
 
 /* cyclic focus the next window
@@ -2715,7 +2792,6 @@ int setup(int default_screen)
     screen = xcb_screen_of_display(dis, default_screen);
     if (!screen)
         err(EXIT_FAILURE, "error: cannot aquire screen\n");
-
     setup_display();
     select_desktop(0);      /* initialize global pointers */
 
@@ -2967,6 +3043,7 @@ int setup(int default_screen)
  */
 static void setwindefattr(xcb_window_t w)
 {
+return;
     unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
                             (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
     if (w) xcb_change_window_attributes(dis, w, XCB_CW_EVENT_MASK, values);
@@ -3116,9 +3193,9 @@ void swap_master()
     if (!M_CURRENT || !M_GETNEXT(M_HEAD))
         return;
     if (M_CURRENT == M_HEAD) {
-        client *c = M_HEAD;
+        client *c = M_GETNEXT(M_HEAD);
         unlink_node(&c->link);
-        insert_node_after(&current_display->clients, &M_HEAD->link, &c->link);
+        add_head(&current_display->clients, &c->link);
     }
     else {
         client *c = M_CURRENT;
@@ -3316,12 +3393,14 @@ void update_current(client *newfocus)   // newfocus may be NULL
     }
 
     for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
-        xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
-                                (c == M_CURRENT ? &win_focus : &win_unfocus));
-        xcb_border_width(dis, c->win, (c->isfullscreen || c->ismaximized ||
-                          (!MONOCLE_BORDERS && !M_GETNEXT(M_HEAD)) ||
-                          (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
-                          ) ? 0 : client_borders(c));
+        if (!c->isfullscreen) {
+            xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
+                                    (c == M_CURRENT ? &win_focus : &win_unfocus));
+            xcb_border_width(dis, c->win, (c->ismaximized ||
+                              (!MONOCLE_BORDERS && !M_GETNEXT(M_HEAD)) ||
+                              (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
+                              ) ? 0 : client_borders(c));
+        }
     }
 
     if (USE_SCRATCHPAD && SCRATCH_WIDTH && showscratchpad && scrpd) {
@@ -3335,7 +3414,10 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
         if (c->isfullscreen) {
+//            xcb_border_width(dis, c->win, 0);
             xcb_lower_window(dis, c->win);
+//            xcb_move_resize(dis, c, 0, 0,
+//                            screen->width_in_pixels, screen->height_in_pixels);
             break;
         }
     }
@@ -3371,7 +3453,7 @@ client *wintoclient(xcb_window_t win)
     desktop *desk;
     for (desk = (desktop *)get_head(&desktops); desk; desk = (desktop *)get_next(&desk->link)) {
         monitor *moni;
-        for (moni = (monitor *)get_head(&desk->monitors); desk; desk = (desktop *)get_next(&desk->link)) {
+        for (moni = (monitor *)get_head(&desk->monitors); moni; moni = (monitor *)get_next(&moni->link)) {
             display *disp;
             for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_next(&disp->link)) {
                 client *c;
