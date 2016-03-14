@@ -895,10 +895,10 @@ void change_desktop(const Arg *arg)
     select_desktop(arg->i);
     if (show) {
         if (M_CURRENT && M_CURRENT != scrpd)
-            xcb_move(dis, M_CURRENT->win, M_CURRENT->position_info.px, M_CURRENT->position_info.py, &M_CURRENT->position_info);
+            xcb_move(dis, M_CURRENT->win, M_CURRENT->position_info.previous_x, M_CURRENT->position_info.previous_y, &M_CURRENT->position_info);
         for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
             if (c != M_CURRENT)
-                xcb_move(dis, c->win, c->position_info.px, c->position_info.py, &c->position_info);
+                xcb_move(dis, c->win, c->position_info.previous_x, c->position_info.previous_y, &c->position_info);
         }
     }
     select_desktop(previous_desktop);
@@ -906,7 +906,7 @@ void change_desktop(const Arg *arg)
         if (c != M_CURRENT)
             xcb_move(dis, c->win, -2 * M_WW, 0, &c->position_info);
     }
-    if (M_CURRENT && M_CURRENT != scrpd) 
+    if (M_CURRENT && M_CURRENT != scrpd)
         xcb_move(dis, M_CURRENT->win, -2 * M_WW, 0, &M_CURRENT->position_info);
     select_desktop(arg->i);
     update_current(M_CURRENT);
@@ -1276,8 +1276,8 @@ static inline alien *create_alien(xcb_window_t win, xcb_atom_t atom)
         xcb_map_window(dis, win);
 
         xcb_get_geometry_reply_t *g = get_geometry(a->win);
-        a->position_info.px = a->position_info.cx = g->x;
-        a->position_info.py = a->position_info.cy = g->y;
+        a->position_info.previous_x = a->position_info.current_x = g->x;
+        a->position_info.previous_y = a->position_info.current_y = g->y;
         free(g);
     }
     return(a);
@@ -1308,8 +1308,8 @@ static client *create_client(xcb_window_t win, xcb_atom_t wtype)
         c->setfocus = (hints.input) ? True : False;
 
     xcb_get_geometry_reply_t *g = get_geometry(c->win);
-    c->position_info.px = c->position_info.cx = g->x;
-    c->position_info.py = c->position_info.cy = g->y;
+    c->position_info.previous_x = c->position_info.current_x = g->x;
+    c->position_info.previous_y = c->position_info.current_y = g->y;
     free(g);
 
     return c;
@@ -1418,7 +1418,7 @@ fprintf(stderr, "destroy_display(%x)\n", c->win);
     unlink_node(&disp->link);                   /* unlink now empty display */
     select_desktop(current_desktop_number);     /* update global pointers */
     for (alien *t = (alien *)get_head(&aliens); t; t = (alien *)get_next(&t->link))   /* show aliens */
-        xcb_move(dis, t->win, t->position_info.px, t->position_info.py, &t->position_info);
+        xcb_move(dis, t->win, t->position_info.previous_x, t->position_info.previous_y, &t->position_info);
     if (current_display == next) {
         update_current(c);
     }
@@ -2094,31 +2094,32 @@ void maprequest(xcb_generic_event_t *e)
     DEBUGP("transient: %d\n", c->istransient);
     DEBUGP("floating:  %d\n", c->isfloating);
 
-    
+    int wmdsk = cd;
     xcb_move(dis, c->win, -2 * M_WW, 0, &c->position_info);
     xcb_map_window(dis, c->win);
     if (cd != newdsk) {
         unlink_node(&c->link);
         select_desktop(newdsk);
         add_tail(&current_display->clients, &c->link);
-        xcb_ewmh_set_wm_desktop(ewmh, c->win, newdsk);
         select_desktop(cd);
-    }
-    else {
-        if (show) {
-            xcb_move(dis, c->win, c->position_info.px, c->position_info.py, NULL);
-            c->position_info.px = c->position_info.cx;
-            c->position_info.py = c->position_info.cy;
-            xcb_ewmh_set_wm_desktop(ewmh, c->win, cd);
-            update_current(c);
-        }
+        wmdsk = newdsk;
         if (follow) {
             change_desktop(&(Arg){.i = newdsk});
-            update_current(c);
+            goto ClientIsVisible;
         }
-        if (c->isfloating && AUTOCENTER)
-            centerfloating(c);
     }
+    else {
+ClientIsVisible:
+        if (show) {
+            xcb_move(dis, c->win, c->position_info.previous_x, c->position_info.previous_y, NULL);
+            c->position_info.previous_x = c->position_info.current_x;
+            c->position_info.previous_y = c->position_info.current_y;
+            update_current(c);
+           if (c->isfloating && AUTOCENTER)
+                centerfloating(c);
+        }
+    }
+    xcb_ewmh_set_wm_desktop(ewmh, c->win, wmdsk);
     grabbuttons(c);
     desktopinfo();
 }
@@ -2799,7 +2800,7 @@ int setup(int default_screen)
     Reset_Global_Strut();   /* struts are not yet ready. */
 #endif /* EWMH_TASKBAR */
     borders = BORDER_WIDTH;
- 
+
     aliens.head = NULL;
     aliens.tail = NULL;
 
@@ -3101,7 +3102,7 @@ void showhide(void)
 {
     if ((show = !show)) {
         for (client *c = (client *)get_node_head(&M_HEAD->link); c; c = M_GETNEXT(c))
-            xcb_move(dis, c->win, c->position_info.px, c->position_info.py, &c->position_info);
+            xcb_move(dis, c->win, c->position_info.previous_x, c->position_info.previous_y, &c->position_info);
         tile();
         xcb_ewmh_set_showing_desktop(ewmh, default_screen, 1);
     } else {
