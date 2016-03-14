@@ -224,6 +224,7 @@ static bool check_wmproto(xcb_window_t win, xcb_atom_t proto);
 static void centerfloating(client *c);
 static void centerwindow();
 static void cleanup(void);
+static void cleanup_display(void);
 static int client_borders(const client *c);
 static void client_to_desktop(const Arg *arg);
 static void clientmessage(xcb_generic_event_t *e);
@@ -279,6 +280,7 @@ static bool sendevent(xcb_window_t win, xcb_atom_t proto);
 static void setmaximize(client *c, bool fullscrn);
 void setfullscreen(client *c, bool fullscrn);
 static int setup(int default_screen);
+static void setup_display(void);
 static void setwindefattr(xcb_window_t w);
 static void showhide();
 static void sigchld();
@@ -732,7 +734,8 @@ static int xcb_checkotherwm(void)
     return 0;
 }
 
-static bool window_is_override(xcb_window_t win)
+/*
+static bool window_is_override_redirect(xcb_window_t win)
 {
     xcb_get_window_attributes_reply_t *attr[1];
     xcb_window_t windows[] = {win};
@@ -746,6 +749,7 @@ static bool window_is_override(xcb_window_t win)
     }
     return override;
 }
+*/
 
 /* find desktop by number */
 static desktop *find_desktop(unsigned int n)
@@ -755,82 +759,6 @@ static desktop *find_desktop(unsigned int n)
             return d;
     }
     return NULL;
-}
-
-static void setup_display(void)
-{
-    desktops.head = desktops.tail = NULL;
-    for (int d = 0; d < DESKTOPS; d++) {
-        desktop *desk;
-        if (!(desk = calloc(1, sizeof(desktop))))
-            err(EXIT_FAILURE, "cannot allocate desktop");
-        add_tail(&desktops, &desk->link);
-        desk->monitors.master = desk;
-        desk->num = d;
-
-        for (int m = 0; m < MONITORS; m++) {
-            monitor *moni;
-            display *disp;
-            if (!(moni = calloc(1, sizeof(monitor))))
-                err(EXIT_FAILURE, "cannot allocate monitor");
-            add_tail(&desk->monitors, &moni->link);
-            moni->displays.master = moni;
-
-/* TODO: multi monitor support */
-            moni->num = m;
-            moni->ww = screen->width_in_pixels;
-            moni->wh = screen->height_in_pixels;
-#ifndef EWMH_TASKBAR
-            moni->wh -= PANEL_HEIGHT;
-#endif /* EWMH_TASKBAR */
-
-/* each monitor gets 1 default display. */
-            if (!(disp = calloc(1, sizeof(display))))
-                err(EXIT_FAILURE, "cannot allocate display");
-            add_tail(&moni->displays, &disp->link);
-            disp->clients.master = disp;
-
-            /* disp->di.master_size = MASTER_SIZE; */
-            disp->di.gaps = USELESSGAP;
-            disp->di.mode = DEFAULT_MODE;
-            disp->di.showpanel = SHOW_PANEL;
-            disp->di.invert = INVERT;
-
-/* Pivot monitor support */
-            if (moni->wh > moni->ww) {
-                if (disp->di.mode == TILE)
-                    disp->di.mode = BSTACK;
-                else {
-                    if (disp->di.mode == BSTACK)
-                        disp->di.mode = TILE;
-                }
-            }
-        }
-    }
-    current_desktop = (desktop *)get_head(&desktops);
-    current_monitor = (monitor *)get_head(&current_desktop->monitors);
-    current_display = (display *)get_head(&current_monitor->displays);
-}
-
-static void cleanup_display(void)
-{
-    desktop *desk;
-    for (desk = (desktop *)get_head(&desktops); desk; desk = (desktop *)get_head(&desktops)) {
-        monitor *moni;
-        for (moni = (monitor *)get_head(&desk->monitors); moni; moni = (monitor *)get_head(&desk->monitors)) {
-            display *disp;
-            for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_head(&moni->displays)) {
-                client *c;
-                for (c = (client *)get_head(&disp->clients); c; c = (client *)get_head(&disp->clients)) {
-                    xcb_border_width(dis, c->win, 0);
-                    destroy_node(&c->link);
-                }
-                destroy_node(&disp->link);
-            }
-            destroy_node(&moni->link);
-        }
-        destroy_node(&desk->link);
-    }
 }
 
 static void getparents(client *c, display **di, monitor **mo, desktop **de)
@@ -855,82 +783,6 @@ static void getparents(client *c, display **di, monitor **mo, desktop **de)
         *mo = moni;
     if (de)
         *de = desk;
-}
-
-static void create_display(client *c)
-{
-    desktop *desk=NULL;
-    monitor *moni=NULL;
-    display *disp=NULL, *new;
-
-    if (!c)
-        return;
-
-    getparents(c, &disp, &moni, &desk);
-
-fprintf(stderr, "create_display();\n");
-
-    if (!(new = calloc(1, sizeof(display))))
-        err(EXIT_FAILURE, "cannot allocate new display");
-    new->clients.master = new;  /* backpointer */
-
-/* unlink client from its display client list. */
-    unlink_node(&c->link);
-
-/* hide current windows */
-    for (client *t = M_HEAD; t; t = M_GETNEXT(t))
-        xcb_move(dis, t, -2 * M_WW, 0);
-
-/* set client as head in new display */
-    add_head(&new->clients, &c->link);
-
-/* set new display as head. */
-    add_head(&moni->displays, &new->link);
-
-/* update global pointers */
-    select_desktop(current_desktop_number);
-
-/* copy settings */
-    memcpy(&new->di, &disp->di, sizeof(displayinfo));
-
-/* update current display pointer */
-    current_display = new;
-
-/* update focus and tiling */
-    update_current(NULL);
-}
-
-static void destroy_display(client *c)
-{
-    desktop *desk=NULL;
-    monitor *moni=NULL;
-    display *disp=NULL, *next;
-
-fprintf(stderr, "destroy_display();\n");
-
-/* find the client's display, desktop and monitor. */
-    getparents(c, &disp, &moni, &desk);
-
-    if (!(next = (display *)get_next(&disp->link)))
-        return;     /* cannot destroy the last display. */
-
-/* relink entire clientlist to the next display clientlist. */
-    for (client *t = (client *)get_head(&disp->clients); t; t = (client *)get_head(&disp->clients)) {
-        unlink_node(&t->link);
-        add_tail(&next->clients, &t->link);
-    }
-
-/* unlink empty display */
-    unlink_node(&disp->link);
-
-/* update global pointers */
-    select_desktop(current_desktop_number);
-
-    if (current_display == next) {
-        update_current(c);
-    }
-
-    free(disp);
 }
 
 /* create a new client and add the new window
@@ -1079,8 +931,9 @@ static void print_window_type(xcb_window_t w, xcb_atom_t a)
     else if (a == ewmh->_NET_WM_WINDOW_TYPE_NORMAL)         s = "_NET_WM_WINDOW_TYPE_NORMAL";
     else s = "undefined window type";
 
-    if (s)
-        fprintf(stderr, "window %lx has type %s\n", w, s);
+    if (w && s) {
+        DEBUGP("window %x has type %s\n", w, s);
+    }
 }
 
 /*
@@ -1095,21 +948,19 @@ static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_ato
     xcb_ewmh_get_atoms_reply_t type;
     bool isAlien = False;
 
-    return False;
-
-/* isFloating may be NULL */
-
     if (isFloating) *isFloating = False;
+    if (wtype) *wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
+
     xcb_get_attributes(windows, attr, 1);
     if (!attr[0])   /* dead on arrival */
         return True;
 
-    /*
-     * check if window is override_redirect.
-     * if yes, then we add it to alien list and map it.
-     */
-    isAlien = (attr[0]->override_redirect) ? True : False;
-    free(attr[0]);
+    if (attr[0]->override_redirect) {
+        free(attr[0]);
+        return True;
+    }
+    else
+        free(attr[0]);
 
     /*
      * check if window type is not _NET_WM_WINDOW_TYPE_NORMAL.
@@ -1118,27 +969,22 @@ static bool check_if_window_is_alien(xcb_window_t win, bool *isFloating, xcb_ato
     if (xcb_ewmh_get_wm_window_type_reply(ewmh,
                                 xcb_ewmh_get_wm_window_type(ewmh,
                                 win), &type, NULL) == 1) {
-        if (wtype)
-            *wtype = type.atoms[0];
+        if (wtype) *wtype = type.atoms[0];
         for (unsigned int i = 0; i < type.atoms_len; i++) {
 print_window_type(win, type.atoms[i]);
-            if (type.atoms[i] != ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
-                if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG) {
-                    if (isFloating)
-                        *isFloating = True;
-                    isAlien = False;
-                }
-                else {
-                    if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_UTILITY) {
-                        /* I look at you, palemoon! */
-                        isAlien = False;
-                    }
-                    else {
-                        unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE}; 
-                        xcb_change_window_attributes(dis, win, XCB_CW_EVENT_MASK, values);
-                        isAlien = True;
-                    }
-                }
+            if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
+                isAlien = False;
+                break;
+            }
+            if (type.atoms[i] == ewmh->_NET_WM_WINDOW_TYPE_DIALOG) {
+                if (isFloating)
+                   *isFloating = True;
+                isAlien = False;
+            }
+            else {
+                unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE}; 
+                xcb_change_window_attributes(dis, win, XCB_CW_EVENT_MASK, values);
+                isAlien = True;
             }
         }
         xcb_ewmh_get_atoms_reply_wipe(&type);
@@ -1231,6 +1077,27 @@ void cleanup(void)
     }
 }
 
+static void cleanup_display(void)
+{
+    desktop *desk;
+    for (desk = (desktop *)get_head(&desktops); desk; desk = (desktop *)get_head(&desktops)) {
+        monitor *moni;
+        for (moni = (monitor *)get_head(&desk->monitors); moni; moni = (monitor *)get_head(&desk->monitors)) {
+            display *disp;
+            for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_head(&moni->displays)) {
+                client *c;
+                for (c = (client *)get_head(&disp->clients); c; c = (client *)get_head(&disp->clients)) {
+                    xcb_border_width(dis, c->win, 0);
+                    destroy_node(&c->link);
+                }
+                destroy_node(&disp->link);
+            }
+            destroy_node(&moni->link);
+        }
+        destroy_node(&desk->link);
+    }
+}
+
 /*
  * return the border width of a client for calculations
  *
@@ -1295,13 +1162,6 @@ void clientmessage(xcb_generic_event_t *e)
 
             if (mode == _NET_WM_STATE_TOGGLE)
                 mode = (c->isfullscreen) ? _NET_WM_STATE_REMOVE : _NET_WM_STATE_ADD;
-
-            if (mode == _NET_WM_STATE_REMOVE) {
-                destroy_display(c);
-            }
-            else {  /* _NET_WM_STATE_ADD */
-                create_display(c);
-            }
             setfullscreen(c, mode == _NET_WM_STATE_ADD);
         }
         if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_HIDDEN
@@ -1429,6 +1289,29 @@ static client *create_client(xcb_window_t win, xcb_atom_t wtype)
     return c;
 }
 
+static void create_display(client *c)
+{
+    desktop *desk=NULL;
+    monitor *moni=NULL;
+    display *disp=NULL, *new;
+
+    if (!c)
+        return;
+    getparents(c, &disp, &moni, &desk);     /* get the client's display, monitor and desktop. */
+    if (!(new = calloc(1, sizeof(display))))
+        err(EXIT_FAILURE, "cannot allocate new display");
+    new->clients.master = new;  /* backpointer */
+    unlink_node(&c->link);          /* unlink client from its display client list. */
+    for (client *t = M_HEAD; t; t = M_GETNEXT(t))   /* hide current windows */
+        xcb_move(dis, t, -2 * M_WW, 0);
+    add_head(&new->clients, &c->link);      /* set client as head in new display */
+    add_head(&moni->displays, &new->link);  /* set new display as head. */
+    select_desktop(current_desktop_number); /* update global pointers */
+    memcpy(&new->di, &disp->di, sizeof(displayinfo));   /* copy settings */
+    current_display = new;                  /* update current display pointer */
+    update_current(NULL);                   /* update focus and tiling */
+}
+
 /* close the window */
 bool deletewindow(xcb_window_t win)
 {
@@ -1486,6 +1369,27 @@ void desktopinfo(void)
 #else
     Update_EWMH_Taskbar_Properties();
 #endif /* EWMH_TASKBAR */
+}
+
+static void destroy_display(client *c)
+{
+    desktop *desk=NULL;
+    monitor *moni=NULL;
+    display *disp=NULL, *next;
+
+    getparents(c, &disp, &moni, &desk);     /* get the client's display, monitor and desktop. */
+    if (!(next = (display *)get_next(&disp->link)))     /* cannot destroy the last display. */
+        return;
+    for (client *t = (client *)get_head(&disp->clients); t; t = (client *)get_head(&disp->clients)) {
+        unlink_node(&t->link);  /* relink entire clientlist to the next display clientlist. */
+        add_tail(&next->clients, &t->link);
+    }
+    unlink_node(&disp->link);                   /* unlink now empty display */
+    select_desktop(current_desktop_number);     /* update global pointers */
+    if (current_display == next) {
+        update_current(c);
+    }
+    free(disp);
 }
 
 /*
@@ -2071,15 +1975,15 @@ void maprequest(xcb_generic_event_t *e)
 
     DEBUG("xcb: map request");
 
-fprintf(stderr, "maprequest(%lx);\n", ev->window);
+fprintf(stderr, "maprequest(%x);\n", ev->window);
 
     if (wintoclient(ev->window)) {
         xcb_map_window(dis, ev->window);
         return;
     }
 
-    if (window_is_override(ev->window))
-//    if (check_if_window_is_alien(ev->window, &isFloating, &wtype))
+//    if (window_is_override_redirect(ev->window))
+    if (check_if_window_is_alien(ev->window, &isFloating, &wtype))
         return;
 
     xcb_remove_property(dis, ev->window, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
@@ -2820,6 +2724,32 @@ int setup_keyboard(void)
 void setfullscreen(client *c, bool fullscrn)
 {
     DEBUGP("xcb: set fullscreen: %d\n", fullscrn);
+
+    if (fullscrn) {
+        long data[] = { ewmh->_NET_WM_STATE_FULLSCREEN };
+        c->isfullscreen = True;
+        xcb_border_width(dis, c->win, 0);
+        xcb_move_resize(dis, c, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+        xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
+                            c->win, ewmh->_NET_WM_STATE,
+                            XCB_ATOM_ATOM, 32, True, data);
+        create_display(c);
+    }
+    else {
+        c->isfullscreen = False;
+        xcb_border_width(dis, c->win,
+                     (!M_GETNEXT(M_HEAD) ||
+                      (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
+                     ) ? 0 : client_borders(c));
+        xcb_remove_property(dis, c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_FULLSCREEN);
+        destroy_display(c);
+    }
+    update_current(c);
+}
+/*
+void setfullscreen(client *c, bool fullscrn)
+{
+    DEBUGP("xcb: set fullscreen: %d\n", fullscrn);
     long data[] = { fullscrn ? ewmh->_NET_WM_STATE_FULLSCREEN : XCB_NONE };
 
     if (fullscrn != c->isfullscreen)
@@ -2835,6 +2765,7 @@ void setfullscreen(client *c, bool fullscrn)
                      ) ? 0:client_borders(c));
     update_current(c);
 }
+*/
 
 /* set initial values
  * root window - screen height/width - atoms - xerror handler
@@ -2966,8 +2897,8 @@ int setup(int default_screen)
             xcb_atom_t wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
             xcb_get_window_attributes_reply_t *attr;
 
-            if (window_is_override(children[i]))
-//            if (check_if_window_is_alien(children[i], NULL, &wtype))
+//            if (window_is_override_redirect(children[i]))
+            if (check_if_window_is_alien(children[i], NULL, &wtype))
                 continue;
 
             attr = xcb_get_window_attributes_reply(dis,
@@ -3056,6 +2987,11 @@ int setup(int default_screen)
                             case7 = True;                                       /* case 7 */
                     }
                 }
+
+            /* sane defaults */
+                xcb_remove_property(dis, children[i], ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_FULLSCREEN);
+                xcb_remove_property(dis, children[i], ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+
                 if (cd != dsk)
                     select_desktop(dsk);
                 client *c = addwindow(children[i], wtype);
@@ -3065,7 +3001,6 @@ int setup(int default_screen)
                 c->py = c->cy = geometry->y;
                 free(geometry);
 
-                xcb_remove_property(dis, c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
                 if (doMinimize)
                     minimize_client(c);
                 if (case7)
@@ -3094,6 +3029,61 @@ int setup(int default_screen)
 #endif
 
     return 0;
+}
+
+static void setup_display(void)
+{
+    desktops.head = desktops.tail = NULL;
+    for (int d = 0; d < DESKTOPS; d++) {
+        desktop *desk;
+        if (!(desk = calloc(1, sizeof(desktop))))
+            err(EXIT_FAILURE, "cannot allocate desktop");
+        add_tail(&desktops, &desk->link);
+        desk->monitors.master = desk;
+        desk->num = d;
+
+        for (int m = 0; m < MONITORS; m++) {
+            monitor *moni;
+            display *disp;
+            if (!(moni = calloc(1, sizeof(monitor))))
+                err(EXIT_FAILURE, "cannot allocate monitor");
+            add_tail(&desk->monitors, &moni->link);
+            moni->displays.master = moni;
+
+/* TODO: multi monitor support */
+            moni->num = m;
+            moni->ww = screen->width_in_pixels;
+            moni->wh = screen->height_in_pixels;
+#ifndef EWMH_TASKBAR
+            moni->wh -= PANEL_HEIGHT;
+#endif /* EWMH_TASKBAR */
+
+/* each monitor gets 1 default display. */
+            if (!(disp = calloc(1, sizeof(display))))
+                err(EXIT_FAILURE, "cannot allocate display");
+            add_tail(&moni->displays, &disp->link);
+            disp->clients.master = disp;
+
+            /* disp->di.master_size = MASTER_SIZE; */
+            disp->di.gaps = USELESSGAP;
+            disp->di.mode = DEFAULT_MODE;
+            disp->di.showpanel = SHOW_PANEL;
+            disp->di.invert = INVERT;
+
+/* Pivot monitor support */
+            if (moni->wh > moni->ww) {
+                if (disp->di.mode == TILE)
+                    disp->di.mode = BSTACK;
+                else {
+                    if (disp->di.mode == BSTACK)
+                        disp->di.mode = TILE;
+                }
+            }
+        }
+    }
+    current_desktop = (desktop *)get_head(&desktops);
+    current_monitor = (monitor *)get_head(&current_desktop->monitors);
+    current_display = (display *)get_head(&current_monitor->displays);
 }
 
 /*
