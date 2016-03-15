@@ -81,7 +81,8 @@ struct node {
 typedef struct node node;
 
 typedef struct {
-    int px, cx, py, cy;
+    int previous_x, previous_y;
+    int current_x, current_y;
 } posxy_t;
 
 /*
@@ -144,7 +145,7 @@ typedef struct {
  */
 typedef struct {
     node link;  /* must be first */
-    bool isurgent, istransient, isfullscreen, ismaximized, isfloating, isminimized;
+    bool isurgent, istransient, isfloating, isfullscreen, ismaximized, isminimized;
     xcb_window_t win;
     xcb_atom_t type;
     unsigned int dim[2];
@@ -180,6 +181,7 @@ typedef struct {
     node link;      /* must be first */
     list clients;   /* must be second */
     client *current, *prevfocus;
+    list miniq;
     displayinfo di;
 } display;
 #define M_CURRENT     (current_display->current)
@@ -202,8 +204,8 @@ typedef struct {
 
 /* lifo for minimized clients */
 typedef struct lifo {
+    node link;      /* must be first */
     client *c;
-    struct lifo *next;
 } lifo;
 
 /* define behavior of certain applications
@@ -355,7 +357,6 @@ static display *current_display = NULL;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT];
-static lifo *miniq[DESKTOPS];
 static regex_t appruleregex[LENGTH(rules)];
 static xcb_key_symbols_t *keysyms;
 
@@ -381,11 +382,12 @@ static void (*layout[MODES])(int h, int y) = {
  * lowlevel doubly linked list functions
  */
 
-static void unlink_node(node *n)
+static node *rem_node(node *n)
 {
     list *l;
 
-    if (!n) return;
+    if (!n)
+        return NULL;
     l = n->parent;
     if (l) {
         if (n == l->head) {
@@ -406,15 +408,7 @@ static void unlink_node(node *n)
     }
     n->prev = n->next = NULL;
     n->parent = NULL;
-}
-
-static void destroy_node(node *n)
-{
-    if (!n)
-        return;
-
-    unlink_node(n);
-    free(n);
+    return n;
 }
 
 static void add_head(list *l, node *i)
@@ -455,7 +449,7 @@ static void insert_node_after(list *l, node *c, node *i)
     else {
         c->next = i;
         i->prev = c;
-        n->next = n;
+        i->next = n;
         n->prev = i;
     }
     i->parent = l;
@@ -480,17 +474,23 @@ static void insert_node_before(list *l, node *c, node *i)
 */
 static inline bool check_head(list *l) { return (l && l->head) ? True : False; }
 
+// static inline bool check_tail(list *l) { return (l && l->tail) ? True : False; }
+
 static inline node *get_head(list *l) { return (l) ? l->head : NULL; }
+
+static inline node *rem_head(list *l) { return (l) ? rem_node(l->head) : NULL; }
 
 static inline node *get_tail(list *l) { return (l) ? l->tail : NULL; }
 
-static inline node *get_node_head(node *n) { return (n && n->parent) ? n->parent->head : NULL; }
-
-static inline node *get_node_tail(node *n) { return (n && n->parent) ? n->parent->tail : NULL; }
+static inline node *rem_tail(list *l) { return (l) ? rem_node(l->tail) : NULL; }
 
 static inline node *get_next(node *n) { return (n) ? n->next : NULL; }
 
 static inline node *get_prev(node *n) { return (n) ? n->prev : NULL; }
+
+static inline node *get_node_head(node *n) { return (n && n->parent) ? n->parent->head : NULL; }
+
+static inline node *get_node_tail(node *n) { return (n && n->parent) ? n->parent->tail : NULL; }
 
 #define M_GETNEXT(c)  ((client *)get_next(&c->link))
 #define M_GETPREV(c)  ((client *)get_prev(&c->link))
@@ -594,10 +594,10 @@ static inline void xcb_move_resize(xcb_connection_t *con, xcb_window_t win, int 
     unsigned int pos[4] = { x, y, w, h };
 
     if (pi) {
-        pi->px = pi->cx;
-        pi->py = pi->cy;
-        pi->cx = x;
-        pi->cy = y;
+        pi->previous_x = pi->current_x;
+        pi->previous_y = pi->current_y;
+        pi->current_x = x;
+        pi->current_y = y;
     }
     xcb_configure_window(con, win, XCB_MOVE_RESIZE, pos);
 }
@@ -608,10 +608,10 @@ static inline void xcb_move(xcb_connection_t *con, xcb_window_t win, int x, int 
     unsigned int pos[2] = { x, y };
 
     if (pi) {
-        pi->px = pi->cx;
-        pi->py = pi->cy;
-        pi->cx = x;
-        pi->cy = y;
+        pi->previous_x = pi->current_x;
+        pi->previous_y = pi->current_y;
+        pi->current_x = x;
+        pi->current_y = y;
     }
     xcb_configure_window(con, win, XCB_MOVE, pos);
 }
@@ -1063,38 +1063,34 @@ void cleanup(void)
     for (unsigned int i = 0; i < LENGTH(rules); i++)
         regfree(&appruleregex[i]);
 
-    for (unsigned int i = 0; i < DESKTOPS; i++) {
-        for (struct lifo *tmp = miniq[i], *tmp_next; tmp; tmp = tmp_next) {
-            tmp_next = tmp->next;
-            free(tmp);
-        }
-    }
-
     cleanup_display();
 
-    while (check_head(&aliens)) {
-        destroy_node(get_head(&aliens));
-    }
+    alien *a;
+    while ((a = (alien *)rem_head(&aliens)))
+        free(a);
 }
 
 static void cleanup_display(void)
 {
     desktop *desk;
-    for (desk = (desktop *)get_head(&desktops); desk; desk = (desktop *)get_head(&desktops)) {
+    for (desk = (desktop *)rem_head(&desktops); desk; desk = (desktop *)rem_head(&desktops)) {
         monitor *moni;
-        for (moni = (monitor *)get_head(&desk->monitors); moni; moni = (monitor *)get_head(&desk->monitors)) {
+        for (moni = (monitor *)rem_head(&desk->monitors); moni; moni = (monitor *)rem_head(&desk->monitors)) {
             display *disp;
-            for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_head(&moni->displays)) {
+            for (disp = (display *)rem_head(&moni->displays); disp; disp = (display *)rem_head(&moni->displays)) {
                 client *c;
-                for (c = (client *)get_head(&disp->clients); c; c = (client *)get_head(&disp->clients)) {
+                for (c = (client *)rem_head(&disp->clients); c; c = (client *)rem_head(&disp->clients)) {
                     xcb_border_width(dis, c->win, 0);
-                    destroy_node(&c->link);
+                    free(c);
                 }
-                destroy_node(&disp->link);
+                for (struct lifo *l = (lifo *)rem_head(&disp->miniq); l; l = (lifo *)rem_head(&disp->miniq))
+                    free(l);
+
+                free(disp);
             }
-            destroy_node(&moni->link);
+            free(moni);
         }
-        destroy_node(&desk->link);
+        free(desk);
     }
 }
 
@@ -1120,7 +1116,7 @@ void client_to_desktop(const Arg *arg)
     int cd = current_desktop_number;
     client *c = M_CURRENT;
 
-    unlink_node(&c->link);
+    rem_node(&c->link);
     select_desktop(arg->i);
     add_tail(&current_display->clients, &c->link);
     select_desktop(cd);
@@ -1295,6 +1291,7 @@ static client *create_client(xcb_window_t win, xcb_atom_t wtype)
         err(EXIT_FAILURE, "cannot allocate client");
     c->isurgent = False;
     c->istransient = False;
+    c->isfullscreen = False;
     c->ismaximized = False;
     c->isfloating = False;
     c->isminimized = False;
@@ -1328,7 +1325,7 @@ fprintf(stderr, "create_display(%x)\n", c->win);
     if (!(new = calloc(1, sizeof(display))))
         err(EXIT_FAILURE, "cannot allocate new display");
     new->clients.master = new;  /* backpointer */
-    unlink_node(&c->link);          /* unlink client from its display client list. */
+    rem_node(&c->link);          /* unlink client from its display client list. */
     for (client *t = M_HEAD; t; t = M_GETNEXT(t))   /* hide current windows */
         xcb_move(dis, t->win, -2 * M_WW, 0, &t->position_info);
     for (alien *t = (alien *)get_head(&aliens); t; t = (alien *)get_next(&t->link))   /* hide aliens */
@@ -1411,11 +1408,23 @@ fprintf(stderr, "destroy_display(%x)\n", c->win);
     getparents(c, &disp, &moni, &desk);     /* get the client's display, monitor and desktop. */
     if (!(next = (display *)get_next(&disp->link)))     /* cannot destroy the last display. */
         return;
-    for (client *t = (client *)get_head(&disp->clients); t; t = (client *)get_head(&disp->clients)) {
-        unlink_node(&t->link);  /* relink entire clientlist to the next display clientlist. */
+    for (client *t = (client *)rem_head(&disp->clients); t; t = (client *)rem_head(&disp->clients)) {
+    /* relink entire clientlist to the tail of next display clientlist. */
         add_tail(&next->clients, &t->link);
     }
-    unlink_node(&disp->link);                   /* unlink now empty display */
+    for (lifo *t = (lifo *)rem_head(&disp->miniq); t; t = (lifo *)rem_head(&disp->miniq)) {
+    /* relink minimized clients to the tail of next display clientlist. */
+        xcb_move(dis, t->c->win, t->c->position_info.previous_x,
+                                 t->c->position_info.previous_y, NULL);
+        t->c->position_info.previous_x = t->c->position_info.current_x;
+        t->c->position_info.previous_y = t->c->position_info.current_y;
+        add_tail(&next->clients, &t->c->link);
+        t->c->isminimized = False;
+        xcb_remove_property(dis, t->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+        free(t);
+
+    }
+    rem_node(&disp->link);                   /* unlink now empty display */
     select_desktop(current_desktop_number);     /* update global pointers */
     for (alien *t = (alien *)get_head(&aliens); t; t = (alien *)get_next(&t->link))   /* show aliens */
         xcb_move(dis, t->win, t->position_info.previous_x, t->position_info.previous_y, &t->position_info);
@@ -1451,7 +1460,8 @@ void destroynotify(xcb_generic_event_t *e)
 
         if((a = wintoalien(&aliens, ev->window))) {
             DEBUG("unlink selfmapped window");
-            destroy_node(&a->link);
+            rem_node(&a->link);
+            free(a);
         }
     }
     desktopinfo();
@@ -2095,29 +2105,29 @@ void maprequest(xcb_generic_event_t *e)
     DEBUGP("floating:  %d\n", c->isfloating);
 
     int wmdsk = cd;
+    bool visible = True;
     xcb_move(dis, c->win, -2 * M_WW, 0, &c->position_info);
     xcb_map_window(dis, c->win);
     if (cd != newdsk) {
-        unlink_node(&c->link);
+        visible = False;
+        rem_node(&c->link);
         select_desktop(newdsk);
         add_tail(&current_display->clients, &c->link);
         select_desktop(cd);
         wmdsk = newdsk;
         if (follow) {
+            visible = True;
             change_desktop(&(Arg){.i = newdsk});
-            goto ClientIsVisible;
         }
     }
-    else {
-ClientIsVisible:
-        if (show) {
-            xcb_move(dis, c->win, c->position_info.previous_x, c->position_info.previous_y, NULL);
-            c->position_info.previous_x = c->position_info.current_x;
-            c->position_info.previous_y = c->position_info.current_y;
-            update_current(c);
-           if (c->isfloating && AUTOCENTER)
-                centerfloating(c);
-        }
+    if (visible && show) {
+        xcb_move(dis, c->win, c->position_info.previous_x,
+                              c->position_info.previous_y, NULL);
+        c->position_info.previous_x = c->position_info.current_x;
+        c->position_info.previous_y = c->position_info.current_y;
+        update_current(c);
+        if (c->isfloating && AUTOCENTER)
+            centerfloating(c);
     }
     xcb_ewmh_set_wm_desktop(ewmh, c->win, wmdsk);
     grabbuttons(c);
@@ -2127,33 +2137,10 @@ ClientIsVisible:
 /* maximize the current window, or if we are maximized, tile() */
 void maximize()
 {
-    xcb_get_geometry_reply_t *r;
-    int hh, cy;
-
     if (!M_CURRENT)
         return;
 
-    hh = M_WH + (M_SHOWPANEL ? 0 : PANEL_HEIGHT);
-    cy = (TOP_PANEL && M_SHOWPANEL ? PANEL_HEIGHT : 0);
-
-    /* TODO: save floating geo before maximizing to reinstate floating ? */
-    /* if we float, reinstate tiling layout to exit maximize */
-    if (M_CURRENT->isfloating)
-        switch_mode(&(Arg){.i = M_MODE});
-
-    /* check if we are already maximized, using actual window size to check */
-    r = get_geometry(M_CURRENT->win);
-    int borders = client_borders(M_CURRENT);
-    if (r->width == M_WW - 2 * M_GAPS - 2 * borders
-        && r->height == hh - 2 * M_GAPS - 2 * borders) {
-        tile();
-        free(r);
-        return;
-    }
-    free(r);
-
-    xcb_move_resize(dis, M_CURRENT->win, M_GAPS, cy + M_GAPS,
-                    M_WW - 2 * M_GAPS - 2 * borders, hh - 2 * M_GAPS - 2 * borders, &M_CURRENT->position_info);
+    setmaximize(M_CURRENT, !M_CURRENT->ismaximized);
 }
 
 /* push the current client down the miniq and minimize the window */
@@ -2161,7 +2148,7 @@ void minimize_client(client *c)
 {
     lifo *new;
 
-    if (!c)
+    if (!c || c->isfullscreen)
         return;
 
     new = calloc(1, sizeof(lifo));
@@ -2169,8 +2156,7 @@ void minimize_client(client *c)
         return;
 
     new->c = c;
-    new->next = miniq[current_desktop_number];
-    miniq[current_desktop_number] = new;
+    add_head(&current_display->miniq, &new->link);
 
     new->c->isminimized = true;
     xcb_move(dis, new->c->win, -2 * M_WW, 0, &new->c->position_info);
@@ -2295,34 +2281,28 @@ void monocle(int hh, int cy)
 * and current->next to current client's position */
 void move_down()
 {
-fprintf(stderr, "move_down();\n");
     if (!M_CURRENT || !M_GETNEXT(M_CURRENT))
         return;
-fprintf(stderr, "valid\n");
     client *c = M_CURRENT;
     client *n = M_GETNEXT(c);
     list   *l = c->link.parent;
-    unlink_node(&c->link);
+    rem_node(&c->link);
     insert_node_after(l, &n->link, &c->link);
     tile();
-fprintf(stderr, "finished\n");
 }
 
 /* move the current client, to the previous from current and
 * the previous from current to current client's position */
 void move_up()
 {
-fprintf(stderr, "move_up();\n");
     if (!M_CURRENT || !M_GETPREV(M_CURRENT))
         return;
-fprintf(stderr, "valid\n");
     client *c = M_CURRENT;
     client *p = M_GETPREV(c);
     list   *l = c->link.parent;
-    unlink_node(&c->link);
+    rem_node(&c->link);
     insert_node_before(l, &p->link, &c->link);
     tile();
-fprintf(stderr, "finished\n");
 }
 
 /* cyclic focus the next window
@@ -2424,7 +2404,7 @@ void removeclient(client *c)
 
     if (!c)
         return;
-    unlink_node(&c->link);
+    rem_node(&c->link);
     if (c == M_PREVFOCUS)
         M_PREVFOCUS = M_GETPREV(M_CURRENT);
     if (c == M_CURRENT || !M_GETNEXT(M_HEAD))
@@ -2508,32 +2488,22 @@ void resize_y(const Arg *arg)
 /* get (the last) client from the current miniq and restore it */
 void restore_client(client *c)
 {
-    lifo *tmp;
+    lifo *t;
 
-    if (!miniq[current_desktop_number])
+    if (!check_head(&current_display->miniq))
         return;
 
-    if (c == NULL) {
-        tmp = miniq[current_desktop_number];
-        miniq[current_desktop_number] = miniq[current_desktop_number]->next;
-    }
-    else {
-        lifo *prev = NULL;
+    if (c == NULL)
+        t = (lifo *)get_head(&current_display->miniq);
+    else
+        for (t = (lifo *)get_head(&current_display->miniq); t && t->c != c; t = (lifo *)get_next(&t->link)) ;
+    if (!t)
+        return;
+    else
+        rem_node(&t->link);
 
-        for (tmp = miniq[current_desktop_number]; tmp; tmp = tmp->next) {
-            if (tmp->c == c) {
-                if (prev)
-                    prev->next = tmp->next;
-                else
-                    miniq[current_desktop_number] = tmp->next;
-                break;
-            }
-            prev = tmp;
-        }
-    }
-
-    tmp->c->isminimized = false;
-    xcb_remove_property(dis, tmp->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
+    t->c->isminimized = false;
+    xcb_remove_property(dis, t->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
     /*
      * if our window is floating, center it to move it back onto the visible
@@ -2541,11 +2511,11 @@ void restore_client(client *c)
      * before minimizing, TODO: fix it to use centerwindow() instead of copying
      * half of it
      */
-    if (tmp->c->isfloating)
-        centerfloating(tmp->c);
+    if (t->c->isfloating)
+        centerfloating(t->c);
     tile();
-    update_current(tmp->c);
-    free(tmp);
+    update_current(t->c);
+    free(t);
 }
 
 /* restore_client(); wrapper */
@@ -2692,22 +2662,30 @@ static bool sendevent(xcb_window_t win, xcb_atom_t proto)
 }
 
 /* set or unset maximize state of client */
-void setmaximize(client *c, bool fullscrn)
+void setmaximize(client *c, bool maximize)
 {
-    DEBUGP("xcb: set maximize: %d\n", fullscrn);
-    long data[] = { fullscrn ? ewmh->_NET_WM_STATE_FULLSCREEN : XCB_NONE };
+    DEBUGP("xcb: set maximize: %d\n", maximize);
 
-    if (fullscrn != c->ismaximized)
-        xcb_change_property(dis, XCB_PROP_MODE_REPLACE,
-                            c->win, ewmh->_NET_WM_STATE, XCB_ATOM_ATOM, 32,
-                            fullscrn, data);
-    if ((c->ismaximized = fullscrn))
-        xcb_move_resize(dis, c->win, 0, 0, M_WW, M_WH + PANEL_HEIGHT, &c->position_info);
-    xcb_border_width(dis, c->win,
-                     (!M_GETNEXT(M_HEAD) ||
-                     c->ismaximized ||
-                     (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
-                     ) ? 0:client_borders(c));
+    if (!c || c->isfullscreen)
+        return;
+
+    int borders = client_borders(c);
+    borders = (!M_GETNEXT(M_HEAD) ||
+               (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
+              ) ? 0 : borders;
+    xcb_border_width(dis, c->win, borders);
+
+    if (maximize) {
+        xcb_move_resize(dis, c->win, M_GAPS, M_WY + M_GAPS,
+                        M_WW - 2 * (borders + M_GAPS),
+                        M_WH - 2 * (borders + M_GAPS), &c->position_info);
+        c->ismaximized = True;
+    }
+    else
+        c->ismaximized = False;
+
+fprintf(stderr, "setmaximize : win=%d -> %d\n", c->win, c->ismaximized);
+
     update_current(c);
 }
 
@@ -3240,12 +3218,12 @@ void swap_master()
         return;
     if (M_CURRENT == M_HEAD) {
         client *c = M_GETNEXT(M_HEAD);
-        unlink_node(&c->link);
+        rem_node(&c->link);
         add_head(&current_display->clients, &c->link);
     }
     else {
         client *c = M_CURRENT;
-        unlink_node(&c->link);
+        rem_node(&c->link);
         add_head(&current_display->clients, &c->link);
     }
     update_current(M_HEAD);
@@ -3442,10 +3420,9 @@ void update_current(client *newfocus)   // newfocus may be NULL
         if (!c->isfullscreen) {
             xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
                                     (c == M_CURRENT ? &win_focus : &win_unfocus));
-            xcb_border_width(dis, c->win, (c->ismaximized ||
-                              (!MONOCLE_BORDERS && !M_GETNEXT(M_HEAD)) ||
-                              (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
-                              ) ? 0 : client_borders(c));
+            xcb_border_width(dis, c->win, ((!MONOCLE_BORDERS && !M_GETNEXT(M_HEAD))
+                                        || (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
+                                           ) ? 0 : client_borders(c));
         }
     }
 
@@ -3466,6 +3443,12 @@ void update_current(client *newfocus)   // newfocus may be NULL
 //                            screen->width_in_pixels, screen->height_in_pixels, &c->position_info);
             break;
         }
+    }
+
+    for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
+fprintf(stderr, "win=%d -> %d\n", c->win, c->ismaximized);
+        if (c->ismaximized)
+            xcb_raise_window(dis, c->win);
     }
 
     if (USE_SCRATCHPAD && showscratchpad && scrpd)
