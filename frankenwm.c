@@ -49,7 +49,7 @@ enum { _NET_WM_STATE_REMOVE, _NET_WM_STATE_ADD, _NET_WM_STATE_TOGGLE };
 #define LENGTH(x)       (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
-#define ISFMFTM(c)      (c->isfullscreen || c->ismaximized || c->isfloating || c->istransient || c->isminimized)
+#define ISFMFTM(c)      (c->isfullscreen || c->ismaximized || c->isfloating || c->istransient || c->isminimized || c->type != ewmh->_NET_WM_WINDOW_TYPE_NORMAL)
 #define USAGE           "usage: frankenwm [-h] [-v]"
 /* future enhancements */
 #define MONITORS 1
@@ -246,6 +246,9 @@ static void dualstack(int hh, int cy);
 static void enternotify(xcb_generic_event_t *e);
 static void equal(int h, int y);
 static void fibonacci(int h, int y);
+static client *find_client(xcb_window_t w);
+static desktop *find_desktop(unsigned int n);
+/* static monitor *find_monitor(unsigned int n);  future enhancement */
 static void float_client(client *c);
 static void float_x(const Arg *arg);
 static void float_y(const Arg *arg);
@@ -754,15 +757,34 @@ static bool window_is_override_redirect(xcb_window_t win)
 }
 */
 
+/* find client in current_display by window id */
+static client *find_client(xcb_window_t w)
+{
+    client *c;
+    for (c = (client *)get_head(&current_display->clients);
+            c && c->win != w; c = (client *)get_next(&c->link)) ;
+    return c;
+}
+
 /* find desktop by number */
 static desktop *find_desktop(unsigned int n)
 {
-    for (desktop *d = (desktop *)get_head(&desktops); d; d = (desktop *)get_next(&d->link)) {
-        if (d->num == n)
-            return d;
-    }
-    return NULL;
+    desktop *d;
+    for (d = (desktop *)get_head(&desktops);
+            d && d->num != n; d = (desktop *)get_next(&d->link)) ;
+    return d;
 }
+
+/* find monitor in current_desktop by number */
+/*
+static monitor *find_monitor(unsigned int n)
+{
+    monitor *m;
+    for (m = (monitor *)get_head(&current_desktop->monitors);
+            m && m->num != n; m = (monitor *)get_next(&m->link)) ;
+    return m;
+}
+*/
 
 static void getparents(client *c, display **di, monitor **mo, desktop **de)
 {
@@ -1320,7 +1342,6 @@ static void create_display(client *c)
 
     if (!c)
         return;
-fprintf(stderr, "create_display(%x)\n", c->win);
     getparents(c, &disp, &moni, &desk);     /* get the client's display, monitor and desktop. */
     if (!(new = calloc(1, sizeof(display))))
         err(EXIT_FAILURE, "cannot allocate new display");
@@ -1402,8 +1423,6 @@ static void destroy_display(client *c)
     desktop *desk=NULL;
     monitor *moni=NULL;
     display *disp=NULL, *next;
-
-fprintf(stderr, "destroy_display(%x)\n", c->win);
 
     getparents(c, &disp, &moni, &desk);     /* get the client's display, monitor and desktop. */
     if (!(next = (display *)get_next(&disp->link)))     /* cannot destroy the last display. */
@@ -2021,12 +2040,18 @@ void maprequest(xcb_generic_event_t *e)
     xcb_get_property_cookie_t          cookie;
     xcb_ewmh_get_utf8_strings_reply_t  wtitle;
     xcb_atom_t                         wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
+    client *c;
     bool isFloating = False;
 
     DEBUG("xcb: map request");
 
-    if (wintoclient(ev->window)) {
-        xcb_map_window(dis, ev->window);
+    if ((c = wintoclient(ev->window))) {
+        if (!find_client(c->win)) {     /* client is on different display */
+            rem_node(&c->link);
+            add_tail(&current_display->clients, &c->link);
+        }
+        xcb_map_window(dis, c->win);
+        update_current(c);
         return;
     }
 
@@ -2076,7 +2101,7 @@ void maprequest(xcb_generic_event_t *e)
 
     if (cd != newdsk)
         select_desktop(newdsk);
-    client *c = addwindow(ev->window, wtype);
+    c = addwindow(ev->window, wtype);
 
     xcb_icccm_get_wm_transient_for_reply(dis,
                     xcb_icccm_get_wm_transient_for_unchecked(dis, ev->window),
@@ -2684,8 +2709,6 @@ void setmaximize(client *c, bool maximize)
     else
         c->ismaximized = False;
 
-fprintf(stderr, "setmaximize : win=%d -> %d\n", c->win, c->ismaximized);
-
     update_current(c);
 }
 
@@ -2956,8 +2979,12 @@ int setup(int default_screen)
                     if ((int)dsk > DESKTOPS-1)
                         xcb_ewmh_set_wm_desktop(ewmh, children[i], dsk = DESKTOPS-1);  /* case 8 */
                     if (dsk == cd) {
-                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED)
-                            xcb_map_window(dis, children[i]);                   /* case 3 */
+                        if (attr->map_state == XCB_MAP_STATE_UNMAPPED) {
+                            if (wtype == ewmh->_NET_WM_WINDOW_TYPE_NORMAL)
+                                xcb_map_window(dis, children[i]);               /* case 3 */
+                            else
+                                continue;   /* ignore _NET_WM_WINDOW_TYPE_DIALOG windows */
+                        }
                         else
                             { ; }                                               /* case 5 */
                     }
@@ -3446,7 +3473,6 @@ void update_current(client *newfocus)   // newfocus may be NULL
     }
 
     for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
-fprintf(stderr, "win=%d -> %d\n", c->win, c->ismaximized);
         if (c->ismaximized)
             xcb_raise_window(dis, c->win);
     }
