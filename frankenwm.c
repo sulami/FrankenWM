@@ -302,11 +302,12 @@ static void swap_master();
 static void switch_mode(const Arg *arg);
 static void tile(void);
 static void tilemize();
+static void togglecommandmode();
 static void togglepanel();
-static void unfloat_client(client *c);
 static void togglescratchpad();
-static void update_current(client *c);
+static void unfloat_client(client *c);
 static void unmapnotify(xcb_generic_event_t *e);
+static void update_current(client *c);
 static void xerror(xcb_generic_event_t *e);
 static alien *wintoalien(list *l, xcb_window_t win);
 static client *wintoclient(xcb_window_t w);
@@ -335,7 +336,7 @@ static strut_t gstrut;
 #endif /* EWMH_TASKBAR */
 
 /* variables */
-static bool running = true, show = true, showscratchpad = false;
+static bool running = true, show = true, showscratchpad = false, cmdmode = false;
 static int default_screen, previous_desktop, current_desktop_number, retval;
 static int borders;
 static unsigned int numlockmask, win_unfocus, win_focus, win_scratch;
@@ -3304,6 +3305,14 @@ void tilemize()
         return;
     unfloat_client(M_CURRENT);
     update_current(M_CURRENT);
+}
+
+void togglecommandmode()
+{
+    cmdmode = !cmdmode;
+    if (cmdmode) {
+        ;
+    }
 }
 
 /* toggle visibility state of the panel */
