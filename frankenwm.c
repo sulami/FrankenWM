@@ -1952,7 +1952,7 @@ void keypress(xcb_generic_event_t *e)
     xcb_key_press_event_t *ev       = (xcb_key_press_event_t *)e;
     xcb_keysym_t           keysym   = xcb_get_keysym(ev->detail);
 
-    DEBUGP("xcb: keypress: code: %d mod: %d\n", ev->detail, ev->state);
+    DEBUGP("xcb: keypress: code=%d, mod=%d, keysym=%c\n", ev->detail, ev->state, keysym);
     if (cmdwin && cmdwin == ev->event) {
         if (keysym == XK_Escape) {
             update_current(M_CURRENT);
@@ -1963,9 +1963,9 @@ void keypress(xcb_generic_event_t *e)
              && NOMOD4MASK(CLEANMASK(keys[i].mod)) == NOMOD4MASK(CLEANMASK(ev->state))
              && keys[i].func) {
                 keys[i].func(&keys[i].arg);
-                if (cmdmode) {      /* still active? */
+                if (cmdmode)    /* still active? */
                     update_current(M_CURRENT);
-                }
+                break;
             }
         }
         return;
@@ -1974,8 +1974,10 @@ void keypress(xcb_generic_event_t *e)
         for (unsigned int i = 0; i < LENGTH(keys); i++) {
             if (keysym == keys[i].keysym &&
                 CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) &&
-                keys[i].func)
+                keys[i].func) {
                     keys[i].func(&keys[i].arg);
+                    break;
+            }
         }
     }
 }
