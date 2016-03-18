@@ -48,6 +48,7 @@ enum { _NET_WM_STATE_REMOVE, _NET_WM_STATE_ADD, _NET_WM_STATE_TOGGLE };
 
 #define LENGTH(x)       (sizeof(x)/sizeof(*x))
 #define CLEANMASK(mask) (mask & ~(numlockmask | XCB_MOD_MASK_LOCK))
+#define NOMOD4MASK(mask) (mask & ~(XCB_MOD_MASK_4))
 #define BUTTONMASK      XCB_EVENT_MASK_BUTTON_PRESS|XCB_EVENT_MASK_BUTTON_RELEASE
 #define ISFMFTM(c)      (c->isfullscreen || c->ismaximized || c->isfloating || c->istransient || c->isminimized || c->type != ewmh->_NET_WM_WINDOW_TYPE_NORMAL)
 #define USAGE           "usage: frankenwm [-h] [-v]"
@@ -336,13 +337,15 @@ static strut_t gstrut;
 #endif /* EWMH_TASKBAR */
 
 /* variables */
-static bool running = true, show = true, showscratchpad = false, cmdmode = false;
+static bool running = true, show = true, showscratchpad = false;
 static int default_screen, previous_desktop, current_desktop_number, retval;
 static int borders;
 static unsigned int numlockmask, win_unfocus, win_focus, win_scratch;
 static xcb_connection_t *dis;
 static xcb_screen_t *screen;
-static uint32_t checkwin;
+static xcb_window_t checkwin;
+static xcb_window_t cmdwin = 0;
+static xcb_gcontext_t cmdgc = 0;
 static xcb_atom_t scrpd_atom;
 static client *scrpd = NULL;
 static list desktops;
@@ -1062,6 +1065,9 @@ void cleanup(void)
     Cleanup_Global_Strut();
     Cleanup_EWMH_Taskbar_Support();
 #endif /* EWMH_TASKBAR */
+
+    if (cmdwin)
+        togglecommandmode();
 
     if(USE_SCRATCHPAD && scrpd) {
         if(CLOSE_SCRATCHPAD) {
@@ -1937,11 +1943,26 @@ void keypress(xcb_generic_event_t *e)
     xcb_keysym_t           keysym   = xcb_get_keysym(ev->detail);
 
     DEBUGP("xcb: keypress: code: %d mod: %d\n", ev->detail, ev->state);
-    for (unsigned int i = 0; i < LENGTH(keys); i++)
-        if (keysym == keys[i].keysym &&
-            CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) &&
-            keys[i].func)
+    if (cmdwin && cmdwin == ev->event) {
+        fprintf(stderr, "cmdwin\n");
+        for (unsigned int i = 0; i < LENGTH(keys); i++) {
+            if (keysym == keys[i].keysym
+             && NOMOD4MASK(CLEANMASK(keys[i].mod)) == NOMOD4MASK(CLEANMASK(ev->state))
+             && keys[i].func) {
                 keys[i].func(&keys[i].arg);
+                togglecommandmode();
+            }
+        }
+        return;
+    }
+    else {
+        for (unsigned int i = 0; i < LENGTH(keys); i++) {
+            if (keysym == keys[i].keysym &&
+                CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) &&
+                keys[i].func)
+                    keys[i].func(&keys[i].arg);
+        }
+    }
 }
 
 /* explicitly kill a client - close the highlighted window
@@ -3309,10 +3330,48 @@ void tilemize()
 
 void togglecommandmode()
 {
-    cmdmode = !cmdmode;
-    if (cmdmode) {
-        ;
+    if (cmdwin) {
+        xcb_unmap_window(dis, cmdwin);
+        xcb_destroy_window(dis, cmdwin);
+        cmdwin = 0;
     }
+    else {
+        uint32_t mask;
+        uint32_t values[2];
+
+        mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+        values[0] = screen->white_pixel;
+        values[1] = XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS;
+        cmdwin = xcb_generate_id(dis);
+        xcb_create_window (dis,                            /* Connection           */
+                           XCB_COPY_FROM_PARENT,           /* depth (same as root) */
+                           cmdwin,                         /* window ID            */
+                           screen->root,                   /* parent window        */
+/* TODO: center below cursor */
+                           0, 0,                           /* x, y                 */
+                           150, 30,                        /* width, height        */
+                           10,                             /* border_width         */
+                           XCB_WINDOW_CLASS_INPUT_OUTPUT,  /* class                */
+                           screen->root_visual,            /* visual               */
+                           mask, values);                  /* masks                */
+
+        mask = XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES;
+        values[0] = screen->black_pixel;
+        values[1] = 0;
+
+        cmdgc = xcb_generate_id(dis);
+        xcb_create_gc(dis, cmdgc, cmdwin, mask, values);
+
+     /* Map the window on the screen */
+        xcb_raise_window(dis, cmdwin);
+        xcb_map_window (dis, cmdwin);
+
+        xcb_grab_key(dis, 1, cmdwin, XCB_MOD_MASK_ANY, XCB_GRAB_ANY,
+                     XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
+        xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, cmdwin, XCB_CURRENT_TIME);
+        xcb_flush(dis);
+    }
+    
 }
 
 /* toggle visibility state of the panel */
