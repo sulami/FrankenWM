@@ -344,7 +344,7 @@ static strut_t gstrut;
 
 /* variables */
 static bool running = true, show = true, showscratchpad = false, cmdmode = false;
-static int default_screen, previous_desktop, current_desktop_number, retval;
+static int default_screen, previous_desktop, current_desktop_number, retval, cmdopt = 0;
 static int borders;
 static unsigned int numlockmask, win_unfocus, win_focus, win_scratch;
 static xcb_connection_t *dis;
@@ -1586,10 +1586,10 @@ void enternotify(xcb_generic_event_t *e)
 
     DEBUG("xcb: enter notify");
 
-	if (cmdwin == ev->event) {
-		xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, cmdwin, XCB_CURRENT_TIME);
-		return;
-	}
+    if (cmdwin == ev->event) {
+        xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, cmdwin, XCB_CURRENT_TIME);
+        return;
+    }
 
     if (!FOLLOW_MOUSE)
         return;
@@ -1958,11 +1958,20 @@ void keypress(xcb_generic_event_t *e)
             update_current(M_CURRENT);
             return;
         }
+        if (keysym >= XK_0 && keysym <= XK_9) {
+            cmdopt *= 10;
+            cmdopt += (keysym - XK_0);
+            return;
+        }
         for (unsigned int i = 0; i < LENGTH(keys); i++) {
             if (keysym == keys[i].keysym
              && NOMOD4MASK(CLEANMASK(keys[i].mod)) == NOMOD4MASK(CLEANMASK(ev->state))
              && keys[i].func) {
-                keys[i].func(&keys[i].arg);
+                if (cmdopt < 1)
+                    cmdopt = 1;
+                do
+                    keys[i].func(&keys[i].arg);
+                while (--cmdopt);
                 if (cmdmode)    /* still active? */
                     update_current(M_CURRENT);
                 break;
@@ -3376,54 +3385,55 @@ static void setupcmdmode(void)
                        screen->root_visual,            /* visual               */
                        mask, values);                  /* masks                */
 
-	mask = XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES;
-	values[0] = screen->black_pixel;
-	values[1] = 0;
-	cmdgc = xcb_generate_id(dis);
-	xcb_create_gc(dis, cmdgc, cmdwin, mask, values);
+    mask = XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES;
+    values[0] = screen->black_pixel;
+    values[1] = 0;
+    cmdgc = xcb_generate_id(dis);
+    xcb_create_gc(dis, cmdgc, cmdwin, mask, values);
 
-	xcb_raise_window(dis, cmdwin);
-	xcb_map_window(dis, cmdwin);
-	xcb_grab_key(dis, 1, cmdwin, XCB_MOD_MASK_ANY, XCB_GRAB_ANY,
-				 XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
-	xcb_flush(dis);
+    xcb_raise_window(dis, cmdwin);
+    xcb_map_window(dis, cmdwin);
+    xcb_grab_key(dis, 1, cmdwin, XCB_MOD_MASK_ANY, XCB_GRAB_ANY,
+                 XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
+    xcb_flush(dis);
 }
 
 static void cleanupcmdmode(void)
 {
-	if (cmdgc) {
-		xcb_free_gc(dis, cmdgc);
-		cmdgc = 0;
-	}
-	if (cmdwin) {
-		xcb_unmap_window(dis, cmdwin);
-		xcb_destroy_window(dis, cmdwin);
-		cmdwin = 0;
-	}
+    if (cmdgc) {
+        xcb_free_gc(dis, cmdgc);
+        cmdgc = 0;
+    }
+    if (cmdwin) {
+        xcb_unmap_window(dis, cmdwin);
+        xcb_destroy_window(dis, cmdwin);
+        cmdwin = 0;
+    }
 }
 
 void togglecmdmode()
 {
     if (!cmdwin)
-		return;
+        return;
 
-	if (!cmdmode) {
-		cmdmode = True;
-		if (SHOW_COMMANDWIN) {
+    if (!cmdmode) {
+        cmdmode = True;
+        cmdopt = 0;
+        if (SHOW_COMMANDWIN) {
             xcb_raise_window(dis, cmdwin);
-			xcb_move(dis, cmdwin, (screen->width_in_pixels-CMDWIN_WIDTH)/2,
-								  (screen->height_in_pixels-CMDWIN_HEIGHT)/2, NULL);
+            xcb_move(dis, cmdwin, (screen->width_in_pixels-CMDWIN_WIDTH)/2,
+                                  (screen->height_in_pixels-CMDWIN_HEIGHT)/2, NULL);
         }
-		xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, cmdwin, XCB_CURRENT_TIME);
+        xcb_set_input_focus(dis, XCB_INPUT_FOCUS_POINTER_ROOT, cmdwin, XCB_CURRENT_TIME);
         if (M_CURRENT)
             xcb_change_window_attributes(dis, M_CURRENT->win, XCB_CW_BORDER_PIXEL, &win_unfocus);
     }
     else {
-		cmdmode = False;
-		if (SHOW_COMMANDWIN)
-			xcb_move(dis, cmdwin, -screen->width_in_pixels, 0, NULL);
-		update_current(M_CURRENT);
-	}
+        cmdmode = False;
+        if (SHOW_COMMANDWIN)
+            xcb_move(dis, cmdwin, -screen->width_in_pixels, 0, NULL);
+        update_current(M_CURRENT);
+    }
 }
 
 /* toggle visibility state of the panel */
