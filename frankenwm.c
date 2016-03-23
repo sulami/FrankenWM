@@ -401,22 +401,23 @@ static void (*layout[MODES])(int h, int y) = {
 
 static node *rem_node(node *n)
 {
-    if (!n)
-        return NULL;
-
+/*
+ * if use macros rem_head() or rem_tail(), then n may be NULL, if list is empty.
+ * for example: cleanup_display();
+ */
     list *l;
-    if (!(l = n->parent))
+    if (! n || !(l = n->parent))
         return NULL;
 
-    if (n == l->head) {
+    if (l->head == n) {
         l->head = l->head->next;
-        if(l->head)
+        if (l->head)
             l->head->prev = NULL;
         else
             l->tail = NULL;
     }
     else {
-        if (n == l->tail) {
+        if (l->tail == n) {
             l->tail = l->tail->prev;
             l->tail->next = NULL;
         }
@@ -461,10 +462,10 @@ static void add_tail(list *l, node *i)
     if(l->head == NULL)
         add_head(l, i);
     else {
-        node *o = l->tail;
+        node *p = l->tail;
         l->tail = i;
-        o->next = i;
-        i->prev = o;
+        p->next = i;
+        i->prev = p;
         i->next = NULL;
     }
     i->parent = l;
@@ -531,13 +532,13 @@ static inline node *get_node_head(node *n) { return (n && n->parent) ? n->parent
 
 static inline node *get_node_tail(node *n) { return (n && n->parent) ? n->parent->tail : NULL; }
 
-#define M_GETNEXTC(c)  ((client *)get_next(&c->link))
-#define M_GETPREVC(c)  ((client *)get_prev(&c->link))
+/* do !*NOT*! use these two macros for client focusnodes.  :) */
+#define M_GETNEXTC(c) ((client *)get_next(&c->link))
+#define M_GETPREVC(c) ((client *)get_prev(&c->link))
 
 /*
  * Add an atom to a list of atoms the given property defines.
  * This is useful, for example, for manipulating _NET_WM_STATE.
- *
  */
 void xcb_add_property(xcb_connection_t *con, xcb_window_t win, xcb_atom_t prop, xcb_atom_t atom)
 {
@@ -548,7 +549,6 @@ void xcb_add_property(xcb_connection_t *con, xcb_window_t win, xcb_atom_t prop, 
  * Remove an atom from a list of atoms the given property defines without
  * removing any other potentially set atoms.  This is useful, for example, for
  * manipulating _NET_WM_STATE.
- *
  */
 void xcb_remove_property(xcb_connection_t *con, xcb_window_t win, xcb_atom_t prop, xcb_atom_t atom)
 {
@@ -1840,40 +1840,14 @@ unsigned int getcolor(char *color)
 
 static client *get_focus_client(bool prev)
 {
-    client *c;
     focusnode *t;
-    c = (t = (focusnode *)get_head(&current_display->focuslist))
-                            ? t->backpointer : NULL;
-    if (prev)
-        c = t ? ((t = (focusnode *)get_next(&t->link))
-                            ? t->backpointer : NULL) : NULL;
-    return c;
+    if ((t = (focusnode *)get_head(&current_display->focuslist)))
+        if (prev)   /* previously focused client? */
+            t = (focusnode *)get_next(&t->link);
+    return t ? t->backpointer : NULL;
 }
 
 /* set the given client to listen to button events (presses / releases) */
-void grabbuttons(client *c)
-{
-    unsigned int modifiers[] = { 0, XCB_MOD_MASK_LOCK, numlockmask,
-                                 numlockmask|XCB_MOD_MASK_LOCK };
-    if (!c)
-        return;
-
-    xcb_ungrab_button(dis, XCB_BUTTON_INDEX_ANY, c->win, XCB_GRAB_ANY);
-    for (unsigned int b = 0; b < LENGTH(buttons); b++)
-        for (unsigned int m = 0; m < LENGTH(modifiers); m++)
-            if (CLICK_TO_FOCUS)
-                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                                XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
-            else
-                xcb_grab_button(dis, 1, c->win, XCB_EVENT_MASK_BUTTON_PRESS,
-                                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
-                                buttons[b].button,
-                                buttons[b].mask|modifiers[m]);
-}
-/*
 void grabbuttons(client *c)
 {
     if (!c)
@@ -1901,7 +1875,6 @@ void grabbuttons(client *c)
         }
     }
 }
-*/
 
 /* the wm should listen to key presses */
 void grabkeys(void)
