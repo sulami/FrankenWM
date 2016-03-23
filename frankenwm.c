@@ -155,7 +155,7 @@ typedef struct {
  */
 typedef struct {
     node link;  /* must be first */
-	focusnode focus;
+    focusnode focus;
     bool isurgent, istransient, isfloating, isfullscreen, ismaximized, isminimized;
     xcb_window_t win;
     xcb_atom_t type;
@@ -189,7 +189,7 @@ typedef struct {
 typedef struct {
     node link;      /* must be first */
     list clients;   /* must be second */
-	list focuslist;
+    list focuslist;
     list miniq;
     displayinfo di;
 } display;
@@ -402,8 +402,11 @@ static void (*layout[MODES])(int h, int y) = {
 
 static node *rem_node(node *n)
 {
-    list *l = n->parent;
-    if (!n || !l)
+    if (!n)
+        return NULL;
+
+    list *l;
+    if (!(l = n->parent))
         return NULL;
 
     if (n == l->head) {
@@ -856,7 +859,7 @@ client *addwindow(xcb_window_t win, xcb_atom_t wtype)
         add_head(&current_display->clients, &c->link);
     else
         add_tail(&current_display->clients, &c->link);
-	add_tail(&current_display->focuslist, &c->focus.link);
+    add_tail(&current_display->focuslist, &c->focus.link);
     DEBUG("client added");
     setwindefattr(win);
     return c;
@@ -1170,10 +1173,10 @@ void client_to_desktop(const Arg *arg)
     client *c = M_GET_CURRENT_FOCUS_CLIENT;
 
     rem_node(&c->link);
-	rem_node(&c->focus.link);
+    rem_node(&c->focus.link);
     select_desktop(arg->i);
     add_tail(&current_display->clients, &c->link);
-	add_tail(&current_display->focuslist, &c->focus.link);
+    add_tail(&current_display->focuslist, &c->focus.link);
     select_desktop(cd);
 
     xcb_move(dis, c->win, -2 * M_WW, 0, &c->position_info);
@@ -1382,14 +1385,14 @@ static void create_display(client *c)
     if (!(new = calloc(1, sizeof(display))))
         err(EXIT_FAILURE, "cannot allocate new display");
     new->clients.master = new;  /* backpointer */
-    rem_node(&c->link);          			/* unlink client from its display client list. */
-	rem_node(&c->focus.link);	 			/* and focus list */
+    rem_node(&c->link);                     /* unlink client from its display client list. */
+    rem_node(&c->focus.link);               /* and focus list */
     for (client *t = M_HEAD; t; t = M_GETNEXTC(t))   /* hide current windows */
         xcb_move(dis, t->win, -2 * M_WW, 0, &t->position_info);
     for (alien *t = (alien *)get_head(&aliens); t; t = (alien *)get_next(&t->link))   /* hide aliens */
         xcb_move(dis, t->win, -2 * M_WW, 0, &t->position_info);
     add_head(&new->clients, &c->link);      /* set client as head in new display */
-	add_head(&new->focuslist, &c->focus.link); /* and focus list */
+    add_head(&new->focuslist, &c->focus.link); /* and focus list */
     add_head(&moni->displays, &new->link);  /* set new display as head. */
     select_desktop(current_desktop_number); /* update global pointers */
     memcpy(&new->di, &disp->di, sizeof(displayinfo));   /* copy settings */
@@ -1468,8 +1471,8 @@ static void destroy_display(client *c)
     for (client *t = (client *)rem_head(&disp->clients); t; t = (client *)rem_head(&disp->clients)) {
     /* relink entire clientlist to the tail of next display clientlist. */
         add_tail(&next->clients, &t->link);
-		rem_node(&t->focus.link);
-		add_tail(&next->focuslist, &t->focus.link);
+        rem_node(&t->focus.link);
+        add_tail(&next->focuslist, &t->focus.link);
     }
     for (lifo *t = (lifo *)rem_head(&disp->miniq); t; t = (lifo *)rem_head(&disp->miniq)) {
     /* relink minimized clients to the tail of next display clientlist. */
@@ -1478,7 +1481,7 @@ static void destroy_display(client *c)
         t->c->position_info.previous_x = t->c->position_info.current_x;
         t->c->position_info.previous_y = t->c->position_info.current_y;
         add_tail(&next->clients, &t->c->link);
-		add_tail(&next->focuslist, &t->c->focus.link);
+        add_tail(&next->focuslist, &t->c->focus.link);
         t->c->isminimized = False;
         xcb_remove_property(dis, t->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
         free(t);
@@ -2132,9 +2135,9 @@ void maprequest(xcb_generic_event_t *e)
     if ((c = wintoclient(ev->window))) {
         if (!find_client(c->win)) {     /* client is on different display */
             rem_node(&c->link);
-			rem_node(&c->focus.link);
+            rem_node(&c->focus.link);
             add_tail(&current_display->clients, &c->link);
-			add_tail(&current_display->focuslist, &c->focus.link);
+            add_tail(&current_display->focuslist, &c->focus.link);
         }
         xcb_map_window(dis, c->win);
         update_current(c);
@@ -2222,10 +2225,10 @@ void maprequest(xcb_generic_event_t *e)
     if (cd != newdsk) {
         visible = False;
         rem_node(&c->link);
-		rem_node(&c->focus.link);
+        rem_node(&c->focus.link);
         select_desktop(newdsk);
         add_tail(&current_display->clients, &c->link);
-		add_tail(&current_display->focuslist, &c->focus.link);
+        add_tail(&current_display->focuslist, &c->focus.link);
         select_desktop(cd);
         wmdsk = newdsk;
         if (follow) {
@@ -2271,7 +2274,7 @@ void minimize_client(client *c)
     new->c = c;
     add_head(&current_display->miniq, &new->link);
 
-	rem_node(&new->c->focus.link);
+    rem_node(&new->c->focus.link);
     new->c->isminimized = true;
     xcb_move(dis, new->c->win, -2 * M_WW, 0, &new->c->position_info);
     xcb_add_property(dis, new->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
@@ -2519,12 +2522,12 @@ void removeclient(client *c)
     if (!c)
         return;
     bool update = (c == M_GET_CURRENT_FOCUS_CLIENT || !M_GETNEXTC(M_HEAD));
-    rem_node(&c->link);     	/* unlink current focused client */
-	rem_node(&c->focus.link);	/* and from focus list */
+    rem_node(&c->link);         /* unlink current focused client */
+    rem_node(&c->focus.link);   /* and from focus list */
     free(c);
     c = NULL;
-	if(update)
-		update_current(M_GET_CURRENT_FOCUS_CLIENT);    /* previous is now current. (highest focus count) */
+    if(update)
+        update_current(M_GET_CURRENT_FOCUS_CLIENT);    /* previous is now current. (highest focus count) */
     if (cd == nd - 1)
         tile();
     else
@@ -2616,7 +2619,7 @@ void restore_client(client *c)
     else
         rem_node(&t->link);
 
-	add_tail(&current_display->focuslist, &t->c->focus.link);
+    add_tail(&current_display->focuslist, &t->c->focus.link);
     t->c->isminimized = false;
     xcb_remove_property(dis, t->c->win, ewmh->_NET_WM_STATE, ewmh->_NET_WM_STATE_HIDDEN);
 
@@ -3337,15 +3340,15 @@ void stack(int hh, int cy)
  * are the head */
 void swap_master()
 {
-	client *c, *h, *n;
-	if (!(h = M_HEAD))
-		return;
-	c = M_GET_CURRENT_FOCUS_CLIENT;
-	n = M_GETNEXTC(h);
+    client *c, *h, *n;
+    if (!(h = M_HEAD))
+        return;
+    c = M_GET_CURRENT_FOCUS_CLIENT;
+    n = M_GETNEXTC(h);
     if (!c || !n)
         return;
-	if (c == h)
-		c = n;
+    if (c == h)
+        c = n;
     rem_node(&c->link);
     add_head(&current_display->clients, &c->link);
     update_current(M_HEAD);
@@ -3499,7 +3502,7 @@ void togglescratchpad()
 
     if (!showscratchpad) {
         showscratchpad = True;
-		add_tail(&current_display->focuslist, &scrpd->focus.link);
+        add_tail(&current_display->focuslist, &scrpd->focus.link);
         xcb_get_geometry_reply_t *wa = get_geometry(scrpd->win);
         xcb_move(dis, scrpd->win, (M_WW - wa->width) / 2, (M_WH - wa->height) / 2, &scrpd->position_info);
         free(wa);
@@ -3508,7 +3511,7 @@ void togglescratchpad()
     } else {
         client *c = M_GET_CURRENT_FOCUS_CLIENT;
         showscratchpad = False;
-		rem_node(&scrpd->focus.link);
+        rem_node(&scrpd->focus.link);
         xcb_move(dis, scrpd->win, -2 * M_WW, 0, &scrpd->position_info);
         if(c == scrpd)
             update_current(M_GET_CURRENT_FOCUS_CLIENT);
@@ -3599,7 +3602,7 @@ void update_current(client *current)   // current may be NULL
         }
     }
     rem_node(&current->focus.link);
-	add_head(&current_display->focuslist, &current->focus.link);
+    add_head(&current_display->focuslist, &current->focus.link);
 
     for (client *c = M_HEAD; c; c = M_GETNEXTC(c)) {
         if (!c->isfullscreen) {
