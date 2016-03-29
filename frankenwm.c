@@ -1840,10 +1840,9 @@ unsigned int getcolor(char *color)
 
 static client *get_focus_client(bool prev)
 {
-    focusnode *t;
-    if ((t = (focusnode *)get_head(&current_display->focuslist)))
-        if (prev)   /* previously focused client? */
-            t = (focusnode *)get_next(&t->link);
+    focusnode *t = (focusnode *)get_head(&current_display->focuslist);
+    if (prev && t)   /* previously focused client? */
+        t = (focusnode *)get_next(&t->link);
     return t ? t->backpointer : NULL;
 }
 
