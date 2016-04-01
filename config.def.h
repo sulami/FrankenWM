@@ -84,6 +84,9 @@ static const char *scrpcmd[] = { "xterm", "-T", "scratchpad", NULL };
 static key keys[] = {
     /* modifier          key            function           argument */
 
+    /* screen style commands invoke */
+    {  CONTROL,          XK_a,          togglecmdmode,     {NULL}},
+
     /* select windows */
     {  MOD4,             XK_j,          next_win,          {NULL}},
     {  MOD4,             XK_k,          prev_win,          {NULL}},
@@ -151,7 +154,7 @@ static key keys[] = {
        DESKTOPCHANGE(    XK_F7,                            6)
        DESKTOPCHANGE(    XK_F8,                            7)
        DESKTOPCHANGE(    XK_F9,                            8)
-       DESKTOPCHANGE(    XK_F0,                            9)
+       DESKTOPCHANGE(    XK_F10,                           9)
     /* toggle to last desktop */
     {  MOD4,             XK_Tab,        last_desktop,      {NULL}},
     /* jump to the next/previous desktop */
