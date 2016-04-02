@@ -84,6 +84,9 @@ static const char *scrpcmd[] = { "xterm", "-T", "scratchpad", NULL };
 static key keys[] = {
     /* modifier          key            function           argument */
 
+    /* screen style commands invoke */
+    {  CONTROL,          XK_a,          togglecmdmode,     {NULL}},
+
     /* select windows */
     {  MOD4,             XK_j,          next_win,          {NULL}},
     {  MOD4,             XK_k,          prev_win,          {NULL}},

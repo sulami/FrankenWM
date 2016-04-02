@@ -26,7 +26,6 @@
 #  define DEBUG(x);
 #  define DEBUGP(x, ...);
 #endif
-
 /* upstream compatility */
 #define True  true
 #define False false
