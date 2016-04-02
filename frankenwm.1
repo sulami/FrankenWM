@@ -247,15 +247,23 @@ Resize floating windows
 .B Mod4\-t
 Reset just the active floating window back into tiling
 
-.SS ALTERNATIVE COMMAND
+.SS PREFIX COMMAND MODE
+
+FrankenWM comes with an optional prefix command mode that allows you to use a
+prefix key to press before commands instead of a modifier key to hold during,
+which might be more useful if using something like RDP that does not play nice
+with modifier keys. It works exactly like in
+.I screen(1)
+or
+.I tmux(1)
+and also allows you to press a number before the command to execute it a number
+of times, e.g. 
+.B Ctrl\-A 3 Shift\-Return
+starts 3 Terminals.
 
 .TP
 .B Ctrl\-A
-If Mod4 does not work (ie RDP remote login), you can use Ctrl\-A and an
-optional number, together with the shortcut.
-For example:
-.B Ctrl\-A 12 Shift\-Return
-starts 12 Terminals
+The default prefix key
 
 .SS MOUSE
 
