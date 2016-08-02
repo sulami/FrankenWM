@@ -2735,21 +2735,27 @@ int setup_keyboard(void)
     }
 
     numlock = xcb_get_keycodes(XK_Num_Lock);
-    for (unsigned int i = 0; i < 8; i++)
-       for (unsigned int j = 0; j < reply->keycodes_per_modifier; j++) {
-            xcb_keycode_t keycode = modmap[i * reply->keycodes_per_modifier +
-                                           j];
-            if (keycode == XCB_NO_SYMBOL)
-                continue;
-            for (unsigned int n = 0; numlock[n] != XCB_NO_SYMBOL; n++)
-                if (numlock[n] == keycode) {
-                    DEBUGP("xcb: found num-lock %d\n", 1 << i);
-                    numlockmask = 1 << i;
-                    break;
+    if (numlock) {
+        for (unsigned int i = 0; i < 8; i++) {
+            for (unsigned int j = 0; j < reply->keycodes_per_modifier; j++) {
+                xcb_keycode_t keycode =
+                        modmap[i * reply->keycodes_per_modifier +
+                                               j];
+                if (keycode == XCB_NO_SYMBOL)
+                    continue;
+                for (unsigned int n = 0; numlock[n] != XCB_NO_SYMBOL; n++) {
+                    if (numlock[n] == keycode) {
+                        DEBUGP("xcb: found num-lock %d\n", 1 << i);
+                        numlockmask = 1 << i;
+                        break;
+                    }
                 }
+            }
         }
+        free(numlock);
+    }
     free(reply);
-    free(numlock);
+
 
     return 0;
 }
