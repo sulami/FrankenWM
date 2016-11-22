@@ -37,6 +37,7 @@
 #define CLOSE_SCRATCHPAD True     /* close scratchpad on quit */
 #define SCRPDNAME       "scratchpad" /* the name of the scratchpad window */
 #define EWMH_TASKBAR    True      /* False if text (or no) panel/taskbar */
+#define SHOW_COMMANDWIN True      /* False if user wants to hide the command window */
 
 /*
  * EDIT THIS: applicaton specific rules
@@ -141,16 +142,16 @@ static key keys[] = {
     {  MOD4|SHIFT,       XK_c,          killclient,        {NULL}},
 
     /* desktop selection */
-       DESKTOPCHANGE(    XK_1,                             0)
-       DESKTOPCHANGE(    XK_2,                             1)
-       DESKTOPCHANGE(    XK_3,                             2)
-       DESKTOPCHANGE(    XK_4,                             3)
-       DESKTOPCHANGE(    XK_5,                             4)
-       DESKTOPCHANGE(    XK_6,                             5)
-       DESKTOPCHANGE(    XK_7,                             6)
-       DESKTOPCHANGE(    XK_8,                             7)
-       DESKTOPCHANGE(    XK_9,                             8)
-       DESKTOPCHANGE(    XK_0,                             9)
+       DESKTOPCHANGE(    XK_F1,                            0)
+       DESKTOPCHANGE(    XK_F2,                            1)
+       DESKTOPCHANGE(    XK_F3,                            2)
+       DESKTOPCHANGE(    XK_F4,                            3)
+       DESKTOPCHANGE(    XK_F5,                            4)
+       DESKTOPCHANGE(    XK_F6,                            5)
+       DESKTOPCHANGE(    XK_F7,                            6)
+       DESKTOPCHANGE(    XK_F8,                            7)
+       DESKTOPCHANGE(    XK_F9,                            8)
+       DESKTOPCHANGE(    XK_F0,                            9)
     /* toggle to last desktop */
     {  MOD4,             XK_Tab,        last_desktop,      {NULL}},
     /* jump to the next/previous desktop */
