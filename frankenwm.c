@@ -3480,12 +3480,13 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     client *rl = NULL;
     for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
-        if (c->ismaximized || c->isfloating || c->istransient || c->type != ewmh->_NET_WM_WINDOW_TYPE_NORMAL)
+        if (c->ismaximized || c->isfloating || c->istransient || c->type != ewmh->_NET_WM_WINDOW_TYPE_NORMAL) {
             if (c == M_CURRENT) {
                 rl = c;
                 continue;
             }
-            xcb_raise_window(dis, c->win);
+        }
+        xcb_raise_window(dis, c->win);
     }
     if(rl)
         xcb_raise_window(dis, rl->win);
