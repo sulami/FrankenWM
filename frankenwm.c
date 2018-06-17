@@ -293,6 +293,7 @@ static void setmaximize(client *c, bool fullscrn);
 void setfullscreen(client *c, bool fullscrn);
 static int setup(int default_screen);
 static void setup_display(void);
+
 static void setwindefattr(xcb_window_t w);
 static void showhide();
 static void sigchld();
@@ -310,6 +311,7 @@ static void unmapnotify(xcb_generic_event_t *e);
 static void xerror(xcb_generic_event_t *e);
 static alien *wintoalien(list *l, xcb_window_t win);
 static client *wintoclient(xcb_window_t w);
+desktop *wintodesktop(xcb_window_t win);
 
 #include "config.h"
 
@@ -1172,7 +1174,6 @@ void clientmessage(xcb_generic_event_t *e)
     client *c = wintoclient(ev->window);
 
     DEBUG("xcb: client message");
-
     if (c && ev->type == ewmh->_NET_WM_STATE) {
         if (((unsigned)ev->data.data32[1] == ewmh->_NET_WM_STATE_FULLSCREEN
           || (unsigned)ev->data.data32[2] == ewmh->_NET_WM_STATE_FULLSCREEN)) {
@@ -1212,11 +1213,16 @@ void clientmessage(xcb_generic_event_t *e)
             else {
                 if (ev->type == ewmh->_NET_ACTIVE_WINDOW) {
                     if (c) {
+                        //change to current desktop first
+                    	desktop *desk=wintodesktop(ev->window);
+                        const Arg temp={.i=desk->num};
+                        change_desktop(&temp);
                         client *t = NULL;
                         for (t = M_HEAD; t && t != c; t = M_GETNEXT(t))
                             ;
                         if (t)
                             update_current(c);
+
                     }
                     else {
                         if (showscratchpad && scrpd && scrpd->win == ev->window)
@@ -2667,6 +2673,7 @@ void select_desktop(int i)
     current_display = (display *)get_head(&current_monitor->displays);
 }
 
+
 static bool sendevent(xcb_window_t win, xcb_atom_t proto)
 {
     bool got = check_wmproto(win, proto);
@@ -3451,8 +3458,9 @@ void update_current(client *newfocus)   // newfocus may be NULL
 
     for (client *c = M_HEAD; c; c = M_GETNEXT(c)) {
         if (!c->isfullscreen) {
-            xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
-                                    (c == M_CURRENT ? &win_focus : &win_unfocus));
+            if(CHANGE_BORDER_COLOR)
+                xcb_change_window_attributes(dis, c->win, XCB_CW_BORDER_PIXEL,
+                                   (c == M_CURRENT ? &win_focus : &win_unfocus));
             xcb_border_width(dis, c->win, ((!MONOCLE_BORDERS && !M_GETNEXT(M_HEAD))
                                         || (M_MODE == MONOCLE && !ISFMFTM(c) && !MONOCLE_BORDERS)
                                            ) ? 0 : client_borders(c));
@@ -3546,6 +3554,28 @@ client *wintoclient(xcb_window_t win)
                 for (c = (client *)get_head(&disp->clients); c; c = (client *)get_next(&c->link)) {
                     if (c->win == win) {
                         return c;
+                    }
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+/*This method is a straight copy of wintoclient; TODO refactor*/
+/* find to which desktop the given window belongs to */
+desktop *wintodesktop(xcb_window_t win)
+{
+    desktop *desk;
+    for (desk = (desktop *)get_head(&desktops); desk; desk = (desktop *)get_next(&desk->link)) {
+        monitor *moni;
+        for (moni = (monitor *)get_head(&desk->monitors); moni; moni = (monitor *)get_next(&moni->link)) {
+            display *disp;
+            for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_next(&disp->link)) {
+                client *c;
+                for (c = (client *)get_head(&disp->clients); c; c = (client *)get_next(&c->link)) {
+                    if (c->win == win) {
+                        return desk;
                     }
                 }
             }
