@@ -40,11 +40,7 @@ The packages in Arch Linux needed for example would be
 Configuration
 -------------
 
-Configuration is done by editing `config.h` before compiling FrankenWM. If you
-want an advanced configuration example, you can have a look at [my personal
-config][config].
-
-  [config]: https://github.com/sulami/dotfiles/blob/master/configs/frankenwm.config.h
+Configuration is done by editing `config.h` before compiling FrankenWM.
 
 Usage
 -----
