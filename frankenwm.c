@@ -3115,7 +3115,6 @@ static void setup_display(void)
  */
 static void setwindefattr(xcb_window_t w)
 {
-return;
     unsigned int values[1] = {XCB_EVENT_MASK_PROPERTY_CHANGE|
                             (FOLLOW_MOUSE ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
     if (w) xcb_change_window_attributes(dis, w, XCB_CW_EVENT_MASK, values);
