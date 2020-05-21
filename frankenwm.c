@@ -282,6 +282,7 @@ static void resize_x(const Arg *arg);
 static void resize_y(const Arg *arg);
 static void restore_client(client *c);
 static void restore();
+static bool desktop_populated(desktop *d);
 static void rotate(const Arg *arg);
 static void rotate_client(const Arg *arg);
 static void rotate_filled(const Arg *arg);
@@ -2543,6 +2544,21 @@ void restore_client(client *c)
     free(t);
 }
 
+/* return true if desktop has clients */
+bool desktop_populated(desktop *d)
+{
+    monitor *moni;
+    for (moni = (monitor *)get_head(&d->monitors); moni; moni = (monitor *)get_next(&moni->link)) {
+        display *disp;
+        for (disp = (display *)get_head(&moni->displays); disp; disp = (display *)get_next(&disp->link)) {
+            if(get_head(&disp->clients)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /* restore_client(); wrapper */
 void restore()
 {
@@ -2573,26 +2589,25 @@ void rotate_filled(const Arg *arg)
 
     if (arg->i > 0) {   /* forward */
         for (newdesk = (desktop *)get_next(&current_desktop->link);;) {
-            if (!newdesk)
+            if (!newdesk) {
                 newdesk = (desktop *)get_head(&desktops);
-            if (newdesk == current_desktop) {
-                newdesk = NULL;
-                break;
+            } else {
+                if (newdesk == current_desktop || desktop_populated(newdesk)) break;
+                newdesk = (desktop *)get_next(&newdesk->link);
             }
-            newdesk = (desktop *)get_next(&newdesk->link);
         }
     }
     else {
         for (newdesk = (desktop *)get_prev(&current_desktop->link);;) {
-            if (!newdesk)
+            if (!newdesk) {
                 newdesk = (desktop *)get_tail(&desktops);
-            if (newdesk == current_desktop) {
-                newdesk = NULL;
-                break;
+            } else {
+                if (newdesk == current_desktop || desktop_populated(newdesk)) break;
+                newdesk = (desktop *)get_prev(&newdesk->link);
             }
-            newdesk = (desktop *)get_prev(&newdesk->link);
         }
     }
+
     if (newdesk)
         change_desktop(&(Arg){.i = newdesk->num});
 }
