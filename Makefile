@@ -2,9 +2,9 @@ WMNAME  = frankenwm
 
 PREFIX ?= /usr/local
 BINDIR ?= ${PREFIX}/bin
-MANPREFIX = ${PREFIX}/share/man
+MANPREFIX ?= ${PREFIX}/share/man
 
-INCS = -I. -I${PREFIX}/include -I/usr/X11R6/include
+INCS = -I. -I. `pkg-config --cflags xcb xcb-aux xcb-icccm xcb-keysyms xcb-ewmh`
 LIBS = -lc -lX11 `pkg-config --libs xcb xcb-aux xcb-icccm xcb-keysyms xcb-ewmh`
 
 CFLAGS   += -std=c99 -pedantic -Wall -Wextra ${INCS} ${CPPFLAGS}
