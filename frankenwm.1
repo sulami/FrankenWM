@@ -101,8 +101,15 @@ well.
 prints version information to standard output, then exits.
 .SH USAGE
 .SS Status bar
-frankenwm does not provide a status bar. Consistent with the Unix philosophy,
-frankenwm provides information to the status bar or panel of choice via text.
+.I frankenwm
+does not provide a status bar. Consistent with the Unix philosophy,
+.I frankenwm
+provides information to the status bar or panel of choice via text.
+That information is written to stdout if
+.I EMWH_TASKBAR
+is not defined, which can be achieved by commenting out the corresponding
+line in
+.IR config.h .
 .SS Keyboard and mouse commands
 All of
 .I frankenwm's
@@ -261,8 +268,8 @@ Dragging the mouse will resize the selected window
 is customized by copying
 .I config.def.h
 to
-.I config.h
-, customizing it and (re)compiling the source code.
+.IR config.h ,
+customizing it and (re)compiling the source code.
 .SH SEE ALSO
 .BR dmenu (1)
 .SH BUGS
