@@ -47,7 +47,18 @@ enum { _NET_WM_STATE_REMOVE, _NET_WM_STATE_ADD, _NET_WM_STATE_TOGGLE };
 #define MONITORS 1
 
 enum { RESIZE, MOVE };
-enum { TILE, MONOCLE, BSTACK, GRID, FIBONACCI, DUALSTACK, EQUAL, MODES };
+enum {
+    NONE      = 0,
+    TILE      = 1 << 0,
+    MONOCLE   = 1 << 1,
+    BSTACK    = 1 << 2,
+    GRID      = 1 << 3,
+    FIBONACCI = 1 << 4,
+    DUALSTACK = 1 << 5,
+    EQUAL     = 1 << 6,
+    GUARD_BIT = 1 << 7,
+};
+#define LAST_MODE (GUARD_BIT & ~(GUARD_BIT - 1))
 
 /* argument structure to be passed to function by config.h
  * com  - a command to run
@@ -364,7 +375,7 @@ static void (*events[XCB_NO_OPERATION])(xcb_generic_event_t *e);
 /* layout array - given the current layout mode, tile the windows
  * h (or hh) - avaible height that windows have to expand
  * y (or cy) - offset from top to place the windows (reserved by the panel) */
-static void (*layout[MODES])(int h, int y) = {
+static void (*layout[])(int h, int y) = {
     [TILE] = stack,
     [BSTACK] = stack,
     [GRID] = grid,
@@ -3276,7 +3287,8 @@ void switch_mode(const Arg *arg)
     if (M_MODE == arg->i)
         for (client *c = M_HEAD; c; c = M_GETNEXT(c))
             unfloat_client(c);
-    M_MODE = arg->i;
+    else
+        M_MODE = arg->i;
     tile();
     update_current(M_CURRENT);
     desktopinfo();
@@ -3286,9 +3298,16 @@ void switch_mode(const Arg *arg)
 /* cycle the tiling mode and reset all floating windows */
 void rotate_mode(const Arg *arg)
 {
+    if ((CYCLE_MODES) == NONE || (CYCLE_MODES) >= GUARD_BIT)
+        return;
     if (!show)
         showhide();
-    M_MODE = (M_MODE + arg->i + MODES) % MODES;
+    do {
+        if (arg->i >= 0)
+            M_MODE = M_MODE << 1 == GUARD_BIT ? 1 : M_MODE << 1;
+        else
+            M_MODE = M_MODE >> 1 == NONE ? LAST_MODE : M_MODE >> 1;
+    } while ((M_MODE & (CYCLE_MODES)) == 0);
     tile();
     update_current(M_CURRENT);
     desktopinfo();
