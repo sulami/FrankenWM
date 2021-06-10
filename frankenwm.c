@@ -202,12 +202,14 @@ typedef struct lifo {
 
 /* define behavior of certain applications
  * configured in config.h
- * class    - the class or name of the instance
+ * class    - the class of the window
+ * instance - the instance of the window
  * desktop  - what desktop it should be spawned at
  * follow   - whether to change desktop focus to the specified desktop
  */
 typedef struct {
     const char *class;
+    const char *instance;
     const int desktop;
     const bool follow, floating;
     const int border_width;
@@ -353,7 +355,8 @@ static display *current_display = NULL;
 
 static xcb_ewmh_connection_t *ewmh;
 static xcb_atom_t wmatoms[WM_COUNT];
-static regex_t appruleregex[LENGTH(rules)];
+static regex_t classruleregex[LENGTH(rules)];
+static regex_t instanceruleregex[LENGTH(rules)];
 static xcb_key_symbols_t *keysyms;
 
 /* events array
@@ -1075,8 +1078,10 @@ void cleanup(void)
     xcb_delete_property(dis, screen->root, ewmh->_NET_SUPPORTED);
     xcb_destroy_window(dis, checkwin);
 
-    for (unsigned int i = 0; i < LENGTH(rules); i++)
-        regfree(&appruleregex[i]);
+    for (unsigned int i = 0; i < LENGTH(rules); i++) {
+        regfree(&classruleregex[i]);
+        regfree(&instanceruleregex[i]);
+    }
 
     cleanup_display();
 
@@ -2030,8 +2035,7 @@ void maprequest(xcb_generic_event_t *e)
     xcb_map_request_event_t            *ev = (xcb_map_request_event_t *)e;
     xcb_window_t                       transient = 0;
     xcb_get_property_reply_t           *prop_reply;
-    xcb_get_property_cookie_t          cookie;
-    xcb_ewmh_get_utf8_strings_reply_t  wtitle;
+    xcb_icccm_get_wm_class_reply_t     wtitle;
     xcb_atom_t                         wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
     client *c;
     bool isFloating = False;
@@ -2058,19 +2062,19 @@ void maprequest(xcb_generic_event_t *e)
     bool follow = false;
     int cd = current_desktop_number, newdsk = current_desktop_number, border_width = -1;
 
-    cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, ev->window);
+    if (xcb_icccm_get_wm_class_reply(dis, xcb_icccm_get_wm_class_unchecked(dis, ev->window), &wtitle, NULL)) {
+        char *instance_name = wtitle.instance_name;
+        char *class_name = wtitle.class_name;
+        DEBUGP("class,inst: %s,%s\n", class_name, instance_name);
 
-    if (xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0)) {
-        DEBUGP("EWMH window title: %s\n", wtitle.strings);
-
-        if (!strcmp(wtitle.strings, SCRPDNAME)) {
+        if (!strcmp(instance_name, SCRPDNAME)) {
             scrpd = create_client(ev->window, wtype);
             setwindefattr(scrpd->win);
             grabbuttons(scrpd);
 
             xcb_move(dis, scrpd->win, -2 * M_WW, 0, &scrpd->position_info);
             xcb_map_window(dis, scrpd->win);
-            xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
+            xcb_icccm_get_wm_class_reply_wipe(&wtitle);
 
             if (scrpd_atom)
                 xcb_change_property(dis, XCB_PROP_MODE_REPLACE, scrpd->win, scrpd_atom,
@@ -2078,8 +2082,9 @@ void maprequest(xcb_generic_event_t *e)
             return;
         }
 
-        for (unsigned int i = 0; i < LENGTH(appruleregex); i++)
-            if (!regexec(&appruleregex[i], &wtitle.strings[0], 0, NULL, 0)) {
+        for (unsigned int i = 0; i < LENGTH(classruleregex); i++)
+            if (!regexec(&classruleregex[i], &class_name[0], 0, NULL, 0) &&
+             !regexec(&instanceruleregex[i], &instance_name[0], 0, NULL, 0)) {
                 follow = rules[i].follow;
                 newdsk = (rules[i].desktop < 0 ||
                           rules[i].desktop >= DESKTOPS) ? current_desktop_number
@@ -2089,7 +2094,7 @@ void maprequest(xcb_generic_event_t *e)
                 break;
             }
 
-        xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
+        xcb_icccm_get_wm_class_reply_wipe(&wtitle);
     }
 
     if (cd != newdsk)
@@ -2835,8 +2840,9 @@ int setup(int default_screen)
 
     /* initialize apprule regexes */
     for (unsigned int i = 0; i < LENGTH(rules); i++)
-        if (regcomp(&appruleregex[i], rules[i].class, 0))
-            err(EXIT_FAILURE, "error: failed to compile apprule regexes\n");
+        if (regcomp(&classruleregex[i], rules[i].class, 0) ||
+         regcomp(&instanceruleregex[i], rules[i].instance, 0))
+            err(EXIT_FAILURE, "error: failed to compile rule regexes\n");
 
     /* initialize EWMH */
     ewmh = calloc(1, sizeof(xcb_ewmh_connection_t));

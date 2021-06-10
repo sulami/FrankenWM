@@ -35,22 +35,31 @@
 #define OUTPUT_TITLE    False     /* output the title of the currently active window */
 #define USE_SCRATCHPAD  False     /* enable the scratchpad functionality */
 #define CLOSE_SCRATCHPAD True     /* close scratchpad on quit */
-#define SCRPDNAME       "scratchpad" /* the name of the scratchpad window */
+#define SCRPDNAME       "scratchpad" /* the instance of the scratchpad window */
 #define EWMH_TASKBAR    True      /* False if text (or no) panel/taskbar */
 
 /*
  * EDIT THIS: applicaton specific rules
  * Open applications to specified desktop with specified mode.
  * If desktop is negative, then current is assumed. Desktops are 0-indexed.
- * The matching is done via POSIX-regexes on the window title, see
- * https://en.wikipedia.org/wiki/Regular_expression#POSIX_extended for syntax
+ * If border_width is negative, the default is assumed.
+ *
+ * The matching is done via POSIX-ERE-regexes on the class or instance strings
+ * as reported by xprop(1):
+ *
+ *     WM_CLASS(STRING) = instance, class
+ *
+ * See https://en.wikipedia.org/wiki/Regular_expression#POSIX_extended for regex
+ * syntax (hint: ".*" matches any string, "^GIMP$" only matches "GIMP", but an
+ * unanchored "GIMP" also matches "AGIMPE").
+ *
  * Sadly, this can not be empty (for now), so enter something non-existent if
  * you do not wish to use this functionality.
  */
 static const AppRule rules[] = { \
-    /* title regex  desktop  follow  float border_with */
-    { "GNU Image",  -1,      False,  True, 0 },
-    { "Skype",       3,      False,  True, -1 },
+    /* class     instance  desktop  follow  float  border_with */
+    { "^GIMP$",  ".*",     -1,      False,  True,  0 },
+    { "Skype",   ".*",      3,      False,  True,  -1 },
 };
 
 /* helper for spawning shell commands, usually you don't edit this */
