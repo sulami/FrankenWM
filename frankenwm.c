@@ -1375,40 +1375,43 @@ bool deletewindow(xcb_window_t win)
  */
 void desktopinfo(void)
 {
-#ifndef EWMH_TASKBAR
     bool urgent = false;
-    int cd = current_desktop_number, n = 0, d = 0;
+    int cd = current_desktop_number, n = 0, d = 0, minimized = 0;
     xcb_get_property_cookie_t cookie;
     xcb_ewmh_get_utf8_strings_reply_t wtitle;
     wtitle.strings = NULL;
 
-    if (M_CURRENT) {
-        cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, M_CURRENT->win);
-        xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0);
-    }
+    if (OUTPUT) {
+        if (M_CURRENT) {
+            cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, M_CURRENT->win);
+            xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0);
+        }
 
-    for (client *c; d < DESKTOPS; d++) {
-        for (select_desktop(d), c = M_HEAD, n = 0, urgent = false;
-             c; c = M_GETNEXT(c), ++n)
-            if (c->isurgent)
-                urgent = true;
-        fprintf(stdout, "%d:%d:%d:%d:%d ", d, n, M_MODE, current_desktop_number == cd,
-                urgent);
-        if (d + 1 == DESKTOPS)
-            fprintf(stdout, "%s\n", M_CURRENT && OUTPUT_TITLE && wtitle.strings ?
-                    wtitle.strings : "");
-    }
+        for (client *c; d < DESKTOPS; d++) {
+            for (select_desktop(d), c = M_HEAD, n = 0, urgent = false, minimized = 0;
+                 c; c = M_GETNEXT(c), ++n) {
+                if (c->isurgent)
+                    urgent = true;
+                minimized += c->isminimized;
+            }
+            fprintf(stdout, "%d:%d:%d:%d:%d:%d ", d, n, M_MODE,
+                    current_desktop_number == cd, urgent, minimized);
+            if (d + 1 == DESKTOPS)
+                fprintf(stdout, "%s\n", M_CURRENT && OUTPUT_TITLE && wtitle.strings ?
+                        wtitle.strings : "");
+        }
 
-    if (wtitle.strings) {
-        xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
-    }
+        if (wtitle.strings) {
+            xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
+        }
 
-    fflush(stdout);
-    if (cd != d - 1)
-        select_desktop(cd);
-#else
+        fflush(stdout);
+        if (cd != d - 1)
+            select_desktop(cd);
+    }
+#ifdef EWMH_TASKBAR
     Update_EWMH_Taskbar_Properties();
-#endif /* EWMH_TASKBAR */
+#endif
 }
 
 static void destroy_display(client *c)
@@ -2389,15 +2392,17 @@ void propertynotify(xcb_generic_event_t *e)
 #endif /* EWMH_TASKBAR */
 
     c = wintoclient(ev->window);
-    if (!c || ev->atom != XCB_ICCCM_WM_ALL_HINTS)
+    if (!c)
         return;
+    else if (xcb_icccm_get_wm_hints_reply(dis,
+                                          xcb_icccm_get_wm_hints(dis, ev->window),
+                                          &wmh, NULL))
+                                          /* TODO: error handling */
+        c->isurgent = xcb_icccm_wm_hints_get_urgency(&wmh);
+    else if (ev->atom != XCB_ICCCM_WM_ALL_HINTS)
+        return;
+
     DEBUG("xcb: got hint!");
-    if (xcb_icccm_get_wm_hints_reply(dis,
-                                     xcb_icccm_get_wm_hints(dis, ev->window),
-                                                            &wmh, NULL))
-                                     /* TODO: error handling */
-        c->isurgent = c != M_CURRENT &&
-                           (wmh.flags & XCB_ICCCM_WM_HINT_X_URGENCY);
     desktopinfo();
 }
 
