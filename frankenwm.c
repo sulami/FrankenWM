@@ -473,23 +473,17 @@ static void insert_node_before(list *l, node *c, node *i)
 */
 static inline bool check_head(list *l) { return (l && l->head) ? True : False; }
 
-// static inline bool check_tail(list *l) { return (l && l->tail) ? True : False; }
-
 static inline node *get_head(list *l) { return (l) ? l->head : NULL; }
 
 static inline node *rem_head(list *l) { return (l) ? rem_node(l->head) : NULL; }
 
 static inline node *get_tail(list *l) { return (l) ? l->tail : NULL; }
 
-static inline node *rem_tail(list *l) { return (l) ? rem_node(l->tail) : NULL; }
-
 static inline node *get_next(node *n) { return (n) ? n->next : NULL; }
 
 static inline node *get_prev(node *n) { return (n) ? n->prev : NULL; }
 
 static inline node *get_node_head(node *n) { return (n && n->parent) ? n->parent->head : NULL; }
-
-static inline node *get_node_tail(node *n) { return (n && n->parent) ? n->parent->tail : NULL; }
 
 #define M_GETNEXT(c)  ((client *)get_next(&c->link))
 #define M_GETPREV(c)  ((client *)get_prev(&c->link))
