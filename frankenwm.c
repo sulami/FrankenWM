@@ -1377,13 +1377,13 @@ void desktopinfo(void)
     bool urgent = false;
     int cd = current_desktop_number, n = 0, d = 0, minimized = 0;
     xcb_get_property_cookie_t cookie;
-    xcb_ewmh_get_utf8_strings_reply_t wtitle;
-    wtitle.strings = NULL;
+    xcb_ewmh_get_utf8_strings_reply_t wclass;
+    wclass.strings = NULL;
 
     if (OUTPUT) {
         if (M_CURRENT) {
             cookie = xcb_ewmh_get_wm_name_unchecked(ewmh, M_CURRENT->win);
-            xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wtitle, (void *)0);
+            xcb_ewmh_get_wm_name_reply(ewmh, cookie, &wclass, (void *)0);
         }
 
         for (client *c; d < DESKTOPS; d++) {
@@ -1396,12 +1396,12 @@ void desktopinfo(void)
             fprintf(stdout, "%d:%d:%d:%d:%d:%d ", d, n, M_MODE,
                     current_desktop_number == cd, urgent, minimized);
             if (d + 1 == DESKTOPS)
-                fprintf(stdout, "%s\n", M_CURRENT && OUTPUT_TITLE && wtitle.strings ?
-                        wtitle.strings : "");
+                fprintf(stdout, "%s\n", M_CURRENT && OUTPUT_TITLE && wclass.strings ?
+                        wclass.strings : "");
         }
 
-        if (wtitle.strings) {
-            xcb_ewmh_get_utf8_strings_reply_wipe(&wtitle);
+        if (wclass.strings) {
+            xcb_ewmh_get_utf8_strings_reply_wipe(&wclass);
         }
 
         fflush(stdout);
@@ -2032,7 +2032,7 @@ void maprequest(xcb_generic_event_t *e)
     xcb_map_request_event_t            *ev = (xcb_map_request_event_t *)e;
     xcb_window_t                       transient = 0;
     xcb_get_property_reply_t           *prop_reply;
-    xcb_icccm_get_wm_class_reply_t     wtitle;
+    xcb_icccm_get_wm_class_reply_t     wclass;
     xcb_atom_t                         wtype = ewmh->_NET_WM_WINDOW_TYPE_NORMAL;
     client *c;
     bool isFloating = False;
@@ -2059,9 +2059,9 @@ void maprequest(xcb_generic_event_t *e)
     bool follow = false;
     int cd = current_desktop_number, newdsk = current_desktop_number, border_width = -1;
 
-    if (xcb_icccm_get_wm_class_reply(dis, xcb_icccm_get_wm_class_unchecked(dis, ev->window), &wtitle, NULL)) {
-        char *instance_name = wtitle.instance_name;
-        char *class_name = wtitle.class_name;
+    if (xcb_icccm_get_wm_class_reply(dis, xcb_icccm_get_wm_class_unchecked(dis, ev->window), &wclass, NULL)) {
+        char *instance_name = wclass.instance_name;
+        char *class_name = wclass.class_name;
         DEBUGP("class,inst: %s,%s\n", class_name, instance_name);
 
         if (!strcmp(instance_name, SCRPDNAME)) {
@@ -2071,7 +2071,7 @@ void maprequest(xcb_generic_event_t *e)
 
             xcb_move(dis, scrpd->win, -2 * M_WW, 0, &scrpd->position_info);
             xcb_map_window(dis, scrpd->win);
-            xcb_icccm_get_wm_class_reply_wipe(&wtitle);
+            xcb_icccm_get_wm_class_reply_wipe(&wclass);
 
             if (scrpd_atom)
                 xcb_change_property(dis, XCB_PROP_MODE_REPLACE, scrpd->win, scrpd_atom,
@@ -2091,7 +2091,7 @@ void maprequest(xcb_generic_event_t *e)
                 break;
             }
 
-        xcb_icccm_get_wm_class_reply_wipe(&wtitle);
+        xcb_icccm_get_wm_class_reply_wipe(&wclass);
     }
 
     if (cd != newdsk)
