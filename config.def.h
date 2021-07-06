@@ -19,6 +19,7 @@
 #define FOLLOW_MOUSE    False     /* Focus the window the mouse just entered */
 #define FOLLOW_WINDOW   False     /* Follow the window when moved to a different desktop */
 #define CLICK_TO_FOCUS  True      /* Focus an unfocused window when clicked */
+#define CHANGE_BORDER_COLOR    1  /* change window color on focus */
 #define BORDER_WIDTH    2         /* window border width */
 #define SCRATCH_WIDTH   1         /* scratch window border width, 0 to disable */
 #define FOCUS           "#cccccc" /* focused window border color   */
