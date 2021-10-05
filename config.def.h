@@ -147,7 +147,8 @@ static key keys[] = {
     /* spawn terminal, dmenu, w/e you want to */
     {  MOD4|SHIFT,       XK_Return,     spawn,             {.com = termcmd}},
     {  MOD4,             XK_r,          spawn,             {.com = menucmd}},
-    {  MOD1,             XK_r,          spawn,             SHCMD("$HOME/.frankenwm/autostart.sh")},
+    /* uncomment to run autostart script */
+    /* {  MOD1,             XK_r,          spawn,             SHCMD("$HOME/.frankenwm/autostart.sh")}, */
     /* kill current window */
     {  MOD4|SHIFT,       XK_c,          killclient,        {NULL}},
 
