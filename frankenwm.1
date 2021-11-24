@@ -212,12 +212,12 @@ Toggle display of windows on all desktops
 .SS VIRTUAL DESKTOPS
 
 .TP
-.B Mod4\-{1..n}
+.B Mod4\-{F1..n}
 Select the nth workspace. By default,
 .I frankenwm
 is configured with four workspaces
 .TP
-.B Mod4\-Shift\-{1..n}
+.B Mod4\-Shift\-{F1..n}
 Move the focused window to the nth workspace
 .TP
 .B Mod4\-Shift\-{h,l}
@@ -246,6 +246,16 @@ Resize floating windows
 .TP
 .B Mod4\-t
 Reset just the active floating window back into tiling
+
+.SS ALTERNATIVE COMMAND
+
+.TP
+.B Ctrl\-A
+If Mod4 does not work (ie RDP remote login), you can use Ctrl\-A and an
+optional number, together with the shortcut.
+For example:
+.B Ctrl\-A 12 Shift\-Return
+starts 12 Terminals
 
 .SS MOUSE
 
