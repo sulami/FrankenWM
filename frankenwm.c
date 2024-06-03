@@ -1067,10 +1067,11 @@ void cleanup(void)
     }
 
     xcb_ewmh_connection_wipe(ewmh);
-    free(ewmh);
 
     xcb_delete_property(dis, screen->root, ewmh->_NET_SUPPORTED);
     xcb_destroy_window(dis, checkwin);
+
+    free(ewmh);
 
     for (unsigned int i = 0; i < LENGTH(rules); i++) {
         regfree(&classruleregex[i]);
