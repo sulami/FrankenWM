@@ -14,7 +14,10 @@
 #define SHOW_PANEL      False     /* show panel by default on exec */
 #define TOP_PANEL       True      /* False means panel is on bottom */
 #define PANEL_HEIGHT    18        /* 0 for no space for panel, thus no panel */
-#define DEFAULT_MODE    TILE      /* TILE MONOCLE BSTACK GRID FIBONACCI EQUAL */
+/* Modes over which rotate_mode cycles.
+ * TILE MONOCLE BSTACK GRID FIBONACCI DUALSTACK EQUAL */
+#define CYCLE_MODES     (TILE|MONOCLE|BSTACK|GRID|FIBONACCI|DUALSTACK|EQUAL)
+#define DEFAULT_MODE    TILE      /* Any one of the stack modes */
 #define ATTACH_ASIDE    True      /* False means new window is master */
 #define FOLLOW_MOUSE    False     /* Focus the window the mouse just entered */
 #define FOLLOW_WINDOW   False     /* Follow the window when moved to a different desktop */
